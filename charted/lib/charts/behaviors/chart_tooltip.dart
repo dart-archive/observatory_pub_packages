@@ -11,6 +11,7 @@ part of charted.charts;
 /// Displays tooltip for the values as user moves the mouse pointer over
 /// values in the chart. It displays all the active values in the data row
 /// and use the value in the dimension as the title.
+@Deprecated('Use Hovercard')
 class ChartTooltip implements ChartBehavior {
   static const _TOOLTIP_OFFSET = 10;
   final String orientation;
@@ -91,7 +92,8 @@ class ChartTooltip implements ChartBehavior {
     var activeMeasures = [];
     if (showSelectedMeasure) {
       activeMeasures.addAll(_state.selection);
-      activeMeasures.add(_state.preview);
+      activeMeasures.add(_state.preview != null ? _state.preview :
+          _state.hovered.first);
       if (activeMeasures.isEmpty) {
         for (var series in _area.config.series) {
           activeMeasures.addAll(series.measures);
@@ -108,7 +110,7 @@ class ChartTooltip implements ChartBehavior {
     items.enter.append('div')
         ..classed('tooltip-item')
         ..classedWithCallback('active', (d, i, c) =>
-            !showSelectedMeasure && (i == e.column));
+            !showSelectedMeasure && (d == e.column));
 
     // Display the label for the currently active series.
     var tooltipItems = _tooltipRoot.selectAll('.tooltip-item');

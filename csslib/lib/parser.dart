@@ -300,10 +300,6 @@ class _Parser {
     }
   }
 
-  void _eatSemicolon() {
-    _eat(TokenKind.SEMICOLON);
-  }
-
   void _errorExpected(String expected) {
     var tok = _next();
     var message;
@@ -2367,8 +2363,8 @@ class _Parser {
 
     // Note: disable skipping whitespace tokens inside a string.
     // TODO(jmesserly): the layering here feels wrong.
-    var skipWhitespace = tokenizer._skipWhitespace;
-    tokenizer._skipWhitespace = false;
+    var inString = tokenizer._inString;
+    tokenizer._inString = false;
 
     switch (_peek()) {
       case TokenKind.SINGLE_QUOTE:
@@ -2400,7 +2396,7 @@ class _Parser {
       stringValue.write(_next().text);
     }
 
-    tokenizer._skipWhitespace = skipWhitespace;
+    tokenizer._inString = inString;
 
     // All characters between quotes is the string.
     if (stopToken != TokenKind.RPAREN) {

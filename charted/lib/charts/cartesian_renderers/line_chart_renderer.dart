@@ -11,16 +11,29 @@ part of charted.charts;
 class LineChartRenderer extends CartesianRendererBase {
   final Iterable<int> dimensionsUsingBand = const[];
   final SubscriptionsDisposer _disposer = new SubscriptionsDisposer();
-  final bool alwaysAnimate;
 
+  final bool alwaysAnimate;
+  final bool trackDataPoints;
+  final bool trackOnDimensionAxis;
+  final int quantitativeScaleProximity;
+
+  bool _trackingPointsCreated = false;
   List _xPositions = [];
-  Map<int, CircleElement> _measureCircleMap = {};
+
+  // Currently hovered row/column
+  int _savedOverRow = 0;
+  int _savedOverColumn = 0;
+
   int currentDataIndex = -1;
 
   @override
   final String name = "line-rdr";
 
-  LineChartRenderer({this.alwaysAnimate: false});
+  LineChartRenderer({
+      this.alwaysAnimate: false,
+      this.trackDataPoints: true,
+      this.trackOnDimensionAxis: false,
+      this.quantitativeScaleProximity: 5 });
 
   /*
    * Returns false if the number of dimension axes on the area is 0.
@@ -29,7 +42,9 @@ class LineChartRenderer extends CartesianRendererBase {
   @override
   bool prepare(ChartArea area, ChartSeries series) {
     _ensureAreaAndSeries(area, series);
-    _trackPointerInArea();
+    if (trackDataPoints != false) {
+      _trackPointerInArea();
+    }
     return area is CartesianArea;
   }
 
@@ -53,26 +68,12 @@ class LineChartRenderer extends CartesianRendererBase {
     var rangeBandOffset =
         dimensionScale is OrdinalScale ? dimensionScale.rangeBand / 2 : 0;
 
-    _xPositions =
-        x.map((val) => dimensionScale.scale(val) + rangeBandOffset).toList();
-
-    // Add circles that track user's pointer movements.
-    var linePoints = root.selectAll('.line-rdr-point').data(series.measures);
-    linePoints.enter.append('circle').each((d, i, e) {
-      e.classes.add('line-rdr-point');
-      e.attributes['r'] = '4';
-    });
-
-    linePoints.each((d, i, e) {
-      var color = colorForColumn(d);
-      e.attributes
-        ..['r'] = '4'
-        ..['stroke'] = color
-        ..['fill'] = color
-        ..['data-column'] = '$d';
-    });
-
-    linePoints.exit.remove();
+    // If tracking data points is enabled, cache location of points that
+    // represent data.
+    if (trackDataPoints) {
+      _xPositions =
+          x.map((val) => dimensionScale.scale(val) + rangeBandOffset).toList();
+    }
 
     var line = new SvgLine(
         xValueAccessor: (d, i) => dimensionScale.scale(x[i]) + rangeBandOffset,
@@ -80,22 +81,35 @@ class LineChartRenderer extends CartesianRendererBase {
 
     // Add lines and hook up hover and selection events.
     var svgLines = root.selectAll('.line-rdr-line').data(lines);
-    svgLines.enter.append('path')
-        ..each((d, i, e) {
-          e.classes.add('line-rdr-line');
-          e.attributes['fill'] = 'none';
-        });
+    svgLines.enter.append('path').each((d, i, e) {
+      e.attributes['fill'] = 'none';
+    });
 
     svgLines.each((d, i, e) {
       var column = series.measures.elementAt(i),
           color = colorForColumn(column),
+          filter = filterForColumn(column),
           styles = stylesForColumn(column);
-      e.classes.addAll(styles);
       e.attributes
         ..['d'] = line.path(d, i, e)
         ..['stroke'] = color
+        ..['class'] = styles.isEmpty
+            ? 'line-rdr-line'
+            : 'line-rdr-line ${styles.join(' ')}'
         ..['data-column'] = '$column';
+      if (isNullOrEmpty(filter)) {
+        e.attributes.remove('filter');
+      } else {
+        e.attributes['filter'] = filter;
+      }
     });
+
+    if (area.state != null) {
+      svgLines
+        ..on('click', (d, i, e) => _mouseClickHandler(d, i, e))
+        ..on('mouseover', (d, i, e) => _mouseOverHandler(d, i, e))
+        ..on('mouseout', (d, i, e) => _mouseOutHandler(d, i, e));
+    }
 
     svgLines.exit.remove();
   }
@@ -108,42 +122,90 @@ class LineChartRenderer extends CartesianRendererBase {
     _disposer.dispose();
   }
 
-  Selection _getSelectionForColumn(int column) =>
-      root.selectAll('.line-rdr-line[data-column="$column"]');
-
   @override
   void handleStateChanges(List<ChangeRecord> changes) {
-    resetStylesCache();
-    for (int i = 0; i < series.measures.length; ++i) {
-      var column = series.measures.elementAt(i),
-          selection = _getSelectionForColumn(column),
-          color = colorForColumn(column),
-          styles = stylesForColumn(column);
-      selection.each((d,i,e) {
-        e.classes
-          ..removeAll(ChartState.COLUMN_CLASS_NAMES)
-          ..addAll(styles);
-      });
-      selection.transition()
-        ..style('stroke', color)
-        ..duration(50);
+    var lines = host.querySelectorAll('.line-rdr-line');
+    if (lines == null || lines.isEmpty) return;
+
+    for (int i = 0, len = lines.length; i < len; ++i) {
+      var line = lines.elementAt(i),
+          column = int.parse(line.dataset['column']),
+          filter = filterForColumn(column);
+      line.classes.removeAll(ChartState.COLUMN_CLASS_NAMES);
+      line.classes.addAll(stylesForColumn(column));
+      line.attributes['stroke'] = colorForColumn(column);
+
+      if (isNullOrEmpty(filter)) {
+        line.attributes.remove('filter');
+      } else {
+        line.attributes['filter'] = filter;
+      }
     }
   }
 
+  void _createTrackingCircles() {
+    var linePoints = root.selectAll('.line-rdr-point').data(series.measures);
+    linePoints.enter.append('circle').each((d, i, e) {
+      e.classes.add('line-rdr-point');
+      e.attributes['r'] = '4';
+    });
+
+    linePoints
+      ..each((d, i, e) {
+      var color = colorForColumn(d);
+      e.attributes
+        ..['r'] = '4'
+        ..['stroke'] = color
+        ..['fill'] = color
+        ..['data-column'] = '$d';
+      })
+      ..on('click', _mouseClickHandler)
+      ..on('mousemove', _mouseOverHandler)  // Ensure that we update values
+      ..on('mouseover', _mouseOverHandler)
+      ..on('mouseout', _mouseOutHandler);
+
+    linePoints.exit.remove();
+    _trackingPointsCreated = true;
+  }
+
   void _showTrackingCircles(int row) {
+    if (_trackingPointsCreated == false) {
+      _createTrackingCircles();
+    }
+
     var yScale = area.measureScales(series).first;
     root.selectAll('.line-rdr-point').each((d, i, e) {
-      var x = _xPositions[row];
-      var y = yScale.scale(area.data.rows.elementAt(row).elementAt(d));
-      e.attributes
-        ..['cx'] = '$x'
-        ..['cy'] = '$y';
-      e.style.setProperty('opacity', '1');
+      var x = _xPositions[row],
+          measureVal = area.data.rows.elementAt(row).elementAt(d);
+      if (measureVal != null && measureVal.isFinite) {
+        var color = colorForColumn(d),
+            filter = filterForColumn(d);
+        e.attributes
+          ..['cx'] = '$x'
+          ..['cy'] = '${yScale.scale(measureVal)}'
+          ..['fill'] = color
+          ..['stroke'] = color
+          ..['data-row'] = '$row';
+        e.style
+          ..setProperty('opacity', '1')
+          ..setProperty('visibility', 'visible');
+        if (isNullOrEmpty(filter)) {
+          e.attributes.remove('filter');
+        } else {
+          e.attributes['filter'] = filter;
+        }
+      } else {
+        e.style
+          ..setProperty('opacity', '$EPSILON')
+          ..setProperty('visibility', 'hidden');
+      }
     });
   }
 
   void _hideTrackingCircles() {
-    root.selectAll('.line-rdr-point').style('opacity', '0.0');
+    root.selectAll('.line-rdr-point')
+      ..style('opacity', '0.0')
+      ..style('visibility', 'hidden');
   }
 
   int _getNearestRowIndex(double x) {
@@ -162,10 +224,10 @@ class LineChartRenderer extends CartesianRendererBase {
   }
 
   void _trackPointerInArea() {
+    _trackingPointsCreated = false;
     _disposer.add(area.onMouseMove.listen((ChartEvent event) {
       if (area.layout.renderArea.contains(event.chartX, event.chartY)) {
-        var renderAreaX = event.chartX - area.layout.renderArea.x,
-            row = _getNearestRowIndex(event.chartX);
+        var row = _getNearestRowIndex(event.chartX);
         window.animationFrame.then((_) => _showTrackingCircles(row));
       } else {
         _hideTrackingCircles();
@@ -174,5 +236,40 @@ class LineChartRenderer extends CartesianRendererBase {
     _disposer.add(area.onMouseOut.listen((ChartEvent event) {
       _hideTrackingCircles();
     }));
+  }
+
+  void _mouseClickHandler(d, int i, Element e) {
+    if (area.state != null) {
+      area.state.select(int.parse(e.dataset['column']));
+    }
+    if (mouseClickController != null && e.tagName == 'circle') {
+      var row = int.parse(e.dataset['row']),
+          column = int.parse(e.dataset['column']);
+      mouseClickController.add(
+          new DefaultChartEventImpl(scope.event, area, series, row, column, d));
+    }
+  }
+
+  void _mouseOverHandler(d, i, e) {
+    if (area.state != null) {
+      area.state.preview = int.parse(e.dataset['column']);
+    }
+    if (mouseOverController != null && e.tagName == 'circle') {
+      _savedOverRow = int.parse(e.dataset['row']);
+      _savedOverColumn = int.parse(e.dataset['column']);
+      mouseOverController.add(new DefaultChartEventImpl(
+          scope.event, area, series, _savedOverRow, _savedOverColumn, d));
+    }
+  }
+
+  void _mouseOutHandler(d, i, e) {
+    if (area.state != null &&
+        area.state.preview == int.parse(e.dataset['column'])) {
+      area.state.preview = null;
+    }
+    if (mouseOutController != null && e.tagName == 'circle') {
+      mouseOutController.add(new DefaultChartEventImpl(
+          scope.event, area, series, _savedOverRow, _savedOverColumn, d));
+    }
   }
 }

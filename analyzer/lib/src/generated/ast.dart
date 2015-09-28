@@ -9,7 +9,6 @@ library engine.ast;
 
 import 'dart:collection';
 
-import 'constant.dart';
 import 'element.dart';
 import 'engine.dart' show AnalysisEngine;
 import 'java_core.dart';
@@ -595,10 +594,8 @@ class AsExpression extends Expression {
   Token get beginToken => _expression.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_expression)
-    ..add(asOperator)
-    ..add(_type);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_expression)..add(asOperator)..add(_type);
 
   @override
   Token get endToken => _type.endToken;
@@ -1248,19 +1245,19 @@ class AstCloner implements AstVisitor<AstNode> {
           cloneNodeList(node.metadata), cloneToken(node.keyword),
           cloneNode(node.type), cloneToken(node.thisKeyword),
           cloneToken(node.period), cloneNode(node.identifier),
-          cloneNode(node.parameters));
+          cloneNode(node.typeParameters), cloneNode(node.parameters));
 
   @override
   ForEachStatement visitForEachStatement(ForEachStatement node) {
     DeclaredIdentifier loopVariable = node.loopVariable;
     if (loopVariable == null) {
-      return new ForEachStatement.con2(cloneToken(node.awaitKeyword),
+      return new ForEachStatement.withReference(cloneToken(node.awaitKeyword),
           cloneToken(node.forKeyword), cloneToken(node.leftParenthesis),
           cloneNode(node.identifier), cloneToken(node.inKeyword),
           cloneNode(node.iterable), cloneToken(node.rightParenthesis),
           cloneNode(node.body));
     }
-    return new ForEachStatement.con1(cloneToken(node.awaitKeyword),
+    return new ForEachStatement.withDeclaration(cloneToken(node.awaitKeyword),
         cloneToken(node.forKeyword), cloneToken(node.leftParenthesis),
         cloneNode(loopVariable), cloneToken(node.inKeyword),
         cloneNode(node.iterable), cloneToken(node.rightParenthesis),
@@ -1295,12 +1292,14 @@ class AstCloner implements AstVisitor<AstNode> {
 
   @override
   FunctionExpression visitFunctionExpression(FunctionExpression node) =>
-      new FunctionExpression(cloneNode(node.parameters), cloneNode(node.body));
+      new FunctionExpression(cloneNode(node.typeParameters),
+          cloneNode(node.parameters), cloneNode(node.body));
 
   @override
   FunctionExpressionInvocation visitFunctionExpressionInvocation(
       FunctionExpressionInvocation node) => new FunctionExpressionInvocation(
-      cloneNode(node.function), cloneNode(node.argumentList));
+      cloneNode(node.function), cloneNode(node.typeArguments),
+      cloneNode(node.argumentList));
 
   @override
   FunctionTypeAlias visitFunctionTypeAlias(FunctionTypeAlias node) =>
@@ -1315,7 +1314,7 @@ class AstCloner implements AstVisitor<AstNode> {
       FunctionTypedFormalParameter node) => new FunctionTypedFormalParameter(
       cloneNode(node.documentationComment), cloneNodeList(node.metadata),
       cloneNode(node.returnType), cloneNode(node.identifier),
-      cloneNode(node.parameters));
+      cloneNode(node.typeParameters), cloneNode(node.parameters));
 
   @override
   HideCombinator visitHideCombinator(HideCombinator node) => new HideCombinator(
@@ -1427,13 +1426,14 @@ class AstCloner implements AstVisitor<AstNode> {
           cloneNodeList(node.metadata), cloneToken(node.externalKeyword),
           cloneToken(node.modifierKeyword), cloneNode(node.returnType),
           cloneToken(node.propertyKeyword), cloneToken(node.operatorKeyword),
-          cloneNode(node.name), cloneNode(node.parameters),
-          cloneNode(node.body));
+          cloneNode(node.name), cloneNode(node.typeParameters),
+          cloneNode(node.parameters), cloneNode(node.body));
 
   @override
   MethodInvocation visitMethodInvocation(MethodInvocation node) =>
       new MethodInvocation(cloneNode(node.target), cloneToken(node.operator),
-          cloneNode(node.methodName), cloneNode(node.argumentList));
+          cloneNode(node.methodName), cloneNode(node.typeArguments),
+          cloneNode(node.argumentList));
 
   @override
   NamedExpression visitNamedExpression(NamedExpression node) =>
@@ -3193,9 +3193,8 @@ class AwaitExpression extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(awaitKeyword)
-    ..add(_expression);
+  Iterable get childEntities =>
+      new ChildEntities()..add(awaitKeyword)..add(_expression);
 
   @override
   Token get endToken => _expression.endToken;
@@ -3289,10 +3288,8 @@ class BinaryExpression extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_leftOperand)
-    ..add(operator)
-    ..add(_rightOperand);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_leftOperand)..add(operator)..add(_rightOperand);
 
   @override
   Token get endToken => _rightOperand.endToken;
@@ -3497,10 +3494,8 @@ class BlockFunctionBody extends FunctionBody {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(keyword)
-    ..add(star)
-    ..add(_block);
+  Iterable get childEntities =>
+      new ChildEntities()..add(keyword)..add(star)..add(_block);
 
   @override
   Token get endToken => _block.endToken;
@@ -3666,10 +3661,8 @@ class BreakStatement extends Statement {
   Token get beginToken => breakKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(breakKeyword)
-    ..add(_label)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      new ChildEntities()..add(breakKeyword)..add(_label)..add(semicolon);
 
   @override
   Token get endToken => semicolon;
@@ -4576,9 +4569,8 @@ class CommentReference extends AstNode {
   Token get beginToken => _identifier.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(newKeyword)
-    ..add(_identifier);
+  Iterable get childEntities =>
+      new ChildEntities()..add(newKeyword)..add(_identifier);
 
   @override
   Token get endToken => _identifier.endToken;
@@ -4687,7 +4679,7 @@ class CompilationUnit extends AstNode {
    * The last token in the token stream that was parsed to form this compilation
    * unit. This token should always have a type of [TokenType.EOF].
    */
-  final Token endToken;
+  Token endToken;
 
   /**
    * The element associated with this compilation unit, or `null` if the AST
@@ -4719,9 +4711,7 @@ class CompilationUnit extends AstNode {
   Iterable get childEntities {
     ChildEntities result = new ChildEntities()..add(_scriptTag);
     if (_directivesAreBeforeDeclarations) {
-      result
-        ..addAll(_directives)
-        ..addAll(_declarations);
+      result..addAll(_directives)..addAll(_declarations);
     } else {
       result.addAll(sortedDirectivesAndDeclarations);
     }
@@ -5273,18 +5263,6 @@ class ConstantEvaluator extends GeneralizingAstVisitor<Object> {
 }
 
 /**
- * Object representing a "const" instance creation expression, and its
- * evaluation result.  This is used as the AnalysisTarget for constant
- * evaluation of instance creation expressions.
- */
-class ConstantInstanceCreationHandle {
-  /**
-   * The result of evaluating the constant.
-   */
-  EvaluationResultImpl evaluationResult;
-}
-
-/**
  * A constructor declaration.
  *
  * > constructorDeclaration ::=
@@ -5696,10 +5674,8 @@ class ConstructorName extends AstNode {
   Token get beginToken => _type.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_type)
-    ..add(period)
-    ..add(_name);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_type)..add(period)..add(_name);
 
   @override
   Token get endToken {
@@ -5789,10 +5765,8 @@ class ContinueStatement extends Statement {
   Token get beginToken => continueKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(continueKeyword)
-    ..add(_label)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      new ChildEntities()..add(continueKeyword)..add(_label)..add(semicolon);
 
   @override
   Token get endToken => semicolon;
@@ -5893,10 +5867,8 @@ class DeclaredIdentifier extends Declaration {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(keyword)
-    ..add(_type)
-    ..add(_identifier);
+  Iterable get childEntities =>
+      super._childEntities..add(keyword)..add(_type)..add(_identifier);
 
   @override
   LocalVariableElement get element {
@@ -6017,10 +5989,8 @@ class DefaultFormalParameter extends FormalParameter {
   Token get beginToken => _parameter.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_parameter)
-    ..add(separator)
-    ..add(_defaultValue);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_parameter)..add(separator)..add(_defaultValue);
 
   /**
    * Return the expression computing the default value for the parameter, or
@@ -6973,9 +6943,8 @@ class ExpressionStatement extends Statement {
   Token get beginToken => _expression.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_expression)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_expression)..add(semicolon);
 
   @override
   Token get endToken {
@@ -7037,9 +7006,8 @@ class ExtendsClause extends AstNode {
   Token get beginToken => extendsKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(extendsKeyword)
-    ..add(_superclass);
+  Iterable get childEntities =>
+      new ChildEntities()..add(extendsKeyword)..add(_superclass);
 
   @override
   Token get endToken => _superclass.endToken;
@@ -7115,10 +7083,8 @@ class FieldDeclaration extends ClassMember {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(staticKeyword)
-    ..add(_fieldList)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      super._childEntities..add(staticKeyword)..add(_fieldList)..add(semicolon);
 
   @override
   Element get element => null;
@@ -7166,7 +7132,7 @@ class FieldDeclaration extends ClassMember {
  *
  * > fieldFormalParameter ::=
  * >     ('final' [TypeName] | 'const' [TypeName] | 'var' | [TypeName])?
- * >     'this' '.' [SimpleIdentifier] [FormalParameterList]?
+ * >     'this' '.' [SimpleIdentifier] ([TypeParameterList]? [FormalParameterList])?
  */
 class FieldFormalParameter extends NormalFormalParameter {
   /**
@@ -7192,6 +7158,12 @@ class FieldFormalParameter extends NormalFormalParameter {
   Token period;
 
   /**
+   * The type parameters associated with the method, or `null` if the method is
+   * not a generic method.
+   */
+  TypeParameterList _typeParameters;
+
+  /**
    * The parameters of the function-typed parameter, or `null` if this is not a
    * function-typed field formal parameter.
    */
@@ -7208,9 +7180,10 @@ class FieldFormalParameter extends NormalFormalParameter {
    */
   FieldFormalParameter(Comment comment, List<Annotation> metadata, this.keyword,
       TypeName type, this.thisKeyword, this.period, SimpleIdentifier identifier,
-      FormalParameterList parameters)
+      TypeParameterList typeParameters, FormalParameterList parameters)
       : super(comment, metadata, identifier) {
     _type = _becomeParentOf(type);
+    _typeParameters = _becomeParentOf(typeParameters);
     _parameters = _becomeParentOf(parameters);
   }
 
@@ -7292,6 +7265,20 @@ class FieldFormalParameter extends NormalFormalParameter {
     _type = _becomeParentOf(typeName);
   }
 
+  /**
+   * Return the type parameters associated with this method, or `null` if this
+   * method is not a generic method.
+   */
+  TypeParameterList get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters associated with this method to the given
+   * [typeParameters].
+   */
+  void set typeParameters(TypeParameterList typeParameters) {
+    _typeParameters = _becomeParentOf(typeParameters);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitFieldFormalParameter(this);
 
@@ -7300,6 +7287,7 @@ class FieldFormalParameter extends NormalFormalParameter {
     super.visitChildren(visitor);
     _safelyVisitChild(_type, visitor);
     _safelyVisitChild(identifier, visitor);
+    _safelyVisitChild(_typeParameters, visitor);
     _safelyVisitChild(_parameters, visitor);
   }
 }
@@ -7363,6 +7351,7 @@ class ForEachStatement extends Statement {
    * Initialize a newly created for-each statement. The [awaitKeyword] can be
    * `null` if this is not an asynchronous for loop.
    */
+  @deprecated // Use new ForEachStatement.withDeclaration(...)
   ForEachStatement.con1(this.awaitKeyword, this.forKeyword,
       this.leftParenthesis, DeclaredIdentifier loopVariable, this.inKeyword,
       Expression iterator, this.rightParenthesis, Statement body) {
@@ -7375,7 +7364,34 @@ class ForEachStatement extends Statement {
    * Initialize a newly created for-each statement. The [awaitKeyword] can be
    * `null` if this is not an asynchronous for loop.
    */
+  @deprecated // Use new ForEachStatement.withReference(...)
   ForEachStatement.con2(this.awaitKeyword, this.forKeyword,
+      this.leftParenthesis, SimpleIdentifier identifier, this.inKeyword,
+      Expression iterator, this.rightParenthesis, Statement body) {
+    _identifier = _becomeParentOf(identifier);
+    _iterable = _becomeParentOf(iterator);
+    _body = _becomeParentOf(body);
+  }
+
+  /**
+   * Initialize a newly created for-each statement whose loop control variable
+   * is declared internally (in the for-loop part). The [awaitKeyword] can be
+   * `null` if this is not an asynchronous for loop.
+   */
+  ForEachStatement.withDeclaration(this.awaitKeyword, this.forKeyword,
+      this.leftParenthesis, DeclaredIdentifier loopVariable, this.inKeyword,
+      Expression iterator, this.rightParenthesis, Statement body) {
+    _loopVariable = _becomeParentOf(loopVariable);
+    _iterable = _becomeParentOf(iterator);
+    _body = _becomeParentOf(body);
+  }
+
+  /**
+   * Initialize a newly created for-each statement whose loop control variable
+   * is declared outside the for loop. The [awaitKeyword] can be `null` if this
+   * is not an asynchronous for loop.
+   */
+  ForEachStatement.withReference(this.awaitKeyword, this.forKeyword,
       this.leftParenthesis, SimpleIdentifier identifier, this.inKeyword,
       Expression iterator, this.rightParenthesis, Statement body) {
     _identifier = _becomeParentOf(identifier);
@@ -7594,9 +7610,7 @@ class FormalParameterList extends AstNode {
       }
       result.add(parameter);
     }
-    return result
-      ..add(rightDelimiter)
-      ..add(rightParenthesis);
+    return result..add(rightDelimiter)..add(rightParenthesis);
   }
 
   @override
@@ -8021,9 +8035,15 @@ class FunctionDeclarationStatement extends Statement {
  * A function expression.
  *
  * > functionExpression ::=
- * >     [FormalParameterList] [FunctionBody]
+ * >     [TypeParameterList]? [FormalParameterList] [FunctionBody]
  */
 class FunctionExpression extends Expression {
+  /**
+   * The type parameters associated with the method, or `null` if the method is
+   * not a generic method.
+   */
+  TypeParameterList _typeParameters;
+
   /**
    * The parameters associated with the function.
    */
@@ -8043,14 +8063,18 @@ class FunctionExpression extends Expression {
   /**
    * Initialize a newly created function declaration.
    */
-  FunctionExpression(FormalParameterList parameters, FunctionBody body) {
+  FunctionExpression(TypeParameterList typeParameters,
+      FormalParameterList parameters, FunctionBody body) {
+    _typeParameters = _becomeParentOf(typeParameters);
     _parameters = _becomeParentOf(parameters);
     _body = _becomeParentOf(body);
   }
 
   @override
   Token get beginToken {
-    if (_parameters != null) {
+    if (_typeParameters != null) {
+      return _typeParameters.beginToken;
+    } else if (_parameters != null) {
       return _parameters.beginToken;
     } else if (_body != null) {
       return _body.beginToken;
@@ -8073,9 +8097,8 @@ class FunctionExpression extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_parameters)
-    ..add(_body);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_parameters)..add(_body);
 
   @override
   Token get endToken {
@@ -8105,11 +8128,26 @@ class FunctionExpression extends Expression {
   @override
   int get precedence => 16;
 
+  /**
+   * Return the type parameters associated with this method, or `null` if this
+   * method is not a generic method.
+   */
+  TypeParameterList get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters associated with this method to the given
+   * [typeParameters].
+   */
+  void set typeParameters(TypeParameterList typeParameters) {
+    _typeParameters = _becomeParentOf(typeParameters);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitFunctionExpression(this);
 
   @override
   void visitChildren(AstVisitor visitor) {
+    _safelyVisitChild(_typeParameters, visitor);
     _safelyVisitChild(_parameters, visitor);
     _safelyVisitChild(_body, visitor);
   }
@@ -8122,13 +8160,19 @@ class FunctionExpression extends Expression {
  * by either [PrefixedIdentifier] or [PropertyAccess] nodes.
  *
  * > functionExpressionInvoction ::=
- * >     [Expression] [ArgumentList]
+ * >     [Expression] [TypeArgumentList]? [ArgumentList]
  */
 class FunctionExpressionInvocation extends Expression {
   /**
    * The expression producing the function being invoked.
    */
   Expression _function;
+
+  /**
+   * The type arguments to be applied to the method being invoked, or `null` if
+   * no type arguments were provided.
+   */
+  TypeArgumentList _typeArguments;
 
   /**
    * The list of arguments to the function.
@@ -8152,8 +8196,10 @@ class FunctionExpressionInvocation extends Expression {
   /**
    * Initialize a newly created function expression invocation.
    */
-  FunctionExpressionInvocation(Expression function, ArgumentList argumentList) {
+  FunctionExpressionInvocation(Expression function,
+      TypeArgumentList typeArguments, ArgumentList argumentList) {
     _function = _becomeParentOf(function);
+    _typeArguments = _becomeParentOf(typeArguments);
     _argumentList = _becomeParentOf(argumentList);
   }
 
@@ -8188,9 +8234,8 @@ class FunctionExpressionInvocation extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_function)
-    ..add(_argumentList);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_function)..add(_argumentList);
 
   @override
   Token get endToken => _argumentList.endToken;
@@ -8211,12 +8256,27 @@ class FunctionExpressionInvocation extends Expression {
   @override
   int get precedence => 15;
 
+  /**
+   * Return the type arguments to be applied to the method being invoked, or
+   * `null` if no type arguments were provided.
+   */
+  TypeArgumentList get typeArguments => _typeArguments;
+
+  /**
+   * Set the type arguments to be applied to the method being invoked to the
+   * given [typeArguments].
+   */
+  void set typeArguments(TypeArgumentList typeArguments) {
+    _typeArguments = _becomeParentOf(typeArguments);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitFunctionExpressionInvocation(this);
 
   @override
   void visitChildren(AstVisitor visitor) {
     _safelyVisitChild(_function, visitor);
+    _safelyVisitChild(_typeArguments, visitor);
     _safelyVisitChild(_argumentList, visitor);
   }
 }
@@ -8336,7 +8396,7 @@ class FunctionTypeAlias extends TypeAlias {
  * A function-typed formal parameter.
  *
  * > functionSignature ::=
- * >     [TypeName]? [SimpleIdentifier] [FormalParameterList]
+ * >     [TypeName]? [SimpleIdentifier] [TypeParameterList]? [FormalParameterList]
  */
 class FunctionTypedFormalParameter extends NormalFormalParameter {
   /**
@@ -8344,6 +8404,12 @@ class FunctionTypedFormalParameter extends NormalFormalParameter {
    * return type.
    */
   TypeName _returnType;
+
+  /**
+   * The type parameters associated with the function, or `null` if the function
+   * is not a generic function.
+   */
+  TypeParameterList _typeParameters;
 
   /**
    * The parameters of the function-typed parameter.
@@ -8358,9 +8424,10 @@ class FunctionTypedFormalParameter extends NormalFormalParameter {
    */
   FunctionTypedFormalParameter(Comment comment, List<Annotation> metadata,
       TypeName returnType, SimpleIdentifier identifier,
-      FormalParameterList parameters)
+      TypeParameterList typeParameters, FormalParameterList parameters)
       : super(comment, metadata, identifier) {
     _returnType = _becomeParentOf(returnType);
+    _typeParameters = _becomeParentOf(typeParameters);
     _parameters = _becomeParentOf(parameters);
   }
 
@@ -8373,10 +8440,8 @@ class FunctionTypedFormalParameter extends NormalFormalParameter {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(_returnType)
-    ..add(identifier)
-    ..add(parameters);
+  Iterable get childEntities =>
+      super._childEntities..add(_returnType)..add(identifier)..add(parameters);
 
   @override
   Token get endToken => _parameters.endToken;
@@ -8413,6 +8478,20 @@ class FunctionTypedFormalParameter extends NormalFormalParameter {
     _returnType = _becomeParentOf(type);
   }
 
+  /**
+   * Return the type parameters associated with this function, or `null` if
+   * this function is not a generic function.
+   */
+  TypeParameterList get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters associated with this method to the given
+   * [typeParameters].
+   */
+  void set typeParameters(TypeParameterList typeParameters) {
+    _typeParameters = _becomeParentOf(typeParameters);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitFunctionTypedFormalParameter(this);
 
@@ -8421,6 +8500,7 @@ class FunctionTypedFormalParameter extends NormalFormalParameter {
     super.visitChildren(visitor);
     _safelyVisitChild(_returnType, visitor);
     _safelyVisitChild(identifier, visitor);
+    _safelyVisitChild(_typeParameters, visitor);
     _safelyVisitChild(_parameters, visitor);
   }
 }
@@ -9666,19 +9746,19 @@ class IncrementalAstCloner implements AstVisitor<AstNode> {
           _cloneNodeList(node.metadata), _mapToken(node.keyword),
           _cloneNode(node.type), _mapToken(node.thisKeyword),
           _mapToken(node.period), _cloneNode(node.identifier),
-          _cloneNode(node.parameters));
+          _cloneNode(node.typeParameters), _cloneNode(node.parameters));
 
   @override
   ForEachStatement visitForEachStatement(ForEachStatement node) {
     DeclaredIdentifier loopVariable = node.loopVariable;
     if (loopVariable == null) {
-      return new ForEachStatement.con2(_mapToken(node.awaitKeyword),
+      return new ForEachStatement.withReference(_mapToken(node.awaitKeyword),
           _mapToken(node.forKeyword), _mapToken(node.leftParenthesis),
           _cloneNode(node.identifier), _mapToken(node.inKeyword),
           _cloneNode(node.iterable), _mapToken(node.rightParenthesis),
           _cloneNode(node.body));
     }
-    return new ForEachStatement.con1(_mapToken(node.awaitKeyword),
+    return new ForEachStatement.withDeclaration(_mapToken(node.awaitKeyword),
         _mapToken(node.forKeyword), _mapToken(node.leftParenthesis),
         _cloneNode(loopVariable), _mapToken(node.inKeyword),
         _cloneNode(node.iterable), _mapToken(node.rightParenthesis),
@@ -9714,7 +9794,8 @@ class IncrementalAstCloner implements AstVisitor<AstNode> {
   @override
   FunctionExpression visitFunctionExpression(FunctionExpression node) {
     FunctionExpression copy = new FunctionExpression(
-        _cloneNode(node.parameters), _cloneNode(node.body));
+        _cloneNode(node.typeParameters), _cloneNode(node.parameters),
+        _cloneNode(node.body));
     copy.element = node.element;
     copy.propagatedType = node.propagatedType;
     copy.staticType = node.staticType;
@@ -9725,7 +9806,8 @@ class IncrementalAstCloner implements AstVisitor<AstNode> {
   FunctionExpressionInvocation visitFunctionExpressionInvocation(
       FunctionExpressionInvocation node) {
     FunctionExpressionInvocation copy = new FunctionExpressionInvocation(
-        _cloneNode(node.function), _cloneNode(node.argumentList));
+        _cloneNode(node.function), _cloneNode(node.typeArguments),
+        _cloneNode(node.argumentList));
     copy.propagatedElement = node.propagatedElement;
     copy.propagatedType = node.propagatedType;
     copy.staticElement = node.staticElement;
@@ -9746,7 +9828,7 @@ class IncrementalAstCloner implements AstVisitor<AstNode> {
       FunctionTypedFormalParameter node) => new FunctionTypedFormalParameter(
       _cloneNode(node.documentationComment), _cloneNodeList(node.metadata),
       _cloneNode(node.returnType), _cloneNode(node.identifier),
-      _cloneNode(node.parameters));
+      _cloneNode(node.typeParameters), _cloneNode(node.parameters));
 
   @override
   HideCombinator visitHideCombinator(HideCombinator node) => new HideCombinator(
@@ -9888,14 +9970,14 @@ class IncrementalAstCloner implements AstVisitor<AstNode> {
           _cloneNodeList(node.metadata), _mapToken(node.externalKeyword),
           _mapToken(node.modifierKeyword), _cloneNode(node.returnType),
           _mapToken(node.propertyKeyword), _mapToken(node.operatorKeyword),
-          _cloneNode(node.name), _cloneNode(node.parameters),
-          _cloneNode(node.body));
+          _cloneNode(node.name), _cloneNode(node._typeParameters),
+          _cloneNode(node.parameters), _cloneNode(node.body));
 
   @override
   MethodInvocation visitMethodInvocation(MethodInvocation node) {
     MethodInvocation copy = new MethodInvocation(_cloneNode(node.target),
         _mapToken(node.operator), _cloneNode(node.methodName),
-        _cloneNode(node.argumentList));
+        _cloneNode(node.typeArguments), _cloneNode(node.argumentList));
     copy.propagatedType = node.propagatedType;
     copy.staticType = node.staticType;
     return copy;
@@ -10549,12 +10631,6 @@ class InstanceCreationExpression extends Expression {
   ConstructorElement staticElement;
 
   /**
-   * The [ConstantInstanceCreationHandle] holding the result of evaluating this
-   * expression, if it is constant.
-   */
-  ConstantInstanceCreationHandle constantHandle;
-
-  /**
    * Initialize a newly created instance creation expression.
    */
   InstanceCreationExpression(this.keyword, ConstructorName constructorName,
@@ -10598,16 +10674,6 @@ class InstanceCreationExpression extends Expression {
 
   @override
   Token get endToken => _argumentList.endToken;
-
-  /**
-   * The result of evaluating this expression, if it is constant.
-   */
-  EvaluationResultImpl get evaluationResult {
-    if (constantHandle != null) {
-      return constantHandle.evaluationResult;
-    }
-    return null;
-  }
 
   /**
    * Return `true` if this creation expression is used to invoke a constant
@@ -10946,9 +11012,7 @@ class Label extends AstNode {
   Token get beginToken => _label.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_label)
-    ..add(colon);
+  Iterable get childEntities => new ChildEntities()..add(_label)..add(colon);
 
   @override
   Token get endToken => colon;
@@ -11080,10 +11144,8 @@ class LibraryDirective extends Directive {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(libraryKeyword)
-    ..add(_name)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      super._childEntities..add(libraryKeyword)..add(_name)..add(semicolon);
 
   @override
   Token get endToken => semicolon;
@@ -11399,10 +11461,8 @@ class MapLiteralEntry extends AstNode {
   Token get beginToken => _key.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_key)
-    ..add(separator)
-    ..add(_value);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_key)..add(separator)..add(_value);
 
   @override
   Token get endToken => _value.endToken;
@@ -11453,7 +11513,7 @@ class MapLiteralEntry extends AstNode {
  * >
  * > methodSignature ::=
  * >     'external'? ('abstract' | 'static')? [Type]? ('get' | 'set')?
- * >     methodName [FormalParameterList]
+ * >     methodName [TypeParameterList] [FormalParameterList]
  * >
  * > methodName ::=
  * >     [SimpleIdentifier]
@@ -11495,6 +11555,12 @@ class MethodDeclaration extends ClassMember {
   SimpleIdentifier _name;
 
   /**
+   * The type parameters associated with the method, or `null` if the method is
+   * not a generic method.
+   */
+  TypeParameterList _typeParameters;
+
+  /**
    * The parameters associated with the method, or `null` if this method
    * declares a getter.
    */
@@ -11519,10 +11585,12 @@ class MethodDeclaration extends ClassMember {
   MethodDeclaration(Comment comment, List<Annotation> metadata,
       this.externalKeyword, this.modifierKeyword, TypeName returnType,
       this.propertyKeyword, this.operatorKeyword, SimpleIdentifier name,
-      FormalParameterList parameters, FunctionBody body)
+      TypeParameterList typeParameters, FormalParameterList parameters,
+      FunctionBody body)
       : super(comment, metadata) {
     _returnType = _becomeParentOf(returnType);
     _name = _becomeParentOf(name);
+    _typeParameters = _becomeParentOf(typeParameters);
     _parameters = _becomeParentOf(parameters);
     _body = _becomeParentOf(body);
   }
@@ -11649,6 +11717,20 @@ class MethodDeclaration extends ClassMember {
     _returnType = _becomeParentOf(typeName);
   }
 
+  /**
+   * Return the type parameters associated with this method, or `null` if this
+   * method is not a generic method.
+   */
+  TypeParameterList get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters associated with this method to the given
+   * [typeParameters].
+   */
+  void set typeParameters(TypeParameterList typeParameters) {
+    _typeParameters = _becomeParentOf(typeParameters);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitMethodDeclaration(this);
 
@@ -11657,6 +11739,7 @@ class MethodDeclaration extends ClassMember {
     super.visitChildren(visitor);
     _safelyVisitChild(_returnType, visitor);
     _safelyVisitChild(_name, visitor);
+    _safelyVisitChild(_typeParameters, visitor);
     _safelyVisitChild(_parameters, visitor);
     _safelyVisitChild(_body, visitor);
   }
@@ -11669,7 +11752,7 @@ class MethodDeclaration extends ClassMember {
  * represented by either [PrefixedIdentifier] or [PropertyAccess] nodes.
  *
  * > methodInvoction ::=
- * >     ([Expression] '.')? [SimpleIdentifier] [ArgumentList]
+ * >     ([Expression] '.')? [SimpleIdentifier] [TypeArgumentList]? [ArgumentList]
  */
 class MethodInvocation extends Expression {
   /**
@@ -11692,6 +11775,12 @@ class MethodInvocation extends Expression {
   SimpleIdentifier _methodName;
 
   /**
+   * The type arguments to be applied to the method being invoked, or `null` if
+   * no type arguments were provided.
+   */
+  TypeArgumentList _typeArguments;
+
+  /**
    * The list of arguments to the method.
    */
   ArgumentList _argumentList;
@@ -11701,9 +11790,11 @@ class MethodInvocation extends Expression {
    * can be `null` if there is no target.
    */
   MethodInvocation(Expression target, this.operator,
-      SimpleIdentifier methodName, ArgumentList argumentList) {
+      SimpleIdentifier methodName, TypeArgumentList typeArguments,
+      ArgumentList argumentList) {
     _target = _becomeParentOf(target);
     _methodName = _becomeParentOf(methodName);
+    _typeArguments = _becomeParentOf(typeArguments);
     _argumentList = _becomeParentOf(argumentList);
   }
 
@@ -11764,10 +11855,8 @@ class MethodInvocation extends Expression {
    * if there is no target. In an ordinary method invocation this will be a
    * period ('.'). In a cascade section this will be the cascade operator
    * ('..').
-   *
-   * Deprecated: use [operator] instead.
    */
-  @deprecated
+  @deprecated // Use this.operator
   Token get period => operator;
 
   /**
@@ -11775,10 +11864,8 @@ class MethodInvocation extends Expression {
    * if there is no target. In an ordinary method invocation this will be a
    * period ('.'). In a cascade section this will be the cascade operator
    * ('..').
-   *
-   * Deprecated: use [operator] instead.
    */
-  @deprecated
+  @deprecated // Use this.operator
   void set period(Token value) {
     operator = value;
   }
@@ -11824,6 +11911,20 @@ class MethodInvocation extends Expression {
     _target = _becomeParentOf(expression);
   }
 
+  /**
+   * Return the type arguments to be applied to the method being invoked, or
+   * `null` if no type arguments were provided.
+   */
+  TypeArgumentList get typeArguments => _typeArguments;
+
+  /**
+   * Set the type arguments to be applied to the method being invoked to the
+   * given [typeArguments].
+   */
+  void set typeArguments(TypeArgumentList typeArguments) {
+    _typeArguments = _becomeParentOf(typeArguments);
+  }
+
   @override
   accept(AstVisitor visitor) => visitor.visitMethodInvocation(this);
 
@@ -11831,6 +11932,7 @@ class MethodInvocation extends Expression {
   void visitChildren(AstVisitor visitor) {
     _safelyVisitChild(_target, visitor);
     _safelyVisitChild(_methodName, visitor);
+    _safelyVisitChild(_typeArguments, visitor);
     _safelyVisitChild(_argumentList, visitor);
   }
 }
@@ -11898,9 +12000,8 @@ class NamedExpression extends Expression {
   Token get beginToken => _name.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_name)
-    ..add(_expression);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_name)..add(_expression);
 
   /**
    * Return the element representing the parameter being named by this
@@ -12034,9 +12135,8 @@ class NativeClause extends AstNode {
   Token get beginToken => nativeKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(nativeKeyword)
-    ..add(_name);
+  Iterable get childEntities =>
+      new ChildEntities()..add(nativeKeyword)..add(_name);
 
   @override
   Token get endToken => _name.endToken;
@@ -12316,16 +12416,27 @@ class NodeLocator extends UnifyingAstVisitor<Object> {
 
   /**
    * Initialize a newly created locator to locate an [AstNode] by locating the
+   * node within an AST structure that corresponds to the given range of
+   * characters (between the [startOffset] and [endOffset] in the source.
+   */
+  NodeLocator(int startOffset, [int endOffset])
+      : this._startOffset = startOffset,
+        this._endOffset = endOffset == null ? startOffset : endOffset;
+
+  /**
+   * Initialize a newly created locator to locate an [AstNode] by locating the
    * node within an AST structure that corresponds to the given [offset] in the
    * source.
    */
-  NodeLocator.con1(int offset) : this.con2(offset, offset);
+  @deprecated // Use new NodeLocator(offset)
+  NodeLocator.con1(int offset) : this(offset);
 
   /**
    * Initialize a newly created locator to locate an [AstNode] by locating the
    * node within an AST structure that corresponds to the given range of
    * characters (between the [startOffset] and [endOffset] in the source.
    */
+  @deprecated // Use new NodeLocator(startOffset, endOffset)
   NodeLocator.con2(this._startOffset, this._endOffset);
 
   /**
@@ -12358,8 +12469,17 @@ class NodeLocator extends UnifyingAstVisitor<Object> {
 
   @override
   Object visitNode(AstNode node) {
+    Token beginToken = node.beginToken;
+    Token endToken = node.endToken;
+    // Don't include synthetic tokens.
+    while (endToken != beginToken) {
+      if (endToken.type == TokenType.EOF || !endToken.isSynthetic) {
+        break;
+      }
+      endToken = endToken.previous;
+    }
+    int end = endToken.end;
     int start = node.offset;
-    int end = start + node.length;
     if (end < _startOffset) {
       return null;
     }
@@ -12489,6 +12609,7 @@ class NodeReplacer implements AstVisitor<bool> {
   bool visitAwaitExpression(AwaitExpression node) {
     if (identical(node.expression, _oldNode)) {
       node.expression = _newNode as Expression;
+      return true;
     }
     return visitNode(node);
   }
@@ -13515,6 +13636,7 @@ class NodeReplacer implements AstVisitor<bool> {
   bool visitYieldStatement(YieldStatement node) {
     if (identical(node.expression, _oldNode)) {
       node.expression = _newNode as Expression;
+      return true;
     }
     return visitNode(node);
   }
@@ -13817,10 +13939,8 @@ class PartDirective extends UriBasedDirective {
       : super(comment, metadata, partUri);
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(partKeyword)
-    ..add(_uri)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      super._childEntities..add(partKeyword)..add(_uri)..add(semicolon);
 
   @override
   Token get endToken => semicolon;
@@ -14016,9 +14136,8 @@ class PostfixExpression extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_operand)
-    ..add(operator);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_operand)..add(operator);
 
   @override
   Token get endToken => operator;
@@ -14148,10 +14267,8 @@ class PrefixedIdentifier extends Identifier {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_prefix)
-    ..add(period)
-    ..add(_identifier);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_prefix)..add(period)..add(_identifier);
 
   @override
   Token get endToken => _identifier.endToken;
@@ -14292,9 +14409,8 @@ class PrefixExpression extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(operator)
-    ..add(_operand);
+  Iterable get childEntities =>
+      new ChildEntities()..add(operator)..add(_operand);
 
   @override
   Token get endToken => _operand.endToken;
@@ -14424,10 +14540,8 @@ class PropertyAccess extends Expression {
   }
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_target)
-    ..add(operator)
-    ..add(_propertyName);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_target)..add(operator)..add(_propertyName);
 
   @override
   Token get endToken => _propertyName.endToken;
@@ -15353,10 +15467,8 @@ class ReturnStatement extends Statement {
   Token get beginToken => returnKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(returnKeyword)
-    ..add(_expression)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      new ChildEntities()..add(returnKeyword)..add(_expression)..add(semicolon);
 
   @override
   Token get endToken => semicolon;
@@ -16040,10 +16152,8 @@ class SimpleFormalParameter extends NormalFormalParameter {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(keyword)
-    ..add(_type)
-    ..add(identifier);
+  Iterable get childEntities =>
+      super._childEntities..add(keyword)..add(_type)..add(identifier);
 
   @override
   Token get endToken => identifier.endToken;
@@ -17321,9 +17431,8 @@ class ThrowExpression extends Expression {
   Token get beginToken => throwKeyword;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(throwKeyword)
-    ..add(_expression);
+  Iterable get childEntities =>
+      new ChildEntities()..add(throwKeyword)..add(_expression);
 
   @override
   Token get endToken {
@@ -17402,9 +17511,8 @@ class TopLevelVariableDeclaration extends CompilationUnitMember {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(_variableList)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      super._childEntities..add(_variableList)..add(semicolon);
 
   @override
   Element get element => null;
@@ -17802,6 +17910,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
     _visitNodeWithSuffix(node.type, " ");
     _writer.print("this.");
     _visitNode(node.identifier);
+    _visitNode(node.typeParameters);
     _visitNode(node.parameters);
     return null;
   }
@@ -17890,6 +17999,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
 
   @override
   Object visitFunctionExpression(FunctionExpression node) {
+    _visitNode(node.typeParameters);
     _visitNode(node.parameters);
     _writer.print(' ');
     _visitNode(node.body);
@@ -17899,6 +18009,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
   @override
   Object visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     _visitNode(node.function);
+    _visitNode(node.typeArguments);
     _visitNode(node.argumentList);
     return null;
   }
@@ -17919,6 +18030,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
   Object visitFunctionTypedFormalParameter(FunctionTypedFormalParameter node) {
     _visitNodeWithSuffix(node.returnType, " ");
     _visitNode(node.identifier);
+    _visitNode(node.typeParameters);
     _visitNode(node.parameters);
     return null;
   }
@@ -18092,6 +18204,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
     _visitTokenWithSuffix(node.operatorKeyword, " ");
     _visitNode(node.name);
     if (!node.isGetter) {
+      _visitNode(node.typeParameters);
       _visitNode(node.parameters);
     }
     _visitFunctionWithPrefix(" ", node.body);
@@ -18109,6 +18222,7 @@ class ToSourceVisitor implements AstVisitor<Object> {
       }
     }
     _visitNode(node.methodName);
+    _visitNode(node.typeArguments);
     _visitNode(node.argumentList);
     return null;
   }
@@ -18816,9 +18930,8 @@ abstract class TypedLiteral extends Literal {
     _typeArguments = _becomeParentOf(typeArguments);
   }
 
-  ChildEntities get _childEntities => new ChildEntities()
-    ..add(constKeyword)
-    ..add(_typeArguments);
+  ChildEntities get _childEntities =>
+      new ChildEntities()..add(constKeyword)..add(_typeArguments);
 
   @override
   void visitChildren(AstVisitor visitor) {
@@ -18862,9 +18975,8 @@ class TypeName extends AstNode {
   Token get beginToken => _name.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_name)
-    ..add(_typeArguments);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_name)..add(_typeArguments);
 
   @override
   Token get endToken {
@@ -18979,10 +19091,8 @@ class TypeParameter extends Declaration {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(_name)
-    ..add(extendsKeyword)
-    ..add(_bound);
+  Iterable get childEntities =>
+      super._childEntities..add(_name)..add(extendsKeyword)..add(_bound);
 
   @override
   TypeParameterElement get element =>
@@ -19602,10 +19712,8 @@ class VariableDeclaration extends Declaration {
   }
 
   @override
-  Iterable get childEntities => super._childEntities
-    ..add(_name)
-    ..add(equals)
-    ..add(_initializer);
+  Iterable get childEntities =>
+      super._childEntities..add(_name)..add(equals)..add(_initializer);
 
   /**
    * This overridden implementation of getDocumentationComment() looks in the
@@ -19835,9 +19943,8 @@ class VariableDeclarationStatement extends Statement {
   Token get beginToken => _variableList.beginToken;
 
   @override
-  Iterable get childEntities => new ChildEntities()
-    ..add(_variableList)
-    ..add(semicolon);
+  Iterable get childEntities =>
+      new ChildEntities()..add(_variableList)..add(semicolon);
 
   @override
   Token get endToken => semicolon;

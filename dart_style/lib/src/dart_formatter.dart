@@ -4,12 +4,16 @@
 
 library dart_style.src.dart_formatter;
 
-import 'package:analyzer/src/string_source.dart';
+import 'dart:math' as math;
+
+import 'package:analyzer/analyzer.dart';
 import 'package:analyzer/src/generated/parser.dart';
 import 'package:analyzer/src/generated/scanner.dart';
 import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/src/string_source.dart';
 
 import 'error_listener.dart';
+import 'formatter_exception.dart';
 import 'source_code.dart';
 import 'source_visitor.dart';
 
@@ -25,7 +29,7 @@ class DartFormatter {
   /// The number of characters allowed in a single line.
   final int pageWidth;
 
-  /// The number of levels of indentation to prefix the output lines with.
+  /// The number of characters of indentation to prefix the output lines with.
   final int indent;
 
   /// Creates a new formatter for Dart code.
@@ -95,14 +99,25 @@ class DartFormatter {
 
     // Parse it.
     var parser = new Parser(stringSource, errorListener);
-    parser.parseAsync = true;
-    parser.parseEnum = true;
 
     var node;
     if (source.isCompilationUnit) {
       node = parser.parseCompilationUnit(startToken);
     } else {
       node = parser.parseStatement(startToken);
+
+      // Make sure we consumed all of the source.
+      var token = node.endToken.next;
+      if (token.type != TokenType.EOF) {
+        var error = new AnalysisError.con2(
+            stringSource,
+            token.offset,
+            math.max(token.length, 1),
+            ParserErrorCode.UNEXPECTED_TOKEN,
+            [token.lexeme]);
+
+        throw new FormatterException([error]);
+      }
     }
 
     errorListener.throwIfErrors();

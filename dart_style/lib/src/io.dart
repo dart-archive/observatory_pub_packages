@@ -9,8 +9,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'dart_formatter.dart';
-import 'formatter_options.dart';
 import 'formatter_exception.dart';
+import 'formatter_options.dart';
 import 'source_code.dart';
 
 /// Runs the formatter on every .dart file in [path] (and its subdirectories),
@@ -55,11 +55,14 @@ bool processFile(FormatterOptions options, File file, {String label}) {
   try {
     var source = new SourceCode(file.readAsStringSync(), uri: file.path);
     var output = formatter.formatSource(source);
-    options.reporter.showFile(file, label, output,
-        changed: source.text != output.text);
+    options.reporter
+        .showFile(file, label, output, changed: source.text != output.text);
     return true;
   } on FormatterException catch (err) {
-    stderr.writeln(err.message());
+    var color = Platform.operatingSystem != "windows" &&
+        stdioType(stderr) == StdioType.TERMINAL;
+
+    stderr.writeln(err.message(color: color));
   } catch (err, stack) {
     stderr.writeln('''Hit a bug in the formatter when formatting $label.
 Please report at: github.com/dart-lang/dart_style/issues

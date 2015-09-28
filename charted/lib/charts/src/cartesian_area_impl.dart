@@ -11,7 +11,7 @@ part of charted.charts;
 /// Displays either one or two dimension axes and zero or more measure axis.
 /// The number of measure axes displayed is zero in charts like bubble chart
 /// which contain two dimension axes.
-class _CartesianArea implements CartesianArea {
+class DefaultCartesianAreaImpl implements CartesianArea {
   /// Default identifiers used by the measure axes
   static const MEASURE_AXIS_IDS = const['_default'];
 
@@ -32,10 +32,10 @@ class _CartesianArea implements CartesianArea {
   ];
 
   /// Mapping of measure axis Id to it's axis.
-  final _measureAxes = new LinkedHashMap<String, _ChartAxis>();
+  final _measureAxes = new LinkedHashMap<String, DefaultChartAxisImpl>();
 
   /// Mapping of dimension column index to it's axis.
-  final _dimensionAxes = new LinkedHashMap<int, _ChartAxis>();
+  final _dimensionAxes = new LinkedHashMap<int, DefaultChartAxisImpl>();
 
   /// Disposer for all change stream subscriptions related to data.
   final _dataEventsDisposer = new SubscriptionsDisposer();
@@ -75,9 +75,6 @@ class _CartesianArea implements CartesianArea {
 
   ChartData _data;
   ChartConfig _config;
-  ObservableList<int> selectedMeasures = new ObservableList();
-  ObservableList<int> hoveredMeasures = new ObservableList();
-  int _dimensionAxesCount;
   bool _autoUpdate = false;
 
   SelectionScope _scope;
@@ -95,7 +92,7 @@ class _CartesianArea implements CartesianArea {
   StreamController<ChartEvent> _valueMouseClickController;
   StreamController<ChartArea> _chartAxesUpdatedController;
 
-  _CartesianArea(
+  DefaultCartesianAreaImpl(
       this.host,
       ChartData data,
       ChartConfig config,
@@ -148,9 +145,11 @@ class _CartesianArea implements CartesianArea {
   set data(ChartData value) {
     _data = value;
     _dataEventsDisposer.dispose();
+    _pendingLegendUpdate = true;
 
     if (autoUpdate && _data != null && _data is Observable) {
       _dataEventsDisposer.add((_data as Observable).changes.listen((_) {
+        _pendingLegendUpdate = true;
         draw();
       }));
     }
@@ -192,12 +191,12 @@ class _CartesianArea implements CartesianArea {
 
   /// Gets measure axis from cache - creates a new instance of _ChartAxis
   /// if one was not already created for the given [axisId].
-  _ChartAxis _getMeasureAxis(String axisId) {
+  DefaultChartAxisImpl _getMeasureAxis(String axisId) {
     _measureAxes.putIfAbsent(axisId, () {
       var axisConf = config.getMeasureAxis(axisId),
           axis = axisConf != null ?
-              new _ChartAxis.withAxisConfig(this, axisConf) :
-                  new _ChartAxis(this);
+              new DefaultChartAxisImpl.withAxisConfig(this, axisConf) :
+                  new DefaultChartAxisImpl(this);
       return axis;
     });
     return _measureAxes[axisId];
@@ -205,12 +204,12 @@ class _CartesianArea implements CartesianArea {
 
   /// Gets a dimension axis from cache - creates a new instance of _ChartAxis
   /// if one was not already created for the given dimension [column].
-  _ChartAxis _getDimensionAxis(int column) {
+  DefaultChartAxisImpl _getDimensionAxis(int column) {
     _dimensionAxes.putIfAbsent(column, () {
       var axisConf = config.getDimensionAxis(column),
           axis = axisConf != null ?
-              new _ChartAxis.withAxisConfig(this, axisConf) :
-                  new _ChartAxis(this);
+              new DefaultChartAxisImpl.withAxisConfig(this, axisConf) :
+                  new DefaultChartAxisImpl(this);
       return axis;
     });
     return _dimensionAxes[column];
@@ -276,11 +275,12 @@ class _CartesianArea implements CartesianArea {
       _svg = _scope.append('svg:svg')..classed('chart-canvas');
       if (!isNullOrEmpty(theme.filters)) {
         var element = _svg.first,
-            defs = Namespace.createChildElement('defs', element)
-              ..append(new SvgElement.svg(
-                  theme.filters, treeSanitizer: new NullTreeSanitizer()));
+        defs = Namespace.createChildElement('defs', element)
+          ..append(new SvgElement.svg(
+              theme.filters, treeSanitizer: new NullTreeSanitizer()));
         _svg.first.append(defs);
       }
+
       lowerBehaviorPane = _svg.append('g')..classed('lower-render-pane');
       visualization = _svg.append('g')..classed('chart-render-pane');
       upperBehaviorPane = _svg.append('g')..classed('upper-render-pane');
@@ -292,8 +292,8 @@ class _CartesianArea implements CartesianArea {
     }
 
     // Compute chart sizes and filter out unsupported series
-    var size = _computeChartSize(),
-        series = config.series.where((s) =>
+    _computeChartSize();
+    var series = config.series.where((s) =>
             _isSeriesValid(s) && s.renderer.prepare(this, s)),
         selection = visualization.selectAll('.series-group').
             data(series, (x) => x.hashCode),
@@ -359,8 +359,8 @@ class _CartesianArea implements CartesianArea {
           ? MEASURE_AXIS_IDS
           : s.measureAxisIds;
       measureAxisIds.forEach((axisId) {
-        var axis = _getMeasureAxis(axisId),  // Creates axis if required
-            users = measureAxisUsers[axisId];
+        _getMeasureAxis(axisId);  // Creates axis if required
+        var users = measureAxisUsers[axisId];
         if (users == null) {
           measureAxisUsers[axisId] = [s];
         } else {
@@ -388,9 +388,13 @@ class _CartesianArea implements CartesianArea {
             highest = max(extents.map((e) => e.max));
 
         // Use default domain if lowest and highest are the same, right now
-        // lowest is always 0, change to lowest when we make use of it.
-        // TODO(prsd): Allow negative values and non-zero lower values.
-        domain = (highest != 0) ? [0, highest] : [0, 1];
+        // lowest is always 0 unless it is less than 0 - change to lowest when
+        // we make use of it.
+        domain = highest == lowest
+            ? (highest == 0
+                ? [0, 1]
+                : (highest < 0 ? [highest, 0] : [0, highest]))
+            : (lowest <= 0 ? [lowest, highest] : [0, highest]);
       }
       axis.initAxisDomain(sampleCol, false, domain);
     });
@@ -443,7 +447,7 @@ class _CartesianArea implements CartesianArea {
       for (int i = 0, len = displayedDimensionAxes.length; i < len; ++i) {
         var axis = _dimensionAxes[displayedDimensionAxes[i]],
             orientation = _orientRTL(dimensionAxisOrientations[i]);
-        axis.prepareToDraw(orientation, theme.dimensionAxisTheme);
+        axis.prepareToDraw(orientation);
         layout._axes[orientation] = axis.size;
       }
     }
@@ -456,7 +460,7 @@ class _CartesianArea implements CartesianArea {
       displayedMeasureAxes.asMap().forEach((int index, String key) {
         var axis = _measureAxes[key],
             orientation = _orientRTL(measureAxisOrientations[index]);
-        axis.prepareToDraw(orientation, theme.measureAxisTheme);
+        axis.prepareToDraw(orientation);
         layout._axes[orientation] = axis.size;
       });
     }
@@ -471,8 +475,7 @@ class _CartesianArea implements CartesianArea {
     if (_measureAxes.length != displayedMeasureAxes.length) {
       _measureAxes.keys.forEach((String axisId) {
         if (displayedMeasureAxes.contains(axisId)) return;
-        _getMeasureAxis(axisId).initAxisScale(
-            [layout.renderArea.height, 0], theme.measureAxisTheme);
+        _getMeasureAxis(axisId).initAxisScale([layout.renderArea.height, 0]);
       });
     }
 
@@ -484,8 +487,7 @@ class _CartesianArea implements CartesianArea {
       axisGroups.enter.append('svg:g');
       axisGroups.each((axisId, index, group) {
         _getMeasureAxis(axisId).draw(group, _scope, preRender: preRender);
-        group.classes.clear();
-        group.classes.addAll(['measure-axis-group','measure-${index}']);
+        group.attributes['class'] = 'measure-axis-group measure-${index}';
       });
       axisGroups.exit.remove();
     }
@@ -498,8 +500,7 @@ class _CartesianArea implements CartesianArea {
       dimAxisGroups.enter.append('svg:g');
       dimAxisGroups.each((column, index, group) {
         _getDimensionAxis(column).draw(group, _scope, preRender: preRender);
-        group.classes.clear();
-        group.classes.addAll(['dimension-axis-group', 'dim-${index}']);
+        group.attributes['class'] = 'dimension-axis-group dim-${index}';
       });
       dimAxisGroups.exit.remove();
     } else {
@@ -511,8 +512,7 @@ class _CartesianArea implements CartesianArea {
             axis = _dimensionAxes[column],
             orientation = dimensionAxisOrientations[i];
         axis.initAxisScale(orientation == ORIENTATION_LEFT ?
-            [layout.renderArea.height, 0] : [0, layout.renderArea.width],
-            theme.dimensionAxisTheme);
+            [layout.renderArea.height, 0] : [0, layout.renderArea.width]);
       };
     }
   }
@@ -579,27 +579,27 @@ class _CartesianArea implements CartesianArea {
   @override
   Stream<ChartEvent> get onMouseUp =>
       host.onMouseUp
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseDown =>
       host.onMouseDown
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseOver =>
       host.onMouseOver
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseOut =>
       host.onMouseOut
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseMove =>
       host.onMouseMove
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onValueClick {
@@ -680,8 +680,8 @@ class _ChartSeriesInfo {
   CartesianRenderer _renderer;
   SubscriptionsDisposer _disposer = new SubscriptionsDisposer();
 
-  _ChartSeries _series;
-  _CartesianArea _area;
+  DefaultChartSeriesImpl _series;
+  DefaultCartesianAreaImpl _area;
   _ChartSeriesInfo(this._area, this._series);
 
   _click(ChartEvent e) {
@@ -725,13 +725,13 @@ class _ChartSeriesInfo {
   check() {
     if (_renderer != _series.renderer) {
       dispose();
-      try {
+      if (_series.renderer is ChartRendererBehaviorSource){
         _disposer.addAll([
           _series.renderer.onValueClick.listen(_click),
           _series.renderer.onValueMouseOver.listen(_mouseOver),
           _series.renderer.onValueMouseOut.listen(_mouseOut)
         ]);
-      } on UnimplementedError {};
+      }
     }
     _renderer = _series.renderer;
   }

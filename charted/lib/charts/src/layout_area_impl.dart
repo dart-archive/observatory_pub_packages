@@ -10,7 +10,7 @@ part of charted.charts;
 
 /// Creates an empty area and provides generic API for interaction with layout
 /// based charts.
-class _LayoutArea implements LayoutArea {
+class DefaultLayoutAreaImpl implements LayoutArea {
   /// Disposer for all change stream subscriptions related to data.
   final _dataEventsDisposer = new SubscriptionsDisposer();
 
@@ -22,6 +22,9 @@ class _LayoutArea implements LayoutArea {
 
   @override
   final bool useRowColoring = true;
+
+  @override
+  final ChartState state;
 
   @override
   _ChartAreaLayout layout = new _ChartAreaLayout();
@@ -36,15 +39,10 @@ class _LayoutArea implements LayoutArea {
   bool isReady = false;
 
   @override
-  ChartState state;
-
-  @override
   ChartTheme theme;
 
   ChartData _data;
   ChartConfig _config;
-  ObservableList<int> selectedMeasures = new ObservableList();
-  ObservableList<int> hoveredMeasures = new ObservableList();
   bool _autoUpdate = false;
 
   SelectionScope _scope;
@@ -62,11 +60,12 @@ class _LayoutArea implements LayoutArea {
   StreamController<ChartEvent> _valueMouseOutController;
   StreamController<ChartEvent> _valueMouseClickController;
 
-  _LayoutArea(
+  DefaultLayoutAreaImpl(
       this.host,
       ChartData data,
       ChartConfig config,
-      bool autoUpdate) : _autoUpdate = autoUpdate {
+      this._autoUpdate,
+      this.state) {
     assert(host != null);
     assert(isNotInline(host));
 
@@ -192,8 +191,8 @@ class _LayoutArea implements LayoutArea {
     }
 
     // Compute chart sizes and filter out unsupported series
-    var size = _computeChartSize(),
-        series = config.series.firstWhere(
+    _computeChartSize();
+    var series = config.series.firstWhere(
             (s) => s.renderer.prepare(this, s), orElse: () => null),
         group = visualization.first.querySelector('.series-group');
 
@@ -215,25 +214,40 @@ class _LayoutArea implements LayoutArea {
 
     // Save and subscribe to events on the the current renderer.
     _renderer = series.renderer;
-    try {
+    if (_renderer is ChartRendererBehaviorSource) {
       _rendererDisposer.addAll([
         _renderer.onValueClick.listen((ChartEvent e) {
+          if (state != null) {
+            if (state.isSelected(e.row)) {
+              state.unselect(e.row);
+            } else {
+              state.select(e.row);
+            }
+          }
           if (_valueMouseClickController != null) {
             _valueMouseClickController.add(e);
           }
         }),
         _renderer.onValueMouseOver.listen((ChartEvent e) {
+          if (state != null) {
+            state.preview = e.row;
+          }
           if (_valueMouseOverController != null) {
             _valueMouseOverController.add(e);
           }
         }),
         _renderer.onValueMouseOut.listen((ChartEvent e) {
+          if (state != null) {
+            if (e.row == state.preview) {
+              state.hovered = null;
+            }
+          }
           if (_valueMouseOutController != null) {
             _valueMouseOutController.add(e);
           }
         })
       ]);
-    } on UnimplementedError {};
+    }
 
     Iterable<ChartLegendItem> legend =
         _renderer.layout(group, schedulePostRender:schedulePostRender);
@@ -251,27 +265,27 @@ class _LayoutArea implements LayoutArea {
   @override
   Stream<ChartEvent> get onMouseUp =>
       host.onMouseUp
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseDown =>
       host.onMouseDown
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseOver =>
       host.onMouseOver
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseOut =>
       host.onMouseOut
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onMouseMove =>
       host.onMouseMove
-          .map((MouseEvent e) => new _ChartEvent(e, this));
+          .map((MouseEvent e) => new DefaultChartEventImpl(e, this));
 
   @override
   Stream<ChartEvent> get onValueClick {

@@ -8,7 +8,7 @@
 
 part of charted.charts;
 
-class _ChartEvent implements ChartEvent {
+class DefaultChartEventImpl implements ChartEvent {
   @override
   final ChartArea area;
 
@@ -28,24 +28,20 @@ class _ChartEvent implements ChartEvent {
   final num value;
 
   @override
-  num scaledX;
+  num chartX = 0;
 
   @override
-  num scaledY;
+  num chartY = 0;
 
-  @override
-  num chartX;
-
-  @override
-  num chartY;
-
-  _ChartEvent(this.source, this.area,
+  DefaultChartEventImpl(this.source, this.area,
       [this.series, this.row, this.column, this.value]) {
     var hostRect = area.host.getBoundingClientRect(),
         left = area.config.isRTL
             ? area.theme.padding.end
             : area.theme.padding.start;
-    chartX = source.client.x - hostRect.left - left;
-    chartY = source.client.y - hostRect.top - area.theme.padding.top;
+    if (source != null) {
+      chartX = source.client.x - hostRect.left - left;
+      chartY = source.client.y - hostRect.top - area.theme.padding.top;
+    }
   }
 }

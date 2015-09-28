@@ -10,15 +10,18 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:stack_trace/stack_trace.dart';
 
 import '../constructable_file_system_event.dart';
+import '../directory_watcher.dart';
 import '../path_set.dart';
+import '../resubscribable.dart';
 import '../utils.dart';
 import '../watch_event.dart';
-import 'resubscribable.dart';
 
-class WindowsDirectoryWatcher extends ResubscribableDirectoryWatcher {
+class WindowsDirectoryWatcher extends ResubscribableWatcher
+    implements DirectoryWatcher {
+  String get directory => path;
+
   WindowsDirectoryWatcher(String directory)
       : super(directory, () => new _WindowsDirectoryWatcher(directory));
 }
@@ -41,8 +44,10 @@ class _EventBatcher {
   }
 }
 
-class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
-  final String directory;
+class _WindowsDirectoryWatcher
+    implements DirectoryWatcher, ManuallyClosedWatcher {
+  String get directory => path;
+  final String path;
 
   Stream<WatchEvent> get events => _eventsController.stream;
   final _eventsController = new StreamController<WatchEvent>.broadcast();
@@ -80,8 +85,9 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   final Set<StreamSubscription<FileSystemEntity>> _listSubscriptions
       = new HashSet<StreamSubscription<FileSystemEntity>>();
 
-  _WindowsDirectoryWatcher(String directory)
-      : directory = directory, _files = new PathSet(directory) {
+  _WindowsDirectoryWatcher(String path)
+      : path = path,
+        _files = new PathSet(path) {
     // Before we're ready to emit events, wait for [_listDir] to complete.
     _listDir().then((_) {
       _startWatch();
@@ -111,14 +117,13 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   /// On Windows, if [directory] is deleted, we will not receive any event.
   ///
   /// Instead, we add a watcher on the parent folder (if any), that can notify
-  /// us about [directory]. This also includes events such as moves.
+  /// us about [path]. This also includes events such as moves.
   void _startParentWatcher() {
-    var absoluteDir = p.absolute(directory);
+    var absoluteDir = p.absolute(path);
     var parent = p.dirname(absoluteDir);
-    // Check if [directory] is already the root directory.
-    if (FileSystemEntity.identicalSync(parent, directory)) return;
-    var parentStream = Chain.track(
-        new Directory(parent).watch(recursive: false));
+    // Check if [path] is already the root directory.
+    if (FileSystemEntity.identicalSync(parent, path)) return;
+    var parentStream = new Directory(parent).watch(recursive: false);
     _parentWatchSubscription = parentStream.listen((event) {
       // Only look at events for 'directory'.
       if (p.basename(event.path) != p.basename(absoluteDir)) return;
@@ -129,7 +134,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
       // the directory is now gone.
       if (event is FileSystemMoveEvent ||
           event is FileSystemDeleteEvent ||
-          (FileSystemEntity.typeSync(directory) ==
+          (FileSystemEntity.typeSync(path) ==
            FileSystemEntityType.NOT_FOUND)) {
         for (var path in _files.toSet()) {
           _emitEvent(ChangeType.REMOVE, path);
@@ -159,7 +164,6 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   /// The callback that's run when [Directory.watch] emits a batch of events.
   void _onBatch(List<FileSystemEvent> batch) {
     _sortEvents(batch).forEach((path, events) {
-      var relativePath = p.relative(path, from: directory);
 
       var canonicalEvent = _canonicalEvent(events);
       events = canonicalEvent == null ?
@@ -177,7 +181,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
 
           if (_files.containsDir(path)) continue;
 
-          var stream = Chain.track(new Directory(path).list(recursive: true));
+          var stream = new Directory(path).list(recursive: true);
           var sub;
           sub = stream.listen((entity) {
             if (entity is Directory) return;
@@ -213,7 +217,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   /// CREATE event for the destination.
   ///
   /// The returned events won't contain any [FileSystemMoveEvent]s, nor will it
-  /// contain any events relating to [directory].
+  /// contain any events relating to [path].
   Map<String, Set<FileSystemEvent>> _sortEvents(List<FileSystemEvent> batch) {
     var eventsForPaths = {};
 
@@ -262,7 +266,6 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
 
     var type = batch.first.type;
     var isDir = batch.first.isDirectory;
-    var hadModifyEvent = false;
 
     for (var event in batch.skip(1)) {
       // If one event reports that the file is a directory and another event
@@ -273,10 +276,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
       // safely assume the file was modified after a CREATE or before the
       // REMOVE; otherwise there will also be a REMOVE or CREATE event
       // (respectively) that will be contradictory.
-      if (event is FileSystemModifyEvent) {
-        hadModifyEvent = true;
-        continue;
-      }
+      if (event is FileSystemModifyEvent) continue;
       assert(event is FileSystemCreateEvent ||
              event is FileSystemDeleteEvent ||
              event is FileSystemMoveEvent);
@@ -305,7 +305,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
             batch.first.path, isDir, false);
       case FileSystemEvent.MOVE:
         return null;
-      default: assert(false);
+      default: throw 'unreachable';
     }
   }
 
@@ -367,8 +367,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   /// Start or restart the underlying [Directory.watch] stream.
   void _startWatch() {
     // Batch the events together so that we can dedup events.
-    var innerStream =
-        Chain.track(new Directory(directory).watch(recursive: true));
+    var innerStream = new Directory(path).watch(recursive: true);
     _watchSubscription = innerStream.listen(_onEvent,
         onError: _eventsController.addError,
         onDone: _onDone);
@@ -382,7 +381,7 @@ class _WindowsDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
 
     _files.clear();
     var completer = new Completer();
-    var stream = Chain.track(new Directory(directory).list(recursive: true));
+    var stream = new Directory(path).list(recursive: true);
     void handleEntity(entity) {
       if (entity is! Directory) _files.add(entity.path);
     }

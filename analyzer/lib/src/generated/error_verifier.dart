@@ -4,8 +4,8 @@
 
 library engine.resolver.error_verifier;
 
-import "dart:math" as math;
 import 'dart:collection';
+import "dart:math" as math;
 
 import 'package:analyzer/src/generated/static_type_analyzer.dart';
 
@@ -422,6 +422,7 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
           _checkForConflictingInstanceGetterAndSuperclassMember();
           _checkImplementsSuperClass(node);
           _checkImplementsFunctionWithoutCall(node);
+          _checkForMixinHasNoConstructors(node);
         }
       }
       visitClassDeclarationIncrementally(node);
@@ -474,6 +475,7 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
         _checkForImplementsDeferredClass(implementsClause);
         _checkForRecursiveInterfaceInheritance(_enclosingClass);
         _checkForNonAbstractClassInheritsAbstractMember(node.name);
+        _checkForMixinHasNoConstructors(node);
       }
     } finally {
       _enclosingClass = outerClassElement;
@@ -4165,6 +4167,18 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
   }
 
   /**
+   * Report the error [CompileTimeErrorCode.MIXIN_HAS_NO_CONSTRUCTORS] if
+   * appropriate.
+   */
+  void _checkForMixinHasNoConstructors(AstNode node) {
+    if ((_enclosingClass as ClassElementImpl).doesMixinLackConstructors) {
+      ErrorCode errorCode = CompileTimeErrorCode.MIXIN_HAS_NO_CONSTRUCTORS;
+      _errorReporter.reportErrorForNode(
+          errorCode, node, [_enclosingClass.supertype]);
+    }
+  }
+
+  /**
    * Verify that the given mixin has the 'Object' superclass. The [mixinName] is
    * the node to report problem on. The [mixinElement] is the mixing to
    * evaluate.
@@ -4176,7 +4190,7 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
     InterfaceType mixinSupertype = mixinElement.supertype;
     if (mixinSupertype != null) {
       if (!mixinSupertype.isObject ||
-          !mixinElement.isTypedef && mixinElement.mixins.length != 0) {
+          !mixinElement.isMixinApplication && mixinElement.mixins.length != 0) {
         _errorReporter.reportErrorForNode(
             CompileTimeErrorCode.MIXIN_INHERITS_FROM_NOT_OBJECT, mixinName,
             [mixinElement.name]);
@@ -4290,7 +4304,7 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
       ClassDeclaration declaration) {
     // do nothing if mixin errors have already been reported for this class.
     ClassElementImpl enclosingClass = _enclosingClass;
-    if (enclosingClass.mixinErrorsReported) {
+    if (enclosingClass.doesMixinLackConstructors) {
       return false;
     }
     // do nothing if there is explicit constructor
@@ -5183,7 +5197,7 @@ class ErrorVerifier extends RecursiveAstVisitor<Object> {
     }
     // do nothing if mixin errors have already been reported for this class.
     ClassElementImpl enclosingClass = _enclosingClass;
-    if (enclosingClass.mixinErrorsReported) {
+    if (enclosingClass.doesMixinLackConstructors) {
       return false;
     }
     //

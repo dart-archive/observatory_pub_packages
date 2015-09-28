@@ -27,7 +27,7 @@ abstract class TokenizerBase {
   final SourceFile _file;
   final String _text;
 
-  bool _skipWhitespace;
+  bool _inString;
 
   /**
    * Changes tokenization when in a pseudo function expression.  If true then
@@ -55,10 +55,7 @@ abstract class TokenizerBase {
   int _index = 0;
   int _startIndex = 0;
 
-  static const String _CDATA_START = '<![CDATA[';
-  static const String _CDATA_END = ']]>';
-
-  TokenizerBase(this._file, this._text, this._skipWhitespace,
+  TokenizerBase(this._file, this._text, this._inString,
       [this._index = 0]);
 
   Token next();
@@ -104,14 +101,6 @@ abstract class TokenizerBase {
     }
   }
 
-  String _tokenText() {
-    if (_index < _text.length) {
-      return _text.substring(_startIndex, _index);
-    } else {
-      return _text.substring(_startIndex, _text.length);
-    }
-  }
-
   Token _finishToken(int kind) {
     return new Token(kind, _file.span(_startIndex, _index));
   }
@@ -130,12 +119,12 @@ abstract class TokenizerBase {
           ch == TokenChar.RETURN) {
         // do nothing
       } else if (ch == TokenChar.NEWLINE) {
-        if (!_skipWhitespace) {
+        if (!_inString) {
           return _finishToken(TokenKind.WHITESPACE); // note the newline?
         }
       } else {
         _index--;
-        if (_skipWhitespace) {
+        if (_inString) {
           return next();
         } else {
           return _finishToken(TokenKind.WHITESPACE);
@@ -162,7 +151,7 @@ abstract class TokenizerBase {
       }
     } while (nesting > 0);
 
-    if (_skipWhitespace) {
+    if (_inString) {
       return next();
     } else {
       return _finishToken(TokenKind.COMMENT);
@@ -304,14 +293,6 @@ abstract class TokenizerBase {
         buf.add(ch);
       }
     }
-  }
-
-  Token _finishOpenBrace() {
-    return _finishToken(TokenKind.LBRACE);
-  }
-
-  Token _finishCloseBrace() {
-    return _finishToken(TokenKind.RBRACE);
   }
 
   Token finishString(int quote) {

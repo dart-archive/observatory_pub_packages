@@ -5,6 +5,7 @@
 library physical_file_system;
 
 import 'dart:async';
+import 'dart:core' hide Resource;
 import 'dart:io' as io;
 
 import 'package:analyzer/src/generated/java_io.dart';
@@ -40,13 +41,17 @@ class PhysicalResourceProvider implements ResourceProvider {
   Context get pathContext => io.Platform.isWindows ? windows : posix;
 
   @override
+  File getFile(String path) => new _PhysicalFile(new io.File(path));
+
+  @override
+  Folder getFolder(String path) => new _PhysicalFolder(new io.Directory(path));
+
+  @override
   Resource getResource(String path) {
     if (io.FileSystemEntity.isDirectorySync(path)) {
-      io.Directory directory = new io.Directory(path);
-      return new _PhysicalFolder(directory);
+      return getFolder(path);
     } else {
-      io.File file = new io.File(path);
-      return new _PhysicalFile(file);
+      return getFile(path);
     }
   }
 
@@ -75,6 +80,9 @@ class _PhysicalFile extends _PhysicalResource implements File {
   _PhysicalFile(io.File file) : super(file);
 
   @override
+  Stream<WatchEvent> get changes => new FileWatcher(_entry.path).events;
+
+  @override
   int get modificationStamp {
     try {
       io.File file = _entry as io.File;
@@ -91,7 +99,7 @@ class _PhysicalFile extends _PhysicalResource implements File {
     if (uri == null) {
       uri = javaFile.toURI();
     }
-    return new FileBasedSource.con2(uri, javaFile);
+    return new FileBasedSource(javaFile, uri);
   }
 
   @override

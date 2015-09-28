@@ -9,6 +9,7 @@ library engine.sdk.io;
 
 import 'dart:io';
 
+import 'package:analyzer/src/context/context.dart' as newContext;
 import 'package:analyzer/src/generated/java_engine.dart';
 
 import 'ast.dart';
@@ -102,9 +103,21 @@ class DirectoryBasedDartSdk implements DartSdk {
 
   /**
    * The name of the directory within the SDK directory that contains the
-   * libraries file.
+   * sdk_library_metadata directory.
    */
   static String _INTERNAL_DIR = "_internal";
+
+  /**
+   * The name of the sdk_library_metadata directory that contains the package
+   * holding the libraries.dart file.
+   */
+  static String _SDK_LIBRARY_METADATA_DIR = "sdk_library_metadata";
+
+  /**
+   * The name of the directory within the sdk_library_metadata that contains
+   * libraries.dart.
+   */
+  static String _SDK_LIBRARY_METADATA_LIB_DIR = "lib";
 
   /**
    * The name of the directory within the SDK directory that contains the
@@ -232,7 +245,11 @@ class DirectoryBasedDartSdk implements DartSdk {
   @override
   AnalysisContext get context {
     if (_analysisContext == null) {
-      _analysisContext = new SdkAnalysisContext();
+      if (AnalysisEngine.instance.useTaskModel) {
+        _analysisContext = new newContext.SdkAnalysisContext();
+      } else {
+        _analysisContext = new SdkAnalysisContext();
+      }
       SourceFactory factory = new SourceFactory([new DartUriResolver(this)]);
       _analysisContext.sourceFactory = factory;
       List<String> uris = this.uris;
@@ -397,7 +414,7 @@ class DirectoryBasedDartSdk implements DartSdk {
       if (filePath.replaceAll('\\', '/') == libraryPath) {
         String path = library.shortName;
         try {
-          return new FileBasedSource.con2(parseUriWithException(path), file);
+          return new FileBasedSource(file, parseUriWithException(path));
         } on URISyntaxException catch (exception, stackTrace) {
           AnalysisEngine.instance.logger.logInformation(
               "Failed to create URI: $path",
@@ -410,7 +427,7 @@ class DirectoryBasedDartSdk implements DartSdk {
         String path =
             "${library.shortName}/${filePath.substring(libraryPath.length + 1)}";
         try {
-          return new FileBasedSource.con2(parseUriWithException(path), file);
+          return new FileBasedSource(file, parseUriWithException(path));
         } on URISyntaxException catch (exception, stackTrace) {
           AnalysisEngine.instance.logger.logInformation(
               "Failed to create URI: $path",
@@ -458,7 +475,11 @@ class DirectoryBasedDartSdk implements DartSdk {
    */
   LibraryMap initialLibraryMap(bool useDart2jsPaths) {
     JavaFile librariesFile = new JavaFile.relative(
-        new JavaFile.relative(libraryDirectory, _INTERNAL_DIR),
+        new JavaFile.relative(
+          new JavaFile.relative(
+            new JavaFile.relative(libraryDirectory, _INTERNAL_DIR),
+            _SDK_LIBRARY_METADATA_DIR),
+          _SDK_LIBRARY_METADATA_LIB_DIR),
         _LIBRARIES_FILE);
     try {
       String contents = librariesFile.readAsStringSync();
@@ -494,7 +515,7 @@ class DirectoryBasedDartSdk implements DartSdk {
         file = file.getParentFile();
         file = new JavaFile.relative(file, relativePath);
       }
-      return new FileBasedSource.con2(parseUriWithException(dartUri), file);
+      return new FileBasedSource(file, parseUriWithException(dartUri));
     } on URISyntaxException {
       return null;
     }
@@ -510,14 +531,15 @@ class DirectoryBasedDartSdk implements DartSdk {
 
 /**
  * An object used to read and parse the libraries file
- * (dart-sdk/lib/_internal/libraries.dart) for information about the libraries
- * in an SDK. The library information is represented as a Dart file containing a
- * single top-level variable whose value is a const map. The keys of the map are
- * the names of libraries defined in the SDK and the values in the map are info
- * objects defining the library. For example, a subset of a typical SDK might
- * have a libraries file that looks like the following:
+ * (dart-sdk/lib/_internal/sdk_library_metadata/lib/libraries.dart) for information
+ * about the libraries in an SDK. The library information is represented as a
+ * Dart file containing a single top-level variable whose value is a const map.
+ * The keys of the map are the names of libraries defined in the SDK and the
+ * values in the map are info objects defining the library. For example, a
+ * subset of a typical SDK might have a libraries file that looks like the
+ * following:
  *
- *     final Map&lt;String, LibraryInfo&gt; LIBRARIES = const &lt;LibraryInfo&gt; {
+ *     final Map<String, LibraryInfo> LIBRARIES = const <LibraryInfo> {
  *       // Used by VM applications
  *       "builtin" : const LibraryInfo(
  *         "builtin/builtin_runtime.dart",
@@ -548,7 +570,7 @@ class SdkLibrariesReader {
    * of the file is already known to be [libraryFileContents].
    */
   LibraryMap readFromFile(JavaFile file, String libraryFileContents) =>
-      readFromSource(new FileBasedSource.con1(file), libraryFileContents);
+      readFromSource(new FileBasedSource(file), libraryFileContents);
 
   /**
    * Return the library map read from the given [source], given that the content

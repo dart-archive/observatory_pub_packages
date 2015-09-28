@@ -4,12 +4,42 @@
 
 library dart_style.src.whitespace;
 
+/// Constants for the number of spaces for various kinds of indentation.
+class Indent {
+  /// The number of spaces in a block or collection body.
+  static const block = 2;
+
+  /// How much wrapped cascade sections indent.
+  static const cascade = 2;
+
+  /// The number of spaces in a single level of expression nesting.
+  static const expression = 4;
+
+  /// The ":" on a wrapped constructor initialization list.
+  static const constructorInitializer = 4;
+
+  /// The indentation for subsequent variables when a for loop defines multiple
+  /// variables that wrap, like:
+  ///
+  ///     for (var a = initializer,
+  ///             b = another,
+  ///             c = third;
+  ///         a + b + c < 100;
+  ///         a++) {
+  ///       ...
+  ///     }
+  static const loopVariable = 8;
+}
+
 /// The kind of pending whitespace that has been "written", but not actually
 /// physically output yet.
 ///
 /// We defer actually writing whitespace until a non-whitespace token is
 /// encountered to avoid trailing whitespace.
 class Whitespace {
+  /// No whitespace.
+  static const none = const Whitespace._("none");
+
   /// A single non-breaking space.
   static const space = const Whitespace._("space");
 
@@ -36,6 +66,13 @@ class Whitespace {
   /// less prescriptive over the user's whitespace.
   static const spaceOrNewline = const Whitespace._("spaceOrNewline");
 
+  /// A split or newline should be output based on whether the current token is
+  /// on the same line as the previous one or not.
+  ///
+  /// In general, we like to avoid using this because it makes the formatter
+  /// less prescriptive over the user's whitespace.
+  static const splitOrNewline = const Whitespace._("splitOrNewline");
+
   /// One or two newlines should be output based on how many newlines are
   /// present between the next token and the previous one.
   ///
@@ -44,6 +81,23 @@ class Whitespace {
   static const oneOrTwoNewlines = const Whitespace._("oneOrTwoNewlines");
 
   final String name;
+
+  /// Gets the minimum number of newlines contained in this whitespace.
+  int get minimumLines {
+    switch (this) {
+      case Whitespace.newline:
+      case Whitespace.nestedNewline:
+      case Whitespace.newlineFlushLeft:
+      case Whitespace.oneOrTwoNewlines:
+        return 1;
+
+      case Whitespace.twoNewlines:
+        return 2;
+
+      default:
+        return 0;
+    }
+  }
 
   const Whitespace._(this.name);
 

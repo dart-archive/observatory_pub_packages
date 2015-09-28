@@ -1,5 +1,5 @@
 name: quiver
-version: 0.21.3
+version: 0.21.4
 authors:
 - Justin Fagnani <justinfagnani@google.com>
 - Yegor Jbanov <yjbanov@google.com>
@@ -8,12 +8,15 @@ authors:
 - David Morgan <davidmorgan@google.com>
 - John McDole <codefu@google.com>
 - Matan Lurey <matanl@google.com>
+- Günter Zöchbauer <guenter@gzoechbauer.com>
+- Sean Eagan <seaneagan1@gmail.com>
+- Victor Berchet <victor@suumit.com>
 description: A set of utility libraries for Dart
 homepage: https://github.com/google/quiver-dart
 environment:
   sdk: '>=1.0.0 <2.0.0'
 dependencies:
-  matcher: '>=0.10.0 <0.12.0'
+  matcher: '>=0.10.0 <0.13.0'
 dev_dependencies:
   path: '>=1.0.0 <2.0.0'
-  unittest: '>=0.11.0'
+  test: '>=0.12.0 <0.13.0'

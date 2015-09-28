@@ -8,7 +8,7 @@
 
 part of charted.charts;
 
-class _ChartLegend implements ChartLegend {
+class DefaultChartLegendImpl implements ChartLegend {
   static const CLASS_PREFIX = 'chart-legend';
 
   final Element host;
@@ -23,7 +23,8 @@ class _ChartLegend implements ChartLegend {
 
   Iterable<ChartLegendItem> _items;
 
-  _ChartLegend(this.host, this.visibleItemsCount, this.showValues, String title)
+  DefaultChartLegendImpl(
+      this.host, this.visibleItemsCount, this.showValues, String title)
       : _title = title {
     assert(host != null);
   }
@@ -122,7 +123,7 @@ class _ChartLegend implements ChartLegend {
           value = showValues ? (Namespace.createChildElement('div', e)
             ..className = 'chart-legend-value') : null;
 
-      var rowStyles = ['chart-legend-row'];
+      var rowStyles = ['chart-legend-row'].toList();
 
       // If this is the first time we are adding rows,
       // Update elements before adding them to the DOM.
@@ -146,6 +147,7 @@ class _ChartLegend implements ChartLegend {
         if (showValues) {
           value.text = d.value;
           value.style.setProperty('color', d.color);
+          row.append(value);
         }
       }
       row.classes.addAll(rowStyles);
@@ -155,24 +157,26 @@ class _ChartLegend implements ChartLegend {
     // We have elements in the DOM that need updating.
     if (!isFirstRender) {
       rows.each((ChartLegendItem d, i, Element e) {
+        var classes = e.classes;
         if (state != null) {
           if (d.index == state.preview) {
-            e.classes.add('chart-legend-hover');
+            classes.add('chart-legend-hover');
           } else {
-            e.classes.remove('chart-legend-hover');
+            classes.remove('chart-legend-hover');
           }
           if (state.isSelected(d.index)) {
-            e.classes.add('chart-legend-selected');
+            classes.add('chart-legend-selected');
           } else {
-            e.classes.remove('chart-legend-selected');
+            classes.remove('chart-legend-selected');
           }
         }
-        e.classes.addAll(d.series.map((ChartSeries x) => 'type-${x.renderer.name}'));
-        (e.firstChild as Element).style.setProperty('background-color', d.color);
-        (e.children[1]).innerHtml = d.label;
+        classes.addAll(d.series.map((x) => 'type-${x.renderer.name}'));
+
+        (e.children[0]).style.setProperty('background-color', d.color);
+        (e.children[1]).text = d.label;
         if (showValues) {
           (e.lastChild as Element)
-            ..innerHtml = d.value
+            ..text = d.value
             ..style.setProperty('color', d.color);
         }
       });

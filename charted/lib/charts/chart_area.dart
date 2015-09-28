@@ -65,7 +65,7 @@ abstract class CartesianArea implements ChartArea {
       bool useTwoDimensionAxes: false,
       bool useRowColoring: false,
       ChartState state }) =>
-          new _CartesianArea(host, data, config, autoUpdate,
+          new DefaultCartesianAreaImpl(host, data, config, autoUpdate,
               useTwoDimensionAxes, useRowColoring, state);
 }
 
@@ -81,16 +81,16 @@ abstract class CartesianArea implements ChartArea {
 /// not have any scales and axes.
 ///
 abstract class LayoutArea implements ChartArea {
-  /// Layouts always use coloring by row index and value.
-  @override
+  /// Layout area always uses row coloring.
   bool get useRowColoring => true;
 
   factory LayoutArea(
       dynamic host,
       ChartData data,
-      ChartConfig config,
-      bool autoUpdate) =>
-          new _LayoutArea(host, data, config, autoUpdate);
+      ChartConfig config, {
+      bool autoUpdate: false,
+      ChartState state }) =>
+          new DefaultLayoutAreaImpl(host, data, config, autoUpdate, state);
 }
 
 ///
@@ -118,10 +118,6 @@ abstract class ChartArea implements ChartAreaBehaviorSource {
   /// the chart when [data] or [config] changes. Defaults to false.
   bool autoUpdate;
 
-  /// When true, [ChartArea] and renderers that support coloring by row,
-  /// use row indices and values to color the chart. Defaults to false.
-  bool get useRowColoring;
-
   /// Geometry of components in this [ChartArea]
   ChartAreaLayout get layout;
 
@@ -132,6 +128,10 @@ abstract class ChartArea implements ChartAreaBehaviorSource {
   /// drawn or are in the process of transitioning in.
   bool get isReady;
 
+  /// When true, [ChartArea] and renderers that support coloring by row,
+  /// use row indices and values to color the chart. Defaults to false.
+  bool get useRowColoring;
+
   /// State of the chart - selection and highlights.
   ChartState get state;
 
@@ -139,7 +139,7 @@ abstract class ChartArea implements ChartAreaBehaviorSource {
   /// - If [preRender] is set, [ChartArea] attempts to build all non data
   ///   dependant elements of the chart.
   /// - When [schedulePostRender] is not null, non-essential elements/tasks
-  ///   of chart building are post-poned until the future is resolved.
+  ///   of chart building are postponed until the future is resolved.
   void draw({bool preRender: false, Future schedulePostRender});
 
   /// Force destroy the ChartArea.

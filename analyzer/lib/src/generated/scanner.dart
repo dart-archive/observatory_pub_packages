@@ -723,12 +723,6 @@ class Scanner {
   bool _hasUnmatchedGroups = false;
 
   /**
-   * A flag indicating whether null-aware operators ('?.', '??', and '??=')
-   * should be tokenized.
-   */
-  bool enableNullAwareOperators = false;
-
-  /**
    * Initialize a newly created scanner to scan characters from the given
    * [source]. The given character [_reader] will be used to read the characters
    * in the source. The given [_errorListener] will be informed of any errors
@@ -1163,8 +1157,8 @@ class Scanner {
    * needed to complete the error message
    */
   void _reportError(ScannerErrorCode errorCode, [List<Object> arguments]) {
-    _errorListener.onError(new AnalysisError.con2(
-        source, _reader.offset, 1, errorCode, arguments));
+    _errorListener.onError(
+        new AnalysisError(source, _reader.offset, 1, errorCode, arguments));
   }
 
   int _select(int choice, TokenType yesType, TokenType noType) {
@@ -1664,11 +1658,11 @@ class Scanner {
   int _tokenizeQuestion() {
     // ? ?. ?? ??=
     int next = _reader.advance();
-    if (enableNullAwareOperators && next == 0x2E) {
+    if (next == 0x2E) {
       // '.'
       _appendTokenOfType(TokenType.QUESTION_PERIOD);
       return _reader.advance();
-    } else if (enableNullAwareOperators && next == 0x3F) {
+    } else if (next == 0x3F) {
       // '?'
       next = _reader.advance();
       if (next == 0x3D) {

@@ -7,9 +7,11 @@
 
 library engine.testing.test_type_provider;
 
+import 'package:analyzer/src/generated/ast.dart';
 import 'package:analyzer/src/generated/constant.dart';
 import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/resolver.dart';
+import 'package:analyzer/src/generated/testing/ast_factory.dart';
 import 'package:analyzer/src/generated/testing/element_factory.dart';
 
 /**
@@ -178,10 +180,13 @@ class TestTypeProvider implements TypeProvider {
     if (_deprecatedType == null) {
       ClassElementImpl deprecatedElement =
           ElementFactory.classElement2("Deprecated");
-      deprecatedElement.constructors = <ConstructorElement>[
-        ElementFactory.constructorElement(
-            deprecatedElement, null, true, [stringType])
+      ConstructorElementImpl constructor = ElementFactory.constructorElement(
+          deprecatedElement, null, true, [stringType]);
+      constructor.constantInitializers = <ConstructorInitializer>[
+        AstFactory.constructorFieldInitializer(
+            true, 'expires', AstFactory.identifier3('expires'))
       ];
+      deprecatedElement.constructors = <ConstructorElement>[constructor];
       _deprecatedType = deprecatedElement.type;
     }
     return _deprecatedType;
@@ -263,6 +268,7 @@ class TestTypeProvider implements TypeProvider {
             "iterator", false, iteratorType.substitute4(<DartType>[eType])),
         ElementFactory.getterElement("last", false, eType)
       ]);
+      iterableElement.constructors = ConstructorElement.EMPTY_LIST;
       _propagateTypeArguments(iterableElement);
     }
     return _iterableType;
@@ -277,6 +283,7 @@ class TestTypeProvider implements TypeProvider {
       _setAccessors(iteratorElement, <PropertyAccessorElement>[
         ElementFactory.getterElement("current", false, eType)
       ]);
+      iteratorElement.constructors = ConstructorElement.EMPTY_LIST;
       _propagateTypeArguments(iteratorElement);
     }
     return _iteratorType;
@@ -325,6 +332,7 @@ class TestTypeProvider implements TypeProvider {
         ElementFactory.methodElement(
             "[]=", VoidTypeImpl.instance, [kType, vType])
       ];
+      mapElement.constructors = ConstructorElement.EMPTY_LIST;
       _propagateTypeArguments(mapElement);
     }
     return _mapType;
@@ -351,7 +359,9 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get nullType {
     if (_nullType == null) {
-      _nullType = ElementFactory.classElement2("Null").type;
+      ClassElementImpl nullElement = ElementFactory.classElement2("Null");
+      nullElement.constructors = ConstructorElement.EMPTY_LIST;
+      _nullType = nullElement.type;
     }
     return _nullType;
   }
@@ -369,9 +379,10 @@ class TestTypeProvider implements TypeProvider {
     if (_objectType == null) {
       ClassElementImpl objectElement = ElementFactory.object;
       _objectType = objectElement.type;
-      objectElement.constructors = <ConstructorElement>[
-        ElementFactory.constructorElement2(objectElement, null)
-      ];
+      ConstructorElementImpl constructor =
+          ElementFactory.constructorElement(objectElement, null, true);
+      constructor.constantInitializers = <ConstructorInitializer>[];
+      objectElement.constructors = <ConstructorElement>[constructor];
       objectElement.methods = <MethodElement>[
         ElementFactory.methodElement("toString", stringType),
         ElementFactory.methodElement("==", boolType, [_objectType]),
@@ -546,7 +557,9 @@ class TestTypeProvider implements TypeProvider {
     ];
     fromEnvironment.factory = true;
     fromEnvironment.isCycleFree = true;
+    numElement.constructors = ConstructorElement.EMPTY_LIST;
     intElement.constructors = <ConstructorElement>[fromEnvironment];
+    doubleElement.constructors = ConstructorElement.EMPTY_LIST;
     List<FieldElement> fields = <FieldElement>[
       ElementFactory.fieldElement("NAN", true, false, true, _doubleType),
       ElementFactory.fieldElement("INFINITY", true, false, true, _doubleType),

@@ -7,12 +7,16 @@
 
 library engine.source;
 
-import "dart:math" as math;
 import 'dart:collection';
+import "dart:math" as math;
 
 import 'package:analyzer/file_system/file_system.dart';
+import 'package:analyzer/file_system/physical_file_system.dart';
 import 'package:analyzer/source/package_map_resolver.dart';
+import 'package:analyzer/src/generated/utilities_dart.dart' as utils;
 import 'package:analyzer/task/model.dart';
+import 'package:package_config/packages.dart';
+import 'package:path/path.dart' as pathos;
 
 import 'engine.dart';
 import 'java_core.dart';
@@ -99,6 +103,24 @@ class ContentCache {
   }
 }
 
+class CustomUriResolver extends UriResolver {
+  final Map<String, String> _urlMappings;
+
+  CustomUriResolver(this._urlMappings);
+
+  @override
+  Source resolveAbsolute(Uri uri) {
+    String mapping = _urlMappings[uri.toString()];
+    if (mapping == null) return null;
+
+    Uri fileUri = new Uri.file(mapping);
+    if (!fileUri.isAbsolute) return null;
+
+    JavaFile javaFile = new JavaFile.fromUri(fileUri);
+    return new FileBasedSource(javaFile);
+  }
+}
+
 /**
  * Instances of the class `DartUriResolver` resolve `dart` URI's.
  */
@@ -157,24 +179,6 @@ class DartUriResolver extends UriResolver {
    * @return `true` if the given URI is a `dart:` URI
    */
   static bool isDartUri(Uri uri) => DART_SCHEME == uri.scheme;
-}
-
-class CustomUriResolver extends UriResolver {
-  final Map<String, String> _urlMappings;
-
-  CustomUriResolver(this._urlMappings);
-
-  @override
-  Source resolveAbsolute(Uri uri) {
-    String mapping = _urlMappings[uri.toString()];
-    if (mapping == null) return null;
-
-    Uri fileUri = new Uri.file(mapping);
-    if (!fileUri.isAbsolute) return null;
-
-    JavaFile javaFile = new JavaFile.fromUri(fileUri);
-    return new FileBasedSource.con1(javaFile);
-  }
 }
 
 /**
@@ -323,45 +327,42 @@ class LocalSourcePredicate_TRUE implements LocalSourcePredicate {
  * An implementation of an non-existing [Source].
  */
 class NonExistingSource extends Source {
-  final String _name;
+  @override
+  final String fullName;
+
+  @override
+  final Uri uri;
 
   final UriKind uriKind;
 
-  NonExistingSource(this._name, this.uriKind);
+  NonExistingSource(this.fullName, this.uri, this.uriKind);
 
   @override
   TimestampedData<String> get contents {
-    throw new UnsupportedOperationException("${_name}does not exist.");
+    throw new UnsupportedOperationException('$fullName does not exist.');
   }
 
   @override
   String get encoding {
-    throw new UnsupportedOperationException("${_name}does not exist.");
+    throw new UnsupportedOperationException('$fullName does not exist.');
   }
 
   @override
-  String get fullName => _name;
-
-  @override
-  int get hashCode => _name.hashCode;
+  int get hashCode => fullName.hashCode;
 
   @override
   bool get isInSystemLibrary => false;
 
   @override
-  int get modificationStamp => 0;
+  int get modificationStamp => -1;
 
   @override
-  String get shortName => _name;
+  String get shortName => pathos.basename(fullName);
 
   @override
-  Uri get uri => null;
-
-  @override
-  bool operator ==(Object obj) {
-    if (obj is NonExistingSource) {
-      NonExistingSource other = obj;
-      return other.uriKind == uriKind && (other._name == _name);
+  bool operator ==(Object other) {
+    if (other is NonExistingSource) {
+      return other.uriKind == uriKind && other.fullName == fullName;
     }
     return false;
   }
@@ -371,7 +372,7 @@ class NonExistingSource extends Source {
 
   @override
   Uri resolveRelativeUri(Uri relativeUri) {
-    throw new UnsupportedOperationException("${_name}does not exist.");
+    throw new UnsupportedOperationException('$fullName does not exist.');
   }
 }
 
@@ -399,7 +400,13 @@ abstract class Source implements AnalysisTarget {
   /**
    * An empty list of sources.
    */
-  static const List<Source> EMPTY_ARRAY = const <Source>[];
+  @deprecated // Use Source.EMPTY_LIST
+  static const List<Source> EMPTY_ARRAY = EMPTY_LIST;
+
+  /**
+   * An empty list of sources.
+   */
+  static const List<Source> EMPTY_LIST = const <Source>[];
 
   /**
    * Get the contents and timestamp of this source.
@@ -421,9 +428,6 @@ abstract class Source implements AnalysisTarget {
    * See [SourceFactory.fromEncoding].
    */
   String get encoding;
-
-  @override
-  Source get source => this;
 
   /**
    * Return the full (long) version of the name that can be displayed to the user to denote this
@@ -471,6 +475,9 @@ abstract class Source implements AnalysisTarget {
    * @return a name that can be displayed to the user to denote this source
    */
   String get shortName;
+
+  @override
+  Source get source => this;
 
   /**
    * Return the URI from which this source was originally derived.
@@ -571,6 +578,17 @@ class SourceFactory {
   AnalysisContext context;
 
   /**
+   * URI processor used to find mappings for `package:` URIs found in a `.packages` config
+   * file.
+   */
+  final Packages _packages;
+
+  /**
+   * Resource provider used in working with package maps.
+   */
+  final ResourceProvider _resourceProvider;
+
+  /**
    * The resolvers used to resolve absolute URI's.
    */
   final List<UriResolver> _resolvers;
@@ -581,11 +599,14 @@ class SourceFactory {
   LocalSourcePredicate _localSourcePredicate = LocalSourcePredicate.NOT_SDK;
 
   /**
-   * Initialize a newly created source factory.
-   *
-   * @param resolvers the resolvers used to resolve absolute URI's
+   * Initialize a newly created source factory with the given absolute URI [resolvers] and
+   * optional [packages] resolution helper.
    */
-  SourceFactory(this._resolvers);
+  SourceFactory(this._resolvers,
+      [this._packages, ResourceProvider resourceProvider])
+      : _resourceProvider = resourceProvider != null
+          ? resourceProvider
+          : PhysicalResourceProvider.INSTANCE;
 
   /**
    * Return the [DartSdk] associated with this [SourceFactory], or `null` if there
@@ -616,6 +637,19 @@ class SourceFactory {
   /// A table mapping package names to paths of directories containing
   /// the package (or [null] if there is no registered package URI resolver).
   Map<String, List<Folder>> get packageMap {
+    // Start by looking in .packages.
+    if (_packages != null) {
+      Map<String, List<Folder>> packageMap = <String, List<Folder>>{};
+      _packages.asMap().forEach((String name, Uri uri) {
+        if (uri.scheme == 'file' || uri.scheme == '' /* unspecified */) {
+          packageMap[name] =
+              <Folder>[_resourceProvider.getFolder(uri.toFilePath())];
+        }
+      });
+      return packageMap;
+    }
+
+    // Default to the PackageMapUriResolver.
     PackageMapUriResolver resolver = _resolvers.firstWhere(
         (r) => r is PackageMapUriResolver, orElse: () => null);
     return resolver != null ? resolver.packageMap : null;
@@ -723,13 +757,42 @@ class SourceFactory {
    * @return the absolute URI representing the given source
    */
   Uri restoreUri(Source source) {
+    // First see if a resolver can restore the URI.
     for (UriResolver resolver in _resolvers) {
       Uri uri = resolver.restoreAbsolute(source);
       if (uri != null) {
+        // Now see if there's a package mapping.
+        Uri packageMappedUri = _getPackageMapping(uri);
+        if (packageMappedUri != null) {
+          return packageMappedUri;
+        }
+        // Fall back to the resolver's computed URI.
         return uri;
       }
     }
+
     return null;
+  }
+
+  Uri _getPackageMapping(Uri sourceUri) {
+    if (_packages == null) {
+      return null;
+    }
+    if (sourceUri.scheme != 'file') {
+      //TODO(pquitslund): verify this works for non-file URIs.
+      return null;
+    }
+
+    Uri packageUri;
+    _packages.asMap().forEach((String name, Uri uri) {
+      if (packageUri == null) {
+        if (utils.startsWith(sourceUri, uri)) {
+          packageUri = Uri.parse(
+              'package:$name/${sourceUri.path.substring(uri.path.length)}');
+        }
+      }
+    });
+    return packageUri;
   }
 
   /**
@@ -750,6 +813,16 @@ class SourceFactory {
             "Cannot resolve a relative URI without a containing source: $containedUri");
       }
       containedUri = containingSource.resolveRelativeUri(containedUri);
+    }
+    // Now check .packages.
+    if (_packages != null && containedUri.scheme == 'package') {
+      Uri packageUri =
+          _packages.resolve(containedUri, notFound: (Uri packageUri) => null);
+      // Ensure scheme is set.
+      if (packageUri != null && packageUri.scheme == '') {
+        packageUri = packageUri.replace(scheme: 'file');
+      }
+      containedUri = packageUri;
     }
     for (UriResolver resolver in _resolvers) {
       Source result = resolver.resolveAbsolute(containedUri);

@@ -7,8 +7,24 @@ library engine.incremental_resolver;
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'package:analyzer/src/context/cache.dart'
+    show CacheEntry, TargetedResult;
 import 'package:analyzer/src/generated/constant.dart';
-import 'package:analyzer/src/services/lint.dart';
+import 'package:analyzer/src/task/dart.dart'
+    show
+        HINTS,
+        PARSE_ERRORS,
+        RESOLVE_REFERENCES_ERRORS,
+        RESOLVE_TYPE_NAMES_ERRORS,
+        SCAN_ERRORS,
+        USED_IMPORTED_ELEMENTS,
+        USED_LOCAL_ELEMENTS,
+        VARIABLE_REFERENCE_ERRORS,
+        VERIFY_ERRORS;
+import 'package:analyzer/task/dart.dart'
+    show DART_ERRORS, LibrarySpecificUnit, PARSED_UNIT, TOKEN_STREAM;
+import 'package:analyzer/task/general.dart' show CONTENT;
+import 'package:analyzer/task/model.dart' show ResultDescriptor;
 
 import 'ast.dart';
 import 'element.dart';
@@ -167,7 +183,6 @@ class DeclarationMatcher extends RecursiveAstVisitor {
     _enclosingClass = element;
     _processElement(element);
     _assertSameTypeParameters(node.typeParameters, element.typeParameters);
-    _processElement(element.unnamedConstructor);
     super.visitClassTypeAlias(node);
   }
 
@@ -344,17 +359,19 @@ class DeclarationMatcher extends RecursiveAstVisitor {
       node.name.staticElement = element;
       _setLocalElements(element, newElement);
     } on _DeclarationMismatchException {
-      _addedElements.add(newElement);
       _removeElement(element);
       // add new element
-      if (newElement is MethodElement) {
-        List<MethodElement> methods = _enclosingClass.methods;
-        methods.add(newElement);
-        _enclosingClass.methods = methods;
-      } else {
-        List<PropertyAccessorElement> accessors = _enclosingClass.accessors;
-        accessors.add(newElement);
-        _enclosingClass.accessors = accessors;
+      if (newElement != null) {
+        _addedElements.add(newElement);
+        if (newElement is MethodElement) {
+          List<MethodElement> methods = _enclosingClass.methods;
+          methods.add(newElement);
+          _enclosingClass.methods = methods;
+        } else {
+          List<PropertyAccessorElement> accessors = _enclosingClass.accessors;
+          accessors.add(newElement);
+          _enclosingClass.accessors = accessors;
+        }
       }
     }
   }
@@ -503,6 +520,29 @@ class DeclarationMatcher extends RecursiveAstVisitor {
     }
   }
 
+  /**
+   * Asserts that there is an import with the same prefix as the given
+   * [prefixNode], which exposes the given [element].
+   */
+  void _assertElementVisibleWithPrefix(
+      SimpleIdentifier prefixNode, Element element) {
+    if (prefixNode == null) {
+      return;
+    }
+    String prefixName = prefixNode.name;
+    for (ImportElement import in _enclosingLibrary.imports) {
+      if (import.prefix != null && import.prefix.name == prefixName) {
+        Namespace namespace =
+            new NamespaceBuilder().createImportNamespaceForDirective(import);
+        Iterable<Element> visibleElements = namespace.definedNames.values;
+        if (visibleElements.contains(element)) {
+          return;
+        }
+      }
+    }
+    _assertTrue(false);
+  }
+
   void _assertEquals(Object a, Object b) {
     if (a != b) {
       throw new _DeclarationMismatchException();
@@ -555,7 +595,7 @@ class DeclarationMatcher extends RecursiveAstVisitor {
   }
 
   void _assertSameType(TypeName node, DartType type) {
-    // no return type == dynamic
+    // no type == dynamic
     if (node == null) {
       return _assertTrue(type == null || type.isDynamic);
     }
@@ -563,14 +603,18 @@ class DeclarationMatcher extends RecursiveAstVisitor {
       return _assertTrue(false);
     }
     // prepare name
+    SimpleIdentifier prefixIdentifier = null;
     Identifier nameIdentifier = node.name;
     if (nameIdentifier is PrefixedIdentifier) {
-      nameIdentifier = (nameIdentifier as PrefixedIdentifier).identifier;
+      PrefixedIdentifier prefixedIdentifier = nameIdentifier;
+      prefixIdentifier = prefixedIdentifier.prefix;
+      nameIdentifier = prefixedIdentifier.identifier;
     }
     String nodeName = nameIdentifier.name;
     // check specific type kinds
     if (type is ParameterizedType) {
       _assertEquals(nodeName, type.name);
+      _assertElementVisibleWithPrefix(prefixIdentifier, type.element);
       // check arguments
       TypeArgumentList nodeArgumentList = node.typeArguments;
       List<DartType> typeArguments = type.typeArguments;
@@ -746,10 +790,12 @@ class DeclarationMatcher extends RecursiveAstVisitor {
 
   static void _setLocalElements(
       ExecutableElementImpl to, ExecutableElement from) {
-    to.functions = from.functions;
-    to.labels = from.labels;
-    to.localVariables = from.localVariables;
-    to.parameters = from.parameters;
+    if (from != null) {
+      to.functions = from.functions;
+      to.labels = from.labels;
+      to.localVariables = from.localVariables;
+      to.parameters = from.parameters;
+    }
   }
 }
 
@@ -793,7 +839,7 @@ class IncrementalResolver {
   /**
    * The context the compilation unit being resolved in.
    */
-  AnalysisContextImpl _context;
+  AnalysisContext _context;
 
   /**
    * The object used to access the types from the core library.
@@ -808,7 +854,17 @@ class IncrementalResolver {
   /**
    * The [DartEntry] corresponding to the source being resolved.
    */
-  DartEntry entry;
+  DartEntry oldEntry;
+
+  /**
+   * The [CacheEntry] corresponding to the source being resolved.
+   */
+  CacheEntry newSourceEntry;
+
+  /**
+   * The [CacheEntry] corresponding to the [LibrarySpecificUnit] being resolved.
+   */
+  CacheEntry newUnitEntry;
 
   /**
    * The source representing the compilation unit being visited.
@@ -842,21 +898,20 @@ class IncrementalResolver {
 
   List<AnalysisError> _resolveErrors = AnalysisError.NO_ERRORS;
   List<AnalysisError> _verifyErrors = AnalysisError.NO_ERRORS;
-  List<AnalysisError> _lints = AnalysisError.NO_ERRORS;
 
   /**
    * Initialize a newly created incremental resolver to resolve a node in the
    * given source in the given library.
    */
-  IncrementalResolver(this._definingUnit, this._updateOffset,
-      this._updateEndOld, this._updateEndNew) {
+  IncrementalResolver(this.oldEntry, this.newSourceEntry, this.newUnitEntry,
+      this._definingUnit, this._updateOffset, this._updateEndOld,
+      this._updateEndNew) {
     _updateDelta = _updateEndNew - _updateEndOld;
     _definingLibrary = _definingUnit.library;
     _librarySource = _definingLibrary.source;
     _source = _definingUnit.source;
     _context = _definingUnit.context;
     _typeProvider = _context.typeProvider;
-    entry = _context.getReadableSourceEntryOrNull(_source);
   }
 
   /**
@@ -884,7 +939,6 @@ class IncrementalResolver {
       // verify
       _verify(rootNode);
       _context.invalidateLibraryHints(_librarySource);
-      _generateLints(rootNode);
       // update entry errors
       _updateEntry();
       // notify unit
@@ -964,16 +1018,16 @@ class IncrementalResolver {
     // compute values
     {
       CompilationUnit unit = node.getAncestor((n) => n is CompilationUnit);
-      ConstantValueComputer computer =
-          new ConstantValueComputer(_typeProvider, _context.declaredVariables);
-      computer.add(unit);
+      ConstantValueComputer computer = new ConstantValueComputer(
+          _context, _typeProvider, _context.declaredVariables);
+      computer.add(unit, _source, _librarySource);
       computer.computeValues();
     }
     // validate
     {
       ErrorReporter errorReporter = new ErrorReporter(errorListener, _source);
-      ConstantVerifier constantVerifier =
-          new ConstantVerifier(errorReporter, _definingLibrary, _typeProvider);
+      ConstantVerifier constantVerifier = new ConstantVerifier(errorReporter,
+          _definingLibrary, _typeProvider, _context.declaredVariables);
       node.accept(constantVerifier);
     }
   }
@@ -994,20 +1048,6 @@ class IncrementalResolver {
       node = node.parent;
     }
     throw new AnalysisException("Cannot resolve node: no resolvable node");
-  }
-
-  void _generateLints(AstNode node) {
-    LoggingTimer timer = logger.startTimer();
-    try {
-      RecordingErrorListener errorListener = new RecordingErrorListener();
-      CompilationUnit unit = node.getAncestor((n) => n is CompilationUnit);
-      LintGenerator lintGenerator =
-          new LintGenerator(<CompilationUnit>[unit], errorListener);
-      lintGenerator.generate();
-      _lints = errorListener.getErrorsForSource(_source);
-    } finally {
-      timer.stop('generate lints');
-    }
   }
 
   /**
@@ -1037,20 +1077,23 @@ class IncrementalResolver {
       Scope scope = _resolutionContext.scope;
       // resolve types
       {
-        TypeResolverVisitor visitor = new TypeResolverVisitor.con3(
-            _definingLibrary, _source, _typeProvider, scope, errorListener);
+        TypeResolverVisitor visitor = new TypeResolverVisitor(
+            _definingLibrary, _source, _typeProvider, errorListener,
+            nameScope: scope);
         node.accept(visitor);
       }
       // resolve variables
       {
-        VariableResolverVisitor visitor = new VariableResolverVisitor.con2(
-            _definingLibrary, _source, _typeProvider, scope, errorListener);
+        VariableResolverVisitor visitor = new VariableResolverVisitor(
+            _definingLibrary, _source, _typeProvider, errorListener,
+            nameScope: scope);
         node.accept(visitor);
       }
       // resolve references
       {
-        ResolverVisitor visitor = new ResolverVisitor.con3(
-            _definingLibrary, _source, _typeProvider, scope, errorListener);
+        ResolverVisitor visitor = new ResolverVisitor(
+            _definingLibrary, _source, _typeProvider, errorListener,
+            nameScope: scope);
         if (_resolutionContext.enclosingClassDeclaration != null) {
           visitor.visitClassDeclarationIncrementally(
               _resolutionContext.enclosingClassDeclaration);
@@ -1068,21 +1111,46 @@ class IncrementalResolver {
   }
 
   void _shiftEntryErrors() {
-    _shiftErrors(DartEntry.RESOLUTION_ERRORS);
-    _shiftErrors(DartEntry.VERIFICATION_ERRORS);
-    _shiftErrors(DartEntry.HINTS);
-    _shiftErrors(DartEntry.LINTS);
+    if (oldEntry != null) {
+      _shiftEntryErrors_OLD();
+    } else {
+      _shiftEntryErrors_NEW();
+    }
   }
 
-  void _shiftErrors(DataDescriptor<List<AnalysisError>> descriptor) {
-    List<AnalysisError> errors =
-        entry.getValueInLibrary(descriptor, _librarySource);
+  void _shiftEntryErrors_NEW() {
+    _shiftErrors_NEW(HINTS);
+    _shiftErrors_NEW(RESOLVE_REFERENCES_ERRORS);
+    _shiftErrors_NEW(RESOLVE_TYPE_NAMES_ERRORS);
+    _shiftErrors_NEW(VARIABLE_REFERENCE_ERRORS);
+    _shiftErrors_NEW(VERIFY_ERRORS);
+  }
+
+  void _shiftEntryErrors_OLD() {
+    _shiftErrors_OLD(DartEntry.RESOLUTION_ERRORS);
+    _shiftErrors_OLD(DartEntry.VERIFICATION_ERRORS);
+    _shiftErrors_OLD(DartEntry.HINTS);
+    _shiftErrors_OLD(DartEntry.LINTS);
+  }
+
+  void _shiftErrors(List<AnalysisError> errors) {
     for (AnalysisError error in errors) {
       int errorOffset = error.offset;
       if (errorOffset > _updateOffset) {
         error.offset += _updateDelta;
       }
     }
+  }
+
+  void _shiftErrors_NEW(ResultDescriptor<List<AnalysisError>> descriptor) {
+    List<AnalysisError> errors = newUnitEntry.getValue(descriptor);
+    _shiftErrors(errors);
+  }
+
+  void _shiftErrors_OLD(DataDescriptor<List<AnalysisError>> descriptor) {
+    List<AnalysisError> errors =
+        oldEntry.getValueInLibrary(descriptor, _librarySource);
+    _shiftErrors(errors);
   }
 
   void _updateElementNameOffsets() {
@@ -1096,21 +1164,27 @@ class IncrementalResolver {
   }
 
   void _updateEntry() {
-    {
-      List<AnalysisError> oldErrors =
-          entry.getValueInLibrary(DartEntry.RESOLUTION_ERRORS, _librarySource);
-      List<AnalysisError> errors = _updateErrors(oldErrors, _resolveErrors);
-      entry.setValueInLibrary(
-          DartEntry.RESOLUTION_ERRORS, _librarySource, errors);
+    if (oldEntry != null) {
+      _updateEntry_OLD();
+    } else {
+      _updateEntry_NEW();
     }
-    {
-      List<AnalysisError> oldErrors = entry.getValueInLibrary(
-          DartEntry.VERIFICATION_ERRORS, _librarySource);
-      List<AnalysisError> errors = _updateErrors(oldErrors, _verifyErrors);
-      entry.setValueInLibrary(
-          DartEntry.VERIFICATION_ERRORS, _librarySource, errors);
-    }
-    entry.setValueInLibrary(DartEntry.LINTS, _librarySource, _lints);
+  }
+
+  void _updateEntry_NEW() {
+    _updateErrors_NEW(RESOLVE_REFERENCES_ERRORS, _resolveErrors);
+    _updateErrors_NEW(RESOLVE_TYPE_NAMES_ERRORS, []);
+    _updateErrors_NEW(VARIABLE_REFERENCE_ERRORS, []);
+    _updateErrors_NEW(VERIFY_ERRORS, _verifyErrors);
+    // invalidate results we don't update incrementally
+    newUnitEntry.setState(USED_IMPORTED_ELEMENTS, CacheState.INVALID);
+    newUnitEntry.setState(USED_LOCAL_ELEMENTS, CacheState.INVALID);
+    newUnitEntry.setState(HINTS, CacheState.INVALID);
+  }
+
+  void _updateEntry_OLD() {
+    _updateErrors_OLD(DartEntry.RESOLUTION_ERRORS, _resolveErrors);
+    _updateErrors_OLD(DartEntry.VERIFICATION_ERRORS, _verifyErrors);
   }
 
   List<AnalysisError> _updateErrors(
@@ -1137,6 +1211,21 @@ class IncrementalResolver {
     return errors;
   }
 
+  void _updateErrors_NEW(ResultDescriptor<List<AnalysisError>> descriptor,
+      List<AnalysisError> newErrors) {
+    List<AnalysisError> oldErrors = newUnitEntry.getValue(descriptor);
+    List<AnalysisError> errors = _updateErrors(oldErrors, newErrors);
+    newUnitEntry.setValueIncremental(descriptor, errors);
+  }
+
+  void _updateErrors_OLD(DataDescriptor<List<AnalysisError>> descriptor,
+      List<AnalysisError> newErrors) {
+    List<AnalysisError> oldErrors =
+        oldEntry.getValueInLibrary(descriptor, _librarySource);
+    List<AnalysisError> errors = _updateErrors(oldErrors, newErrors);
+    oldEntry.setValueInLibrary(descriptor, _librarySource, errors);
+  }
+
   void _verify(AstNode node) {
     LoggingTimer timer = logger.startTimer();
     try {
@@ -1160,7 +1249,22 @@ class IncrementalResolver {
 class PoorMansIncrementalResolver {
   final TypeProvider _typeProvider;
   final Source _unitSource;
-  final DartEntry _entry;
+
+  /**
+   * The [DartEntry] corresponding to the source being resolved.
+   */
+  DartEntry _oldEntry;
+
+  /**
+   * The [CacheEntry] corresponding to the source being resolved.
+   */
+  CacheEntry _newSourceEntry;
+
+  /**
+   * The [CacheEntry] corresponding to the [LibrarySpecificUnit] being resolved.
+   */
+  CacheEntry _newUnitEntry;
+
   final CompilationUnit _oldUnit;
   final AnalysisOptions _options;
   CompilationUnitElement _unitElement;
@@ -1173,8 +1277,9 @@ class PoorMansIncrementalResolver {
   List<AnalysisError> _newScanErrors = <AnalysisError>[];
   List<AnalysisError> _newParseErrors = <AnalysisError>[];
 
-  PoorMansIncrementalResolver(this._typeProvider, this._unitSource, this._entry,
-      this._oldUnit, bool resolveApiChanges, this._options) {
+  PoorMansIncrementalResolver(this._typeProvider, this._unitSource,
+      this._oldEntry, this._newSourceEntry, this._newUnitEntry, this._oldUnit,
+      bool resolveApiChanges, this._options) {
     _resolveApiChanges = resolveApiChanges;
   }
 
@@ -1231,7 +1336,8 @@ class PoorMansIncrementalResolver {
             _shiftTokens(firstPair.oldToken);
             {
               IncrementalResolver incrementalResolver = new IncrementalResolver(
-                  _unitElement, _updateOffset, _updateEndOld, _updateEndNew);
+                  _oldEntry, _newSourceEntry, _newUnitEntry, _unitElement,
+                  _updateOffset, _updateEndOld, _updateEndNew);
               incrementalResolver._updateElementNameOffsets();
               incrementalResolver._shiftEntryErrors();
             }
@@ -1269,9 +1375,13 @@ class PoorMansIncrementalResolver {
                     newParent is MethodDeclaration ||
                 oldParent is ConstructorDeclaration &&
                     newParent is ConstructorDeclaration) {
-              oldNode = oldParent;
-              newNode = newParent;
-              found = true;
+              Element oldElement = (oldParent as Declaration).element;
+              if (new DeclarationMatcher().matches(newParent, oldElement) ==
+                  DeclarationMatchKind.MATCH) {
+                oldNode = oldParent;
+                newNode = newParent;
+                found = true;
+              }
             }
             if (oldParent is FunctionBody && newParent is FunctionBody) {
               oldNode = oldParent;
@@ -1316,7 +1426,8 @@ class PoorMansIncrementalResolver {
         }
         // perform incremental resolution
         IncrementalResolver incrementalResolver = new IncrementalResolver(
-            _unitElement, _updateOffset, _updateEndOld, _updateEndNew);
+            _oldEntry, _newSourceEntry, _newUnitEntry, _unitElement,
+            _updateOffset, _updateEndOld, _updateEndNew);
         bool success = incrementalResolver.resolve(newNode);
         // check if success
         if (!success) {
@@ -1344,6 +1455,8 @@ class PoorMansIncrementalResolver {
       Token token = _scan(code);
       RecordingErrorListener errorListener = new RecordingErrorListener();
       Parser parser = new Parser(_unitSource, errorListener);
+      AnalysisOptions options = _unitElement.context.analysisOptions;
+      parser.parseGenericMethods = options.enableGenericMethods;
       CompilationUnit unit = parser.parseCompilationUnit(token);
       _newParseErrors = errorListener.errors;
       return unit;
@@ -1378,8 +1491,9 @@ class PoorMansIncrementalResolver {
     // replace node
     NodeReplacer.replace(oldComment, newComment);
     // update elements
-    IncrementalResolver incrementalResolver = new IncrementalResolver(
-        _unitElement, _updateOffset, _updateEndOld, _updateEndNew);
+    IncrementalResolver incrementalResolver = new IncrementalResolver(_oldEntry,
+        _newSourceEntry, _newUnitEntry, _unitElement, _updateOffset,
+        _updateEndOld, _updateEndNew);
     incrementalResolver._updateElementNameOffsets();
     incrementalResolver._shiftEntryErrors();
     _updateEntry();
@@ -1393,7 +1507,6 @@ class PoorMansIncrementalResolver {
     RecordingErrorListener errorListener = new RecordingErrorListener();
     CharSequenceReader reader = new CharSequenceReader(code);
     Scanner scanner = new Scanner(_unitSource, reader, errorListener);
-    scanner.enableNullAwareOperators = _options.enableNullAwareOperators;
     Token token = scanner.tokenize();
     _newScanErrors = errorListener.errors;
     return token;
@@ -1438,8 +1551,31 @@ class PoorMansIncrementalResolver {
   }
 
   void _updateEntry() {
-    _entry.setValue(DartEntry.SCAN_ERRORS, _newScanErrors);
-    _entry.setValue(DartEntry.PARSE_ERRORS, _newParseErrors);
+    if (_oldEntry != null) {
+      _updateEntry_OLD();
+    } else {
+      _updateEntry_NEW();
+    }
+  }
+
+  void _updateEntry_NEW() {
+    _newSourceEntry.setState(DART_ERRORS, CacheState.INVALID);
+    // scan results
+    _newSourceEntry.setState(SCAN_ERRORS, CacheState.INVALID);
+    List<TargetedResult> scanDeps =
+        <TargetedResult>[new TargetedResult(_unitSource, CONTENT)];
+    _newSourceEntry.setValue(SCAN_ERRORS, _newScanErrors, scanDeps);
+    // parse results
+    List<TargetedResult> parseDeps =
+        <TargetedResult>[new TargetedResult(_unitSource, TOKEN_STREAM)];
+    _newSourceEntry.setState(PARSE_ERRORS, CacheState.INVALID);
+    _newSourceEntry.setValue(PARSE_ERRORS, _newParseErrors, parseDeps);
+    _newSourceEntry.setValue(PARSED_UNIT, _oldUnit, parseDeps);
+  }
+
+  void _updateEntry_OLD() {
+    _oldEntry.setValue(DartEntry.SCAN_ERRORS, _newScanErrors);
+    _oldEntry.setValue(DartEntry.PARSE_ERRORS, _newParseErrors);
   }
 
   /**
@@ -1546,7 +1682,7 @@ class PoorMansIncrementalResolver {
   }
 
   static AstNode _findNodeCovering(AstNode root, int offset, int end) {
-    NodeLocator nodeLocator = new NodeLocator.con2(offset, end);
+    NodeLocator nodeLocator = new NodeLocator(offset, end);
     return nodeLocator.searchWithin(root);
   }
 

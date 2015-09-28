@@ -20,15 +20,19 @@ class PieChartRenderer extends LayoutRendererBase {
   final String otherItemsLabel;
   final String otherItemsColor;
   final showLabels;
+  final sortDataByValue;
 
   @override
   final String name = "pie-rdr";
 
   final List<ChartLegendItem> _legend = [];
 
+  Iterable otherRow;
+
   PieChartRenderer({
       num innerRadiusRatio: 0,
       bool showLabels,
+      this.sortDataByValue: true,
       this.statsMode: STATS_PERCENTAGE,
       this.maxSliceCount: SMALL_INT_MAX,
       this.otherItemsLabel: 'Other',
@@ -55,55 +59,76 @@ class PieChartRenderer extends LayoutRendererBase {
     // Pick only items that are valid - non-null and don't have null value
     var measure = series.measures.first,
         dimension = area.config.dimensions.first,
-        rows = area.data.rows.where(
-            (x) => x != null && x[measure] != null).toList();
+        indices = new List.generate(area.data.rows.length, (i) => i);
 
-    rows.sort((a, b) => b[measure].compareTo(a[measure]));
+    // Sort row indices by value.
+    if (sortDataByValue) {
+      indices.sort((int a, int b) {
+        var aRow = area.data.rows.elementAt(a),
+            bRow = area.data.rows.elementAt(b),
+            aVal = (aRow == null || aRow.elementAt(measure) == null)
+                ? 0
+                : aRow.elementAt(measure),
+            bVal = (bRow == null || bRow.elementAt(measure) == null)
+                ? 0
+                : bRow.elementAt(measure);
+        return bVal.compareTo(aVal);
+      });
+    }
 
     // Limit items to the passed maxSliceCount
-    var otherRow;
-    if (rows.length > maxSliceCount) {
-      var displayed = rows.take(maxSliceCount).toList();
+    if (indices.length > maxSliceCount) {
+      var displayed = indices.take(maxSliceCount).toList();
       var otherItemsValue = 0;
-      for (int i = displayed.length; i < rows.length; ++i) {
-        otherItemsValue += rows.elementAt(i)[measure];
+      for (int i = displayed.length; i < indices.length; ++i) {
+        var index = indices.elementAt(i),
+            row = area.data.rows.elementAt(index);
+        otherItemsValue += row == null || row.elementAt(measure) == null
+            ? 0
+            : row.elementAt(measure);
       }
-      otherRow = new List(rows.first.length)
+      otherRow = new List(max([dimension, measure]) + 1)
         ..[dimension] = otherItemsLabel
         ..[measure] = otherItemsValue;
-      rows = displayed..add(otherRow);
+      indices = displayed..add(SMALL_INT_MAX);
     } else {
       otherRow = null;
     }
 
     if (area.config.isRTL) {
-      rows = rows.reversed.toList();
+      indices = indices.reversed.toList();
     }
 
-    var data = (new PieLayout()..accessor = (d, i) => d[measure]).layout(rows),
+    var accessor = (d, i) {
+      var row = d == SMALL_INT_MAX ? otherRow : area.data.rows.elementAt(d);
+      return row == null || row.elementAt(measure) == null
+          ? 0
+          : row.elementAt(measure);
+    };
+    var data = (new PieLayout()..accessor = accessor).layout(indices),
         arc = new SvgArc(
             innerRadiusCallback: (d, i, e) => innerRadiusRatio * radius,
-            outerRadiusCallback: (d, i, e) => radius);
+            outerRadiusCallback: (d, i, e) => radius),
+        pie = root.selectAll('.pie-path').data(data);
 
-    var pie = root.selectAll('.pie-path').data(data);
-    var colorForData = (Iterable row) =>
-        row.hashCode == otherRow.hashCode
-            ? theme.getOtherColor()
-            : theme.getColorForKey(row.elementAt(dimension));
-
-    pie.enter.append('path').each((d, i, e) {
-      e.classes.add('pie-path');
-      e.attributes
-        ..['fill'] = colorForData(d.data)
-        ..['d'] = arc.path(d, i, host)
-        ..['stroke-width'] = '1px'
-        ..['stroke'] = '#ffffff';
-      e.append(
-          Namespace.createChildElement('text', e)
-            ..classes.add('pie-label'));
-    });
-
+    pie.enter.append('path').classed('pie-path');
     pie
+      ..each((d, i, e) {
+        var styles = stylesForData(d.data, i);
+        e.classes.removeAll(ChartState.VALUE_CLASS_NAMES);
+        if (!isNullOrEmpty(styles)) {
+          e.classes.addAll(styles);
+        }
+        e.attributes
+          ..['fill'] = colorForData(d.data, i)
+          ..['d'] = arc.path(d, i, host)
+          ..['stroke-width'] = '1px'
+          ..['stroke'] = '#ffffff';
+
+        e.append(
+            Namespace.createChildElement('text', e)
+              ..classes.add('pie-label'));
+      })
       ..on('click', (d, i, e) => _event(mouseClickController, d, i, e))
       ..on('mouseover', (d, i, e) => _event(mouseOverController, d, i, e))
       ..on('mouseout', (d, i, e) => _event(mouseOutController, d, i, e));
@@ -113,12 +138,33 @@ class PieChartRenderer extends LayoutRendererBase {
     _legend.clear();
     var items = new List.generate(data.length, (i) {
       SvgArcData d = data.elementAt(i);
-      Iterable row = d.data;
-      return new ChartLegendItem(color: colorForData(row),
+      Iterable row = d.data == SMALL_INT_MAX
+          ? otherRow
+          : area.data.rows.elementAt(d.data);
+
+      return new ChartLegendItem(index: d.data, color: colorForData(d.data, i),
           label: row.elementAt(dimension), series: [series],
           value: '${(((d.endAngle - d.startAngle) * 50) / math.PI).toStringAsFixed(2)}%');
     });
     return _legend..addAll(area.config.isRTL ? items.reversed : items);
+  }
+
+  String colorForData(int row, int index) =>
+      colorForValue(row, isTail: row == SMALL_INT_MAX);
+
+  Iterable<String> stylesForData(int row, int i) =>
+      stylesForValue(row, isTail: row == SMALL_INT_MAX);
+
+  @override
+  handleStateChanges(List<ChangeRecord> changes) {
+    root.selectAll('.pie-path').each((d, i, e) {
+      var styles = stylesForData(d.data, i);
+      e.classes.removeAll(ChartState.VALUE_CLASS_NAMES);
+      if (!isNullOrEmpty(styles)) {
+        e.classes.addAll(styles);
+      }
+      e.attributes['fill'] = colorForData(d.data, i);
+    });
   }
 
   @override
@@ -128,10 +174,9 @@ class PieChartRenderer extends LayoutRendererBase {
   }
 
   void _event(StreamController controller, data, int index, Element e) {
-     if (controller == null) return;
-     var rowStr = e.parent.dataset['row'];
-     var row = rowStr != null ? int.parse(rowStr) : null;
-     controller.add(
-         new _ChartEvent(scope.event, area, series, row, index, data.value));
-   }
+    // Currently, events are not supported on "Other" pie
+    if (controller == null || data.data == SMALL_INT_MAX) return;
+    controller.add(new DefaultChartEventImpl(
+         scope.event, area, series, data.data, series.measures.first, data.value));
+  }
 }

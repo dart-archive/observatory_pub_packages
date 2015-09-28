@@ -7,11 +7,10 @@ library watcher.directory_watcher.linux;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:stack_trace/stack_trace.dart';
-
+import '../directory_watcher.dart';
+import '../resubscribable.dart';
 import '../utils.dart';
 import '../watch_event.dart';
-import 'resubscribable.dart';
 
 /// Uses the inotify subsystem to watch for filesystem events.
 ///
@@ -23,13 +22,18 @@ import 'resubscribable.dart';
 /// [Directory.watch] producing multiple events for a single logical action
 /// (issue 14372) and providing insufficient information about move events
 /// (issue 14424).
-class LinuxDirectoryWatcher extends ResubscribableDirectoryWatcher {
+class LinuxDirectoryWatcher extends ResubscribableWatcher
+    implements DirectoryWatcher {
+  String get directory => path;
+
   LinuxDirectoryWatcher(String directory)
       : super(directory, () => new _LinuxDirectoryWatcher(directory));
 }
 
-class _LinuxDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
-  final String directory;
+class _LinuxDirectoryWatcher
+    implements DirectoryWatcher, ManuallyClosedWatcher {
+  String get directory => path;
+  final String path;
 
   Stream<WatchEvent> get events => _eventsController.stream;
   final _eventsController = new StreamController<WatchEvent>.broadcast();
@@ -55,16 +59,15 @@ class _LinuxDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
   /// watcher is closed.
   final _subscriptions = new Set<StreamSubscription>();
 
-  _LinuxDirectoryWatcher(String directory)
-      : directory = directory {
+  _LinuxDirectoryWatcher(this.path) {
     // Batch the inotify changes together so that we can dedup events.
-    var innerStream = Chain.track(new Directory(directory).watch())
+    var innerStream = new Directory(path).watch()
         .transform(new BatchedStreamTransformer<FileSystemEvent>());
     _listen(innerStream, _onBatch,
         onError: _eventsController.addError,
         onDone: _onDone);
 
-    _listen(Chain.track(new Directory(directory).list()), (entity) {
+    _listen(new Directory(path).list(), (entity) {
       _entries[entity.path] = new _EntryState(entity is Directory);
       if (entity is! Directory) return;
       _watchSubdir(entity.path);
@@ -159,7 +162,7 @@ class _LinuxDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
     // event for every new file.
     watcher.ready.then((_) {
       if (!isReady || _eventsController.isClosed) return;
-      _listen(Chain.track(new Directory(path).list(recursive: true)), (entry) {
+      _listen(new Directory(path).list(recursive: true), (entry) {
         if (entry is Directory) return;
         _eventsController.add(new WatchEvent(ChangeType.ADD, entry.path));
       }, onError: (error, stackTrace) {
@@ -184,7 +187,7 @@ class _LinuxDirectoryWatcher implements ManuallyClosedDirectoryWatcher {
       // If the watched directory is deleted or moved, we'll get a deletion
       // event for it. Ignore it; we handle closing [this] when the underlying
       // stream is closed.
-      if (event.path == directory) continue;
+      if (event.path == path) continue;
 
       changedEntries.add(event.path);
 

@@ -8,14 +8,14 @@
 
 part of charted.charts;
 
-class _ChartData extends ChangeNotifier implements ChartData {
+class DefaultChartDataImpl extends ChangeNotifier implements ChartData {
   Iterable<ChartColumnSpec> _columns;
   Iterable<Iterable> _rows;
 
   bool _hasObservableRows = false;
   SubscriptionsDisposer _disposer = new SubscriptionsDisposer();
 
-  _ChartData(Iterable<ChartColumnSpec> columns, Iterable<Iterable> rows) {
+  DefaultChartDataImpl(Iterable<ChartColumnSpec> columns, Iterable<Iterable> rows) {
     this.columns = columns;
     this.rows = rows;
   }
@@ -104,7 +104,7 @@ class _ChartData extends ChangeNotifier implements ChartData {
       totalLength += length + 3;
     }
 
-    // Second pass for building the string buffer and padd each cell with space
+    // Second pass for building the string buffer and pad each cell with space
     // according to the difference between cell string length and max length.
     var strBuffer = new StringBuffer();
     strBuffer.write('-' * totalLength + '\n');

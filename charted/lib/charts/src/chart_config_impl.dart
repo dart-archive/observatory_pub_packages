@@ -8,7 +8,7 @@
 
 part of charted.charts;
 
-class _ChartConfig extends ChangeNotifier implements ChartConfig {
+class DefaultChartConfigImpl extends ChangeNotifier implements ChartConfig {
   final Map<String,ChartAxisConfig> _measureAxisRegistry = {};
   final Map<int,ChartAxisConfig> _dimensionAxisRegistry = {};
   final SubscriptionsDisposer _disposer = new SubscriptionsDisposer();
@@ -39,7 +39,7 @@ class _ChartConfig extends ChangeNotifier implements ChartConfig {
   @override
   bool switchAxesForRTL = true;
 
-  _ChartConfig(Iterable<ChartSeries> series, Iterable<int> dimensions) {
+  DefaultChartConfigImpl(Iterable<ChartSeries> series, Iterable<int> dimensions) {
     this.series = series;
     this.dimensions = dimensions;
   }
@@ -53,8 +53,12 @@ class _ChartConfig extends ChangeNotifier implements ChartConfig {
     notifyChange(const ChartConfigChangeRecord());
 
     // Monitor each series for changes on them
-    values.forEach((item) => _disposer.add(item.changes.listen(
-        (_) => notifyChange(const ChartConfigChangeRecord())), item));
+    values.forEach((item) {
+      if (item is Observable) {
+        _disposer.add(item.changes.listen(
+                (_) => notifyChange(const ChartConfigChangeRecord())), item);
+      }
+    });
 
     // Monitor series for changes.  When the list changes, update
     // subscriptions to ChartSeries changes.

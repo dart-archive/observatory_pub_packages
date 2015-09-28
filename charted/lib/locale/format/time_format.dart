@@ -86,10 +86,10 @@ class TimeFormat {
     'L': 'SSS',
     'p': 'a',
     'S': 'ss',
-    'U': 'ww',        // TODO(songrenchu): ICU doesn't disdinguish 'U' and 'W',
+    'U': 'ww',        // TODO(songrenchu): ICU doesn't distinguish 'U' and 'W',
                       // and not supported by Dart: DateFormat
     'w': 'ee',        // TODO(songrenchu): e not supported by Dart: DateFormat
-    'W': 'ww',        // TODO(songrenchu): ICU doesn't disdinguish 'U' and 'W',
+    'W': 'ww',        // TODO(songrenchu): ICU doesn't distinguish 'U' and 'W',
                       // and not supported by Dart: DateFormat
     'x': 'MM/dd/yyyy',
     'X': 'HH:mm:ss',
@@ -104,12 +104,11 @@ class TimeFormat {
         i = -1,
         j = 0,
         n = template.length,
-        formatPad,
         tempChar;
     while (++i < n) {
       if (template[i] == '%') {
         string.add(template.substring(j, i));
-        if ((formatPad = timeFormatPads[tempChar = template[++i]]) != null)
+        if ((timeFormatPads[tempChar = template[++i]]) != null)
           tempChar = template[++i];
         if (timeFormatsTransform[tempChar] != null)
           string.add(timeFormatsTransform[tempChar]);

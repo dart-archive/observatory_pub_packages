@@ -23,6 +23,10 @@ import 'node_streams.dart';
 import 'phase.dart';
 import 'transformer_classifier.dart';
 
+/// Every `_applyLogDuration`, we will issue a fine log entry letting the user
+/// know that the transform is still executing.
+const _applyLogDuration = const Duration(seconds: 10);
+
 /// Describes a transform on a set of assets and its relationship to the build
 /// dependency graph.
 ///
@@ -97,6 +101,11 @@ class TransformNode {
   /// stream.
   final _secondarySubscriptions = new Map<AssetId, StreamSubscription>();
 
+  /// The subscriptions to the [AssetCascade.onAsset] stream for cascades that
+  /// might generate assets in [_missingInputs].
+  final _missingExternalInputSubscriptions =
+      new Map<String, StreamSubscription>();
+
   /// The controllers for the asset nodes emitted by this node.
   final _outputControllers = new Map<AssetId, AssetNodeController>();
 
@@ -166,9 +175,11 @@ class TransformNode {
   /// [_State.NEEDS_DECLARE], and always `null` otherwise.
   AggregateTransformController _applyController;
 
-  /// The number of secondary inputs that have been requested but not yet
-  /// produced.
-  int _pendingSecondaryInputs = 0;
+  /// Map to track pending requests for secondary inputs.
+  ///
+  /// Keys are the secondary inputs that have been requested but not yet
+  /// produced. Values are the number of requests for that input.
+  final _pendingSecondaryInputs = <AssetId, int>{};
 
   /// A stopwatch that tracks the total time spent in a transformer's `apply`
   /// function.
@@ -329,6 +340,13 @@ class TransformNode {
       // transformation.
       _restartRun();
     } else if (input.state.isAvailable) {
+      if (_state == _State.DECLARED) {
+        // If we're passing through this input and its contents don't matter,
+        // update the pass-through controller.
+        var controller = _passThroughControllers[input.id];
+        if (controller != null) controller.setAvailable(input.asset);
+      }
+
       if (_state == _State.DECLARED && _canRunDeclaringEagerly) {
         // If [this] is fully declared but hasn't started applying, this input
         // becoming available may mean that all inputs are available, in which
@@ -353,6 +371,10 @@ class TransformNode {
       }
     } else {
       if (_forced) input.force();
+
+      var controller = _passThroughControllers[input.id];
+      if (controller != null) controller.setDirty();
+
       if (_state == _State.APPLYING && !_applyController.addedId(input.id) &&
           (_forced || !input.isLazy)) {
         // If the input hasn't yet been added to the transform's input stream,
@@ -561,13 +583,32 @@ class TransformNode {
   /// If an input with [id] cannot be found, throws an [AssetNotFoundException].
   Future<Asset> getInput(AssetId id) {
     _timeAwaitingInputs.start();
-    _pendingSecondaryInputs++;
+    _pendingSecondaryInputs[id] = _pendingSecondaryInputs.containsKey(id)
+        ? _pendingSecondaryInputs[id] + 1
+        : 1;
     return phase.previous.getOutput(id).then((node) {
       // Throw if the input isn't found. This ensures the transformer's apply
       // is exited. We'll then catch this and report it through the proper
       // results stream.
       if (node == null) {
         _missingInputs.add(id);
+
+        // If this id is for an asset in another package, subscribe to that
+        // package's asset cascade so when it starts emitting the id we know to
+        // re-run the transformer.
+        if (id.package != phase.cascade.package) {
+          var stream = phase.cascade.graph.onAssetFor(id.package);
+          if (stream != null) {
+            _missingExternalInputSubscriptions.putIfAbsent(id.package, () {
+              return stream.listen((node) {
+                if (!_missingInputs.contains(node.id)) return;
+                if (_forced) node.force();
+                _dirty();
+              });
+            });
+          }
+        }
+
         throw new AssetNotFoundException(id);
       }
 
@@ -577,8 +618,13 @@ class TransformNode {
 
       return node.asset;
     }).whenComplete(() {
-      _pendingSecondaryInputs--;
-      if (_pendingSecondaryInputs != 0) _timeAwaitingInputs.stop();
+      assert(_pendingSecondaryInputs.containsKey(id));
+      if (_pendingSecondaryInputs[id] == 1) {
+        _pendingSecondaryInputs.remove(id);
+      } else {
+        _pendingSecondaryInputs[id]--;
+      }
+      if (_pendingSecondaryInputs.isEmpty) _timeAwaitingInputs.stop();
     });
   }
 
@@ -595,12 +641,36 @@ class TransformNode {
     }
     _maybeFinishApplyController();
 
+    var transformCounterTimer;
+
     return syncFuture(() {
       _timeInTransformer.reset();
       _timeAwaitingInputs.reset();
       _timeInTransformer.start();
+
+      transformCounterTimer = new Timer.periodic(_applyLogDuration, (_) {
+        if (_streams.onLogController.isClosed ||
+            !_timeInTransformer.isRunning) {
+          return;
+        }
+
+        var message = new StringBuffer("Not yet complete after "
+            "${niceDuration(_timeInTransformer.elapsed)}");
+        if (_pendingSecondaryInputs.isNotEmpty) {
+          message.write(", waiting on input(s) "
+              "${_pendingSecondaryInputs.keys.join(", ")}");
+        }
+        _streams.onLogController.add(new LogEntry(
+              info,
+              info.primaryId,
+              LogLevel.FINE,
+              message.toString(),
+              null));
+      });
+
       return transformer.apply(controller.transform);
     }).whenComplete(() {
+      transformCounterTimer.cancel();
       _timeInTransformer.stop();
       _timeAwaitingInputs.stop();
 
@@ -706,13 +776,17 @@ class TransformNode {
     }
   }
 
-  /// Cancels all subscriptions to secondary input nodes.
+  /// Cancels all subscriptions to secondary input nodes and other cascades.
   void _clearSecondarySubscriptions() {
     _missingInputs.clear();
     for (var subscription in _secondarySubscriptions.values) {
       subscription.cancel();
     }
+    for (var subscription in _missingExternalInputSubscriptions.values) {
+      subscription.cancel();
+    }
     _secondarySubscriptions.clear();
+    _missingExternalInputSubscriptions.clear();
   }
 
   /// Removes all output assets.

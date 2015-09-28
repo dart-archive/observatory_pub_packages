@@ -4,11 +4,12 @@
 
 library analyzer.src.plugin.engine_plugin;
 
-import 'package:analyzer/plugin/plugin.dart';
 import 'package:analyzer/plugin/task.dart';
 import 'package:analyzer/src/task/dart.dart';
 import 'package:analyzer/src/task/general.dart';
+import 'package:analyzer/src/task/html.dart';
 import 'package:analyzer/task/model.dart';
+import 'package:plugin/plugin.dart';
 
 /**
  * A plugin that defines the extension points and extensions that are inherently
@@ -61,23 +62,29 @@ class EnginePlugin implements Plugin {
     //
     // Register Dart tasks.
     //
-    registerExtension(taskId, BuildClassConstructorsTask.DESCRIPTOR);
     registerExtension(taskId, BuildCompilationUnitElementTask.DESCRIPTOR);
     registerExtension(taskId, BuildDirectiveElementsTask.DESCRIPTOR);
     registerExtension(taskId, BuildEnumMemberElementsTask.DESCRIPTOR);
     registerExtension(taskId, BuildExportNamespaceTask.DESCRIPTOR);
-    registerExtension(taskId, BuildFunctionTypeAliasesTask.DESCRIPTOR);
-    registerExtension(taskId, BuildLibraryConstructorsTask.DESCRIPTOR);
     registerExtension(taskId, BuildLibraryElementTask.DESCRIPTOR);
     registerExtension(taskId, BuildPublicNamespaceTask.DESCRIPTOR);
-    registerExtension(taskId, BuildSourceClosuresTask.DESCRIPTOR);
+    registerExtension(taskId, BuildSourceExportClosureTask.DESCRIPTOR);
+    registerExtension(taskId, BuildSourceImportExportClosureTask.DESCRIPTOR);
     registerExtension(taskId, BuildTypeProviderTask.DESCRIPTOR);
+    registerExtension(taskId, ComputeConstantDependenciesTask.DESCRIPTOR);
+    registerExtension(taskId, ComputeConstantValueTask.DESCRIPTOR);
+    registerExtension(taskId, ContainingLibrariesTask.DESCRIPTOR);
+    registerExtension(taskId, DartErrorsTask.DESCRIPTOR);
+    registerExtension(taskId, EvaluateUnitConstantsTask.DESCRIPTOR);
     registerExtension(taskId, GatherUsedImportedElementsTask.DESCRIPTOR);
     registerExtension(taskId, GatherUsedLocalElementsTask.DESCRIPTOR);
     registerExtension(taskId, GenerateHintsTask.DESCRIPTOR);
+    registerExtension(taskId, LibraryErrorsReadyTask.DESCRIPTOR);
+    registerExtension(taskId, LibraryUnitErrorsTask.DESCRIPTOR);
     registerExtension(taskId, ParseDartTask.DESCRIPTOR);
+    registerExtension(taskId, ResolveLibraryReferencesTask.DESCRIPTOR);
     registerExtension(taskId, ResolveLibraryTypeNamesTask.DESCRIPTOR);
-    registerExtension(taskId, ResolveReferencesTask.DESCRIPTOR);
+    registerExtension(taskId, ResolveUnitReferencesTask.DESCRIPTOR);
     registerExtension(taskId, ResolveUnitTypeNamesTask.DESCRIPTOR);
     registerExtension(taskId, ResolveVariableReferencesTask.DESCRIPTOR);
     registerExtension(taskId, ScanDartTask.DESCRIPTOR);
@@ -85,6 +92,9 @@ class EnginePlugin implements Plugin {
     //
     // Register HTML tasks.
     //
+    registerExtension(taskId, DartScriptsTask.DESCRIPTOR);
+    registerExtension(taskId, HtmlErrorsTask.DESCRIPTOR);
+    registerExtension(taskId, ParseHtmlTask.DESCRIPTOR);
   }
 
   /**
