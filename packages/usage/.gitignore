@@ -1,0 +1,6 @@
+build/
+packages
+.buildlog
+pubspec.lock
+.settings/
+.pub/

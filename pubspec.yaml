@@ -6,6 +6,7 @@ transformers:
     - web/index.html
     inline_stylesheets:
       lib/src/elements/css/shared.css: false
+      packages/charted/charts/themes/quantum_theme.css: false
 - $dart2js:
     $include: "**/*.polymer.bootstrap.dart"
     suppressWarnings: false
@@ -13,8 +14,8 @@ transformers:
 dependencies:
   args: any
   charted: ^0.2.9
-  polymer: any
+  polymer: ^0.16.3
   unittest: < 0.12.0
   usage: any
-  code_transformers: 0.2.9
-
+dependency_overrides:
+  analyzer: ^0.26.1
