@@ -4,7 +4,7 @@
 
 library path.test.windows_test;
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:path/path.dart' as path;
 
 import 'utils.dart';
@@ -13,7 +13,7 @@ main() {
   var context =
       new path.Context(style: path.Style.windows, current: r'C:\root\path');
 
-  group('separator', () {
+  test('separator', () {
     expect(context.separator, '\\');
   });
 
@@ -535,6 +535,30 @@ main() {
       expect(context.isWithin(r'C:\foo', r'\bar\baz'), isFalse);
       expect(context.isWithin(r'baz', r'C:\root\path\baz\bang'), isTrue);
       expect(context.isWithin(r'baz', r'C:\root\path\bang\baz'), isFalse);
+    });
+
+    test('complex cases', () {
+      expect(context.isWithin(r'foo\.\bar', r'foo\bar\baz'), isTrue);
+      expect(context.isWithin(r'foo\\bar', r'foo\bar\baz'), isTrue);
+      expect(context.isWithin(r'foo\qux\..\bar', r'foo\bar\baz'), isTrue);
+      expect(context.isWithin(r'foo\bar', r'foo\bar\baz\..\..'), isFalse);
+      expect(context.isWithin(r'foo\bar', r'foo\bar\\\'), isFalse);
+      expect(context.isWithin(r'foo\.bar', r'foo\.bar\baz'), isTrue);
+      expect(context.isWithin(r'foo\.\bar', r'foo\.bar\baz'), isFalse);
+      expect(context.isWithin(r'foo\..bar', r'foo\..bar\baz'), isTrue);
+      expect(context.isWithin(r'foo\bar', r'foo\bar\baz\..'), isFalse);
+      expect(context.isWithin(r'foo\bar', r'foo\bar\baz\..\qux'), isTrue);
+      expect(context.isWithin(r'C:\', 'C:/foo'), isTrue);
+      expect(context.isWithin(r'C:\', r'D:\foo'), isFalse);
+      expect(context.isWithin(r'C:\', r'\\foo\bar'), isFalse);
+    });
+
+    test('with root-relative paths', () {
+      expect(context.isWithin(r'\foo', r'C:\foo\bar'), isTrue);
+      expect(context.isWithin(r'C:\foo', r'\foo\bar'), isTrue);
+      expect(context.isWithin(r'\root', r'foo\bar'), isTrue);
+      expect(context.isWithin(r'foo', r'\root\path\foo\bar'), isTrue);
+      expect(context.isWithin(r'\foo', r'\foo\bar'), isTrue);
     });
 
     test('from a relative root', () {

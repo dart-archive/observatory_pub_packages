@@ -9,25 +9,42 @@ import '../fast_hash.dart';
 
 /// A constraint that determines the different ways a related set of chunks may
 /// be split.
-abstract class Rule extends FastHash {
+class Rule extends FastHash {
+  /// Rule value that splits no chunks.
+  ///
+  /// Every rule is required to treat this value as fully unsplit.
+  static const unsplit = 0;
+
+  /// Rule constraint value that means "any value as long as something splits".
+  ///
+  /// It disallows [unsplit] but allows any other value.
+  static const mustSplit = -1;
+
   /// The number of different states this rule can be in.
   ///
   /// Each state determines which set of chunks using this rule are split and
   /// which aren't. Values range from zero to one minus this. Value zero
   /// always means "no chunks are split" and increasing values by convention
   /// mean increasingly undesirable splits.
-  int get numValues;
+  ///
+  /// By default, a rule has two values: fully unsplit and fully split.
+  int get numValues => 2;
 
   /// The rule value that forces this rule into its maximally split state.
   ///
   /// By convention, this is the highest of the range of allowed values.
   int get fullySplitValue => numValues - 1;
 
-  int get cost => Cost.normal;
+  final int cost;
 
   /// During line splitting [LineSplitter] sets this to the index of this
   /// rule in its list of rules.
   int index;
+
+  /// If `true`, the rule has been "hardened" meaning it's been placed into a
+  /// permanent "must fully split" state.
+  bool get isHardened => _isHardened;
+  bool _isHardened = false;
 
   /// The other [Rule]s that "surround" this one (and care about that fact).
   ///
@@ -41,7 +58,6 @@ abstract class Rule extends FastHash {
   ///
   /// This contains all direct as well as transitive relationships. If A
   /// contains B which contains C, C's outerRules contains both B and A.
-  Iterable<Rule> get outerRules => _outerRules;
   final Set<Rule> _outerRules = new Set<Rule>();
 
   /// Adds [inner] as an inner rule of this rule if it cares about inner rules.
@@ -60,7 +76,38 @@ abstract class Rule extends FastHash {
   /// rules.
   bool get splitsOnInnerRules => true;
 
-  bool isSplit(int value, Chunk chunk);
+  Rule([int cost]) : cost = cost ?? Cost.normal;
+
+  /// Creates a new rule that is already fully split.
+  Rule.hard() : cost = 0 {
+    // Set the cost to zero since it will always be applied, so there's no
+    // point in penalizing it.
+    //
+    // Also, this avoids doubled counting in literal blocks where there is both
+    // a split in the outer chunk containing the block and the inner hard split
+    // between the elements or statements.
+    harden();
+  }
+
+  /// Fixes this rule into a "fully split" state.
+  void harden() {
+    _isHardened = true;
+  }
+
+  /// Returns `true` if [chunk] should split when this rule has [value].
+  bool isSplit(int value, Chunk chunk) {
+    if (_isHardened) return true;
+
+    if (value == Rule.unsplit) return false;
+
+    // Let the subclass decide.
+    return isSplitAtValue(value, chunk);
+  }
+
+  /// Subclasses can override this to determine which values split which chunks.
+  ///
+  /// By default, this assumes every chunk splits.
+  bool isSplitAtValue(value, chunk) => true;
 
   /// Given that this rule has [value], determine if [other]'s value should be
   /// constrained.
@@ -70,51 +117,70 @@ abstract class Rule extends FastHash {
   /// value. Returns -1 to allow [other] to take any non-zero value. Returns
   /// null to not constrain other.
   int constrain(int value, Rule other) {
-    // By default, any implied rule will be fully split if this one is fully
-    // split.
-    if (value == 0) return null;
+    // By default, any containing rule will be fully split if this one is split.
+    if (value == Rule.unsplit) return null;
     if (_outerRules.contains(other)) return other.fullySplitValue;
 
     return null;
   }
 
-  String toString() => "$id";
-}
-
-/// A rule that always splits a chunk.
-class HardSplitRule extends Rule {
-  int get numValues => 1;
-
-  /// It's always going to be applied, so there's no point in penalizing it.
+  /// A protected method for subclasses to add the rules that they constrain
+  /// to [rules].
   ///
-  /// Also, this avoids doubled counting in literal blocks where there is both
-  /// a split in the outer chunk containing the block and the inner hard split
-  /// between the elements or statements.
-  int get cost => 0;
+  /// Called by [Rule] the first time [constrainedRules] is accessed.
+  void addConstrainedRules(Set<Rule> rules) {}
 
-  /// It's always split anyway.
-  bool get splitsOnInnerRules => false;
+  /// Discards constraints on any rule that doesn't have an index.
+  ///
+  /// This is called by [LineSplitter] after it has indexed all of the in-use
+  /// rules. A rule may end up with a constraint on a rule that's no longer
+  /// used by any chunk. This can happen if the rule gets hardened, or if it
+  /// simply never got used by a chunk. For example, a rule for splitting an
+  /// empty list of metadata annotations.
+  ///
+  /// This removes all of those.
+  void forgetUnusedRules() {
+    _outerRules.retainWhere((rule) => rule.index != null);
 
-  bool isSplit(int value, Chunk chunk) => true;
+    // Clear the cached ones too.
+    _constrainedRules = null;
+    _allConstrainedRules = null;
+  }
 
-  String toString() => "Hard";
-}
+  /// The other [Rule]s that this rule places immediate constraints on.
+  Set<Rule> get constrainedRules {
+    // Lazy initialize this on first use. Note: Assumes this is only called
+    // after the chunks have been written and any constraints have been wired
+    // up.
+    if (_constrainedRules == null) {
+      _constrainedRules = _outerRules.toSet();
+      addConstrainedRules(_constrainedRules);
+    }
 
-/// A basic rule that has two states: unsplit or split.
-class SimpleRule extends Rule {
-  /// Two values: 0 is unsplit, 1 is split.
-  int get numValues => 2;
+    return _constrainedRules;
+  }
 
-  final int cost;
+  Set<Rule> _constrainedRules;
 
-  final bool splitsOnInnerRules;
+  /// The transitive closure of all of the rules this rule places constraints
+  /// on, directly or indirectly, including itself.
+  Set<Rule> get allConstrainedRules {
+    if (_allConstrainedRules == null) {
+      visit(Rule rule) {
+        if (_allConstrainedRules.contains(rule)) return;
 
-  SimpleRule({int cost, bool splitsOnInnerRules})
-      : cost = cost != null ? cost : Cost.normal,
-        splitsOnInnerRules =
-            splitsOnInnerRules != null ? splitsOnInnerRules : true;
+        _allConstrainedRules.add(rule);
+        rule.constrainedRules.forEach(visit);
+      }
 
-  bool isSplit(int value, Chunk chunk) => value == 1;
+      _allConstrainedRules = new Set();
+      visit(this);
+    }
 
-  String toString() => "Simple${super.toString()}";
+    return _allConstrainedRules;
+  }
+
+  Set<Rule> _allConstrainedRules;
+
+  String toString() => "$id";
 }

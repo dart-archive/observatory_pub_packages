@@ -1,14 +1,12 @@
 language: dart
-before_install:
-  - "export CHROME_ARGS=--no-sandbox"
-  - "export DISPLAY=:99.0"
-  - "sh -e /etc/init.d/xvfb start"
-script: ./tool/travis.sh
-
-# Use container based builds; enable caching.
+dart:
+  - stable
+  - dev
 sudo: false
-cache:
-  apt: true
-  directories:
-  - .pub
-  - .pub-cache
+
+# before_install:
+#   - "export CHROME_ARGS=--no-sandbox"
+#   - "export DISPLAY=:99.0"
+#   - "sh -e /etc/init.d/xvfb start"
+
+script: ./tool/travis.sh

@@ -43,7 +43,7 @@ class TypeArgumentRule extends Rule {
 
   bool isSplit(int value, Chunk chunk) {
     // Don't split at all.
-    if (value == 0) return false;
+    if (value == Rule.unsplit) return false;
 
     // Split before every argument.
     if (value == numValues - 1) return true;
@@ -52,4 +52,6 @@ class TypeArgumentRule extends Rule {
     // to try to keep as much on the first line as possible.
     return chunk == _arguments[_arguments.length - value];
   }
+
+  String toString() => "TypeArg${super.toString()}";
 }

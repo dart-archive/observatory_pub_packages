@@ -22,6 +22,8 @@ bool processDirectory(FormatterOptions options, Directory directory) {
   options.reporter.showDirectory(directory.path);
 
   var success = true;
+  var shownHiddenPaths = new Set<String>();
+
   for (var entry in directory.listSync(
       recursive: true, followLinks: options.followLinks)) {
     var relative = p.relative(entry.path, from: directory.path);
@@ -34,8 +36,22 @@ bool processDirectory(FormatterOptions options, Directory directory) {
     if (entry is! File || !entry.path.endsWith(".dart")) continue;
 
     // If the path is in a subdirectory starting with ".", ignore it.
-    if (p.split(relative).any((part) => part.startsWith("."))) {
-      options.reporter.showHiddenFile(relative);
+    var parts = p.split(relative);
+    var hiddenIndex;
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].startsWith(".")) {
+        hiddenIndex = i;
+        break;
+      }
+    }
+
+    if (hiddenIndex != null) {
+      // Since we'll hide everything inside the directory starting with ".",
+      // show the directory name once instead of once for each file.
+      var hiddenPath = p.joinAll(parts.take(hiddenIndex + 1));
+      if (shownHiddenPaths.add(hiddenPath)) {
+        options.reporter.showHiddenPath(hiddenPath);
+      }
       continue;
     }
 
@@ -51,12 +67,14 @@ bool processDirectory(FormatterOptions options, Directory directory) {
 bool processFile(FormatterOptions options, File file, {String label}) {
   if (label == null) label = file.path;
 
-  var formatter = new DartFormatter(pageWidth: options.pageWidth);
+  var formatter =
+      new DartFormatter(indent: options.indent, pageWidth: options.pageWidth);
   try {
     var source = new SourceCode(file.readAsStringSync(), uri: file.path);
+    options.reporter.beforeFile(file, label);
     var output = formatter.formatSource(source);
     options.reporter
-        .showFile(file, label, output, changed: source.text != output.text);
+        .afterFile(file, label, output, changed: source.text != output.text);
     return true;
   } on FormatterException catch (err) {
     var color = Platform.operatingSystem != "windows" &&

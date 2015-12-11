@@ -7,15 +7,17 @@ library usage.usage_impl_io_test;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:usage/src/usage_impl_io.dart';
+
+main() => defineTests();
 
 void defineTests() {
   group('IOPostHandler', () {
     test('sendPost', () {
       var httpClient = new MockHttpClient();
       IOPostHandler postHandler = new IOPostHandler(mockClient: httpClient);
-      Map args = {'utv': 'varName', 'utt': 123};
+      Map<String, dynamic> args = {'utv': 'varName', 'utt': 123};
       return postHandler.sendPost('http://www.google.com', args).then((_) {
         expect(httpClient.sendCount, 1);
       });

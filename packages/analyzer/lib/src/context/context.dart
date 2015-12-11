@@ -115,6 +115,12 @@ class AnalysisContextImpl implements InternalAnalysisContext {
   AnalysisCache _cache;
 
   /**
+   * Configuration data associated with this context.
+   */
+  final HashMap<ResultDescriptor, Object> _configurationData =
+      new HashMap<ResultDescriptor, Object>();
+
+  /**
    * The task manager used to manage the tasks used to analyze code.
    */
   TaskManager _taskManager;
@@ -409,6 +415,13 @@ class AnalysisContextImpl implements InternalAnalysisContext {
     }
   }
 
+  /**
+   * Invalidate analysis cache.
+   */
+  void invalidateCachedResults() {
+    _cache = createCacheFromSourceFactory(_sourceFactory);
+  }
+
   @override
   List<Source> get sources {
     return _cache.sources.toList();
@@ -583,12 +596,10 @@ class AnalysisContextImpl implements InternalAnalysisContext {
   @override
   List<AnalysisError> computeErrors(Source source) {
     String name = source.shortName;
-    if (AnalysisEngine.isDartFileName(name)) {
-      return computeResult(source, DART_ERRORS);
-    } else if (AnalysisEngine.isHtmlFileName(name)) {
+    if (AnalysisEngine.isHtmlFileName(name)) {
       return computeResult(source, HTML_ERRORS);
     }
-    return AnalysisError.NO_ERRORS;
+    return computeResult(source, DART_ERRORS);
   }
 
   @override
@@ -764,6 +775,9 @@ class AnalysisContextImpl implements InternalAnalysisContext {
     AnalysisTarget target = new LibrarySpecificUnit(librarySource, unitSource);
     return getResult(target, COMPILATION_UNIT_ELEMENT);
   }
+
+  @override
+  Object getConfigurationData(ResultDescriptor key) => _configurationData[key];
 
   @override
   TimestampedData<String> getContents(Source source) {
@@ -1152,8 +1166,10 @@ class AnalysisContextImpl implements InternalAnalysisContext {
       entry.setState(RESOLVED_UNIT7, CacheState.FLUSHED);
       entry.setState(RESOLVED_UNIT8, CacheState.FLUSHED);
       entry.setState(RESOLVED_UNIT9, CacheState.FLUSHED);
+      entry.setState(RESOLVED_UNIT10, CacheState.FLUSHED);
       // USED_IMPORTED_ELEMENTS
       // USED_LOCAL_ELEMENTS
+      setValue(STRONG_MODE_ERRORS, AnalysisError.NO_ERRORS);
       setValue(VARIABLE_REFERENCE_ERRORS, AnalysisError.NO_ERRORS);
       setValue(VERIFY_ERRORS, AnalysisError.NO_ERRORS);
     });
@@ -1201,6 +1217,11 @@ class AnalysisContextImpl implements InternalAnalysisContext {
   }
 
   @override
+  void setConfigurationData(ResultDescriptor key, Object data) {
+    _configurationData[key] = data;
+  }
+
+  @override
   void setContents(Source source, String contents) {
     _contentsChanged(source, contents, true);
   }
@@ -1230,6 +1251,7 @@ class AnalysisContextImpl implements InternalAnalysisContext {
     entry.setState(RESOLVED_UNIT7, CacheState.FLUSHED);
     entry.setState(RESOLVED_UNIT8, CacheState.FLUSHED);
     entry.setState(RESOLVED_UNIT9, CacheState.FLUSHED);
+    entry.setState(RESOLVED_UNIT10, CacheState.FLUSHED);
     entry.setState(RESOLVED_UNIT, CacheState.FLUSHED);
   }
 

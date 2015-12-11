@@ -1,3 +1,23 @@
+## 1.3.9
+
+* Further improve the performance of `isWithin()` when paths contain `/.`
+  sequences that aren't `/../`.
+
+## 1.3.8
+
+* Improve the performance of `isWithin()` when the paths don't contain
+  asymmetrical `.` or `..` components.
+
+* Improve the performance of `relative()` when `from` is `null` and the path is
+  already relative.
+
+* Improve the performance of `current` when the current directory hasn't
+  changed.
+
+## 1.3.7
+
+* Improve the performance of `absolute()` and `normalize()`.
+
 ## 1.3.6
 
 * Ensure that `path.toUri` preserves trailing slashes for relative paths.

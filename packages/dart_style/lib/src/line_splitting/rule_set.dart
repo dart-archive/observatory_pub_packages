@@ -23,14 +23,22 @@ class RuleSet {
   RuleSet._(this._values);
 
   /// Returns `true` of [rule] is bound in this set.
-  bool contains(Rule rule) => _values[rule.index] != null;
+  bool contains(Rule rule) {
+    // Treat hardened rules as implicitly bound.
+    if (rule.isHardened) return true;
 
-  /// Gets the bound value for [rule] or `0` if it is not bound.
+    return _values[rule.index] != null;
+  }
+
+  /// Gets the bound value for [rule] or [Rule.unsplit] if it is not bound.
   int getValue(Rule rule) {
+    // Hardened rules are implicitly bound.
+    if (rule.isHardened) return rule.fullySplitValue;
+
     var value = _values[rule.index];
     if (value != null) return value;
 
-    return 0;
+    return Rule.unsplit;
   }
 
   /// Invokes [callback] for each rule in [rules] with the rule's value, which
@@ -56,19 +64,26 @@ class RuleSet {
   /// If an unbound rule gets constrained to `-1` (meaning it must split, but
   /// can split any way it wants), invokes [onSplitRule] with it.
   bool tryBind(List<Rule> rules, Rule rule, int value, onSplitRule(Rule rule)) {
+    assert(!rule.isHardened);
+
     _values[rule.index] = value;
 
     // Test this rule against the other rules being bound.
-    for (var other in rules) {
-      if (rule == other) continue;
+    for (var other in rule.constrainedRules) {
+      var otherValue;
+      // Hardened rules are implicitly bound.
+      if (other.isHardened) {
+        otherValue = other.fullySplitValue;
+      } else {
+        otherValue = _values[other.index];
+      }
 
-      var otherValue = _values[other.index];
       var constraint = rule.constrain(value, other);
 
       if (otherValue == null) {
         // The other rule is unbound, so see if we can constrain it eagerly to
         // a value now.
-        if (constraint == -1) {
+        if (constraint == Rule.mustSplit) {
           // If we know the rule has to split and there's only one way it can,
           // just bind that.
           if (other.numValues == 2) {
@@ -84,16 +99,16 @@ class RuleSet {
       } else {
         // It's already bound, so see if the new rule's constraint disallows
         // that value.
-        if (constraint == -1) {
-          if (otherValue == 0) return false;
+        if (constraint == Rule.mustSplit) {
+          if (otherValue == Rule.unsplit) return false;
         } else if (constraint != null) {
           if (otherValue != constraint) return false;
         }
 
         // See if the other rule's constraint allows us to use this value.
         constraint = other.constrain(otherValue, rule);
-        if (constraint == -1) {
-          if (value == 0) return false;
+        if (constraint == Rule.mustSplit) {
+          if (value == Rule.unsplit) return false;
         } else if (constraint != null) {
           if (value != constraint) return false;
         }

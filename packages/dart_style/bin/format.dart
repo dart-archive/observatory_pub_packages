@@ -6,19 +6,27 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/args.dart';
+
 import 'package:dart_style/src/dart_formatter.dart';
 import 'package:dart_style/src/formatter_exception.dart';
 import 'package:dart_style/src/formatter_options.dart';
 import 'package:dart_style/src/io.dart';
 import 'package:dart_style/src/source_code.dart';
 
+// Note: The following line of code is modified by tool/grind.dart.
+const version = "0.2.1";
+
 void main(List<String> args) {
   var parser = new ArgParser(allowTrailingOptions: true);
 
   parser.addFlag("help",
       abbr: "h", negatable: false, help: "Shows usage information.");
+  parser.addFlag("version",
+      negatable: false, help: "Shows version information.");
   parser.addOption("line-length",
       abbr: "l", help: "Wrap lines longer than this.", defaultsTo: "80");
+  parser.addOption("indent",
+      abbr: "i", help: "Spaces of leading indentation.", defaultsTo: "0");
   parser.addOption("preserve",
       help: 'Selection to preserve, formatted as "start:length".');
   parser.addFlag("dry-run",
@@ -33,6 +41,8 @@ void main(List<String> args) {
       abbr: "m",
       negatable: false,
       help: "Produce machine-readable JSON output.");
+  parser.addFlag("profile",
+      negatable: false, help: "Display profile times after running.");
   parser.addFlag("follow-links",
       negatable: false,
       help: "Follow links to files and directories.\n"
@@ -51,6 +61,11 @@ void main(List<String> args) {
 
   if (argResults["help"]) {
     printUsage(parser);
+    return;
+  }
+
+  if (argResults["version"]) {
+    print(version);
     return;
   }
 
@@ -100,8 +115,11 @@ void main(List<String> args) {
     reporter = OutputReporter.printJson;
   }
 
-  var pageWidth;
+  if (argResults["profile"]) {
+    reporter = new ProfileReporter(reporter);
+  }
 
+  var pageWidth;
   try {
     pageWidth = int.parse(argResults["line-length"]);
   } on FormatException catch (_) {
@@ -111,15 +129,31 @@ void main(List<String> args) {
         '"${argResults['line-length']}".');
   }
 
+  var indent;
+
+  try {
+    indent = int.parse(argResults["indent"]);
+    if (indent < 0 || indent.toInt() != indent) throw new FormatException();
+  } on FormatException catch (_) {
+    usageError(
+        parser,
+        '--indent must be a non-negative integer, was '
+        '"${argResults['indent']}".');
+  }
+
   var followLinks = argResults["follow-links"];
 
   var options = new FormatterOptions(reporter,
-      pageWidth: pageWidth, followLinks: followLinks);
+      indent: indent, pageWidth: pageWidth, followLinks: followLinks);
 
   if (argResults.rest.isEmpty) {
     formatStdin(options, selection);
   } else {
     formatPaths(options, argResults.rest);
+  }
+
+  if (argResults["profile"]) {
+    (reporter as ProfileReporter).showProfile();
   }
 }
 
@@ -147,15 +181,17 @@ void formatStdin(FormatterOptions options, List<int> selection) {
 
   var input = new StringBuffer();
   stdin.transform(new Utf8Decoder()).listen(input.write, onDone: () {
-    var formatter = new DartFormatter(pageWidth: options.pageWidth);
+    var formatter =
+        new DartFormatter(indent: options.indent, pageWidth: options.pageWidth);
     try {
+      options.reporter.beforeFile(null, "<stdin>");
       var source = new SourceCode(input.toString(),
           uri: "stdin",
           selectionStart: selectionStart,
           selectionLength: selectionLength);
       var output = formatter.formatSource(source);
       options.reporter
-          .showFile(null, "<stdin>", output, changed: source != output);
+          .afterFile(null, "<stdin>", output, changed: source != output);
       return true;
     } on FormatterException catch (err) {
       stderr.writeln(err.message());

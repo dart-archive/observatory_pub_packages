@@ -4,7 +4,7 @@
 
 library path.test.posix_test;
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:path/path.dart' as path;
 
 import 'utils.dart';
@@ -417,6 +417,19 @@ main() {
       expect(context.isWithin('/', '/foo/bar'), isTrue);
       expect(context.isWithin('baz', '/root/path/baz/bang'), isTrue);
       expect(context.isWithin('baz', '/root/path/bang/baz'), isFalse);
+    });
+
+    test('complex cases', () {
+      expect(context.isWithin('foo/./bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo//bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo/qux/../bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/../..'), isFalse);
+      expect(context.isWithin('foo/bar', 'foo/bar///'), isFalse);
+      expect(context.isWithin('foo/.bar', 'foo/.bar/baz'), isTrue);
+      expect(context.isWithin('foo/./bar', 'foo/.bar/baz'), isFalse);
+      expect(context.isWithin('foo/..bar', 'foo/..bar/baz'), isTrue);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/..'), isFalse);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/../qux'), isTrue);
     });
 
     test('from a relative root', () {

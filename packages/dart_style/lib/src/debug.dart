@@ -9,7 +9,6 @@ import 'dart:math' as math;
 
 import 'chunk.dart';
 import 'line_splitting/rule_set.dart';
-import 'rule/rule.dart';
 
 /// Set this to `true` to turn on diagnostic output while building chunks.
 bool traceChunkBuilder = false;
@@ -68,15 +67,16 @@ String bold(message) => "$_bold$message$_none";
 /// Prints [chunks] to stdout, one chunk per line, with detailed information
 /// about each chunk.
 void dumpChunks(int start, List<Chunk> chunks) {
-  if (chunks.isEmpty) return;
+  if (chunks.skip(start).isEmpty) return;
 
-  // Show the spans as vertical bands over their range.
+  // Show the spans as vertical bands over their range (unless there are too
+  // many).
   var spans = new Set();
   addSpans(chunks) {
     for (var chunk in chunks) {
       spans.addAll(chunk.spans);
 
-      addSpans(chunk.blockChunks);
+      if (chunk.isBlock) addSpans(chunk.block.chunks);
     }
   }
 
@@ -84,28 +84,41 @@ void dumpChunks(int start, List<Chunk> chunks) {
 
   spans = spans.toList();
 
-  var rules = chunks
-      .map((chunk) => chunk.rule)
-      .where((rule) => rule != null && rule is! HardSplitRule)
-      .toSet();
+  var rules =
+      chunks.map((chunk) => chunk.rule).where((rule) => rule != null).toSet();
 
   var rows = [];
 
-  addChunk(chunk, prefix, index) {
+  addChunk(List<Chunk> chunks, String prefix, int index) {
     var row = [];
     row.add("$prefix$index:");
 
+    var chunk = chunks[index];
     if (chunk.text.length > 70) {
       row.add(chunk.text.substring(0, 70));
     } else {
       row.add(chunk.text);
     }
 
-    var spanBars = "";
-    for (var span in spans) {
-      spanBars += chunk.spans.contains(span) ? "|" : " ";
+    if (spans.length <= 20) {
+      var spanBars = "";
+      for (var span in spans) {
+        if (chunk.spans.contains(span)) {
+          if (index == 0 || !chunks[index - 1].spans.contains(span)) {
+            spanBars += "╖";
+          } else {
+            spanBars += "║";
+          }
+        } else {
+          if (index > 0 && chunks[index - 1].spans.contains(span)) {
+            spanBars += "╜";
+          } else {
+            spanBars += " ";
+          }
+        }
+      }
+      row.add(spanBars);
     }
-    row.add(spanBars);
 
     writeIf(predicate, String callback()) {
       if (predicate) {
@@ -115,16 +128,21 @@ void dumpChunks(int start, List<Chunk> chunks) {
       }
     }
 
-    if (chunk.rule != null) {
-      row.add(chunk.isHardSplit ? "" : chunk.rule.toString());
-
-      var outerRules = chunk.rule.outerRules.toSet().intersection(rules);
-      writeIf(outerRules.isNotEmpty, () => "-> ${outerRules.join(" ")}");
-    } else {
-      row.add("(no rule)");
-
-      // Outer rules.
+    if (chunk.rule == null) {
       row.add("");
+      row.add("(no rule)");
+      row.add("");
+    } else {
+      writeIf(chunk.rule.cost != 0, () => "\$${chunk.rule.cost}");
+
+      var ruleString = chunk.rule.toString();
+      if (chunk.rule.isHardened) ruleString += "!";
+      row.add(ruleString);
+
+      var constrainedRules =
+          chunk.rule.constrainedRules.toSet().intersection(rules);
+      writeIf(constrainedRules.isNotEmpty,
+          () => "-> ${constrainedRules.join(" ")}");
     }
 
     writeIf(chunk.indent != null && chunk.indent != 0,
@@ -135,17 +153,19 @@ void dumpChunks(int start, List<Chunk> chunks) {
 
     writeIf(chunk.flushLeft != null && chunk.flushLeft, () => "flush");
 
+    writeIf(chunk.canDivide, () => "divide");
+
     rows.add(row);
 
-    for (var j = 0; j < chunk.blockChunks.length; j++) {
-      addChunk(chunk.blockChunks[j], "$prefix$index.", j);
+    if (chunk.isBlock) {
+      for (var j = 0; j < chunk.block.chunks.length; j++) {
+        addChunk(chunk.block.chunks, "$prefix$index.", j);
+      }
     }
   }
 
-  var i = start;
-  for (var chunk in chunks) {
-    addChunk(chunk, "", i);
-    i++;
+  for (var i = start; i < chunks.length; i++) {
+    addChunk(chunks, "", i);
   }
 
   var rowWidths = new List.filled(rows.first.length, 0);
@@ -172,6 +192,33 @@ void dumpChunks(int start, List<Chunk> chunks) {
   print(buffer.toString());
 }
 
+/// Shows all of the constraints between the rules used by [chunks].
+void dumpConstraints(List<Chunk> chunks) {
+  var rules =
+      chunks.map((chunk) => chunk.rule).where((rule) => rule != null).toSet();
+
+  for (var rule in rules) {
+    var constrainedValues = [];
+    for (var value = 0; value < rule.numValues; value++) {
+      var constraints = [];
+      for (var other in rules) {
+        if (rule == other) continue;
+
+        var constraint = rule.constrain(value, other);
+        if (constraint != null) {
+          constraints.add("$other->$constraint");
+        }
+      }
+
+      if (constraints.isNotEmpty) {
+        constrainedValues.add("$value:(${constraints.join(' ')})");
+      }
+    }
+
+    log("$rule ${constrainedValues.join(' ')}");
+  }
+}
+
 /// Convert the line to a [String] representation.
 ///
 /// It will determine how best to split it into multiple lines of output and
@@ -187,7 +234,7 @@ void dumpLines(List<Chunk> chunks, int firstLineIndent, SplitSet splits) {
       if (chunk.spaceWhenUnsplit) buffer.write(" ");
 
       // Recurse into the block.
-      writeChunksUnsplit(chunk.blockChunks);
+      if (chunk.isBlock) writeChunksUnsplit(chunk.block.chunks);
     }
   }
 
@@ -203,7 +250,7 @@ void dumpLines(List<Chunk> chunks, int firstLineIndent, SplitSet splits) {
         writeIndent(splits.getColumn(i));
       }
     } else {
-      writeChunksUnsplit(chunk.blockChunks);
+      if (chunk.isBlock) writeChunksUnsplit(chunk.block.chunks);
 
       if (chunk.spaceWhenUnsplit) buffer.write(" ");
     }

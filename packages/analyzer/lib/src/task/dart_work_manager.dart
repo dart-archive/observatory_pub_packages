@@ -46,6 +46,7 @@ class DartWorkManager implements WorkManager {
     LIBRARY_UNIT_ERRORS,
     RESOLVE_TYPE_NAMES_ERRORS,
     RESOLVE_UNIT_ERRORS,
+    STRONG_MODE_ERRORS,
     VARIABLE_REFERENCE_ERRORS,
     VERIFY_ERRORS
   ];
@@ -193,6 +194,12 @@ class DartWorkManager implements WorkManager {
    * Maybe empty, but not null.
    */
   List<Source> getLibrariesContainingPart(Source part) {
+    if (part.isInSystemLibrary) {
+      DartWorkManager sdkDartWorkManager = _getSdkDartWorkManager();
+      if (sdkDartWorkManager != this) {
+        return sdkDartWorkManager.getLibrariesContainingPart(part);
+      }
+    }
     List<Source> libraries = partLibrariesMap[part];
     return libraries != null ? libraries : Source.EMPTY_LIST;
   }
@@ -265,6 +272,14 @@ class DartWorkManager implements WorkManager {
   void resultsComputed(
       AnalysisTarget target, Map<ResultDescriptor, dynamic> outputs) {
     bool isDartSource = _isDartSource(target);
+    // Route SDK outputs to the SDK WorkManager.
+    if (isDartSource && target.source.isInSystemLibrary) {
+      DartWorkManager sdkWorkManager = _getSdkDartWorkManager();
+      if (sdkWorkManager != this) {
+        sdkWorkManager.resultsComputed(target, outputs);
+        return;
+      }
+    }
     // Organize sources.
     bool isDartLibrarySource = false;
     if (isDartSource) {
@@ -336,6 +351,22 @@ class DartWorkManager implements WorkManager {
 
   void unitIncrementallyResolved(Source librarySource, Source unitSource) {
     librarySourceQueue.add(librarySource);
+  }
+
+  /**
+   * Return the SDK [DartWorkManager] or this one.
+   */
+  DartWorkManager _getSdkDartWorkManager() {
+    SourceFactory sourceFactory = context.sourceFactory;
+    InternalAnalysisContext sdkContext = sourceFactory.dartSdk.context;
+    if (sdkContext != context) {
+      for (WorkManager workManager in sdkContext.workManagers) {
+        if (workManager is DartWorkManager) {
+          return workManager;
+        }
+      }
+    }
+    return this;
   }
 
   /**

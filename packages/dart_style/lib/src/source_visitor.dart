@@ -15,6 +15,7 @@ import 'chunk_builder.dart';
 import 'dart_formatter.dart';
 import 'rule/argument.dart';
 import 'rule/combinator.dart';
+import 'rule/metadata.dart';
 import 'rule/rule.dart';
 import 'rule/type_argument.dart';
 import 'source_code.dart';
@@ -47,15 +48,6 @@ class SourceVisitor implements AstVisitor {
   /// This is calculated and cached by [_findSelectionEnd].
   int _selectionEnd;
 
-  /// The rule that should be used for the contents of a literal body that are
-  /// about to be written.
-  ///
-  /// This is set by [visitArgumentList] to ensure that all block arguments
-  /// share a rule.
-  ///
-  /// If `null`, a literal body creates its own rule.
-  Rule _nextLiteralBodyRule;
-
   /// A stack that tracks forcing nested collections to split.
   ///
   /// Each entry corresponds to a collection currently being visited and the
@@ -67,6 +59,29 @@ class SourceVisitor implements AstVisitor {
   /// `true`, we know we visited a nested collection so we force this one to
   /// split.
   final List<bool> _collectionSplits = [];
+
+  /// The stack of current rules for handling parameter metadata.
+  ///
+  /// Each time a parameter (or type parameter) list is begun, a single rule
+  /// for all of the metadata annotations on parameters in that list is pushed
+  /// onto this stack. We reuse this rule for all annotations so that they split
+  /// in unison.
+  final List<MetadataRule> _metadataRules = [];
+
+  /// The mapping for collection literals that are managed by the argument
+  /// list that contains them.
+  ///
+  /// When a collection literal appears inside an [ArgumentSublist], the
+  /// argument list provides a rule for the body to split to ensure that all
+  /// collections split in unison. It also tracks the chunk before the
+  /// argument that determines whether or not the collection body is indented
+  /// like an expression or a statement.
+  ///
+  /// Before a collection literal argument is visited, [ArgumentSublist] binds
+  /// itself to the left bracket token of each collection literal it controls.
+  /// When we later visit that literal, we use the token to find that
+  /// association.
+  final Map<Token, ArgumentSublist> _collectionArgumentLists = {};
 
   /// Initialize a newly created visitor to write source code representing
   /// the visited nodes to the given [writer].
@@ -170,7 +185,17 @@ class SourceVisitor implements AstVisitor {
 
   visitBinaryExpression(BinaryExpression node) {
     builder.startSpan();
-    builder.nestExpression();
+
+    // If a binary operator sequence appears immediately after a `=>`, don't
+    // add an extra level of nesting. Instead, let the subsequent operands line
+    // up with the first, as in:
+    //
+    //     method() =>
+    //         argument &&
+    //         argument &&
+    //         argument;
+    var isArrowBody = node.parent is ExpressionFunctionBody;
+    if (!isArrowBody) builder.nestExpression();
 
     // Start lazily so we don't force the operator to split if a line comment
     // appears before the first operand.
@@ -202,12 +227,20 @@ class SourceVisitor implements AstVisitor {
 
     builder.endBlockArgumentNesting();
 
-    builder.unnest();
+    if (!isArrowBody) builder.unnest();
     builder.endSpan();
     builder.endRule();
   }
 
   visitBlock(Block node) {
+    // Don't allow splitting in an empty block.
+    if (node.statements.isEmpty &&
+        node.rightBracket.precedingComments == null) {
+      token(node.leftBracket);
+      token(node.rightBracket);
+      return;
+    }
+
     // For a block that is not a function body, just bump the indentation and
     // keep it in the current block.
     if (node.parent is! BlockFunctionBody) {
@@ -284,7 +317,7 @@ class SourceVisitor implements AstVisitor {
       visitNodes(node.cascadeSections, between: zeroSplit);
       builder.endRule();
     } else {
-      builder.startRule(new HardSplitRule());
+      builder.startRule(new Rule.hard());
       zeroSplit();
       visitNodes(node.cascadeSections, between: zeroSplit);
       builder.endRule();
@@ -515,10 +548,15 @@ class SourceVisitor implements AstVisitor {
     // ":" if the parameters and initialization list don't all fit on one line.
     builder.startRule();
 
+    // If the redirecting constructor happens to wrap, we want to make sure
+    // the parameter list gets more deeply indented.
+    if (node.redirectedConstructor != null) builder.nestExpression();
+
     _visitBody(node.parameters, node.body, () {
       // Check for redirects or initializer lists.
       if (node.redirectedConstructor != null) {
         _visitConstructorRedirects(node);
+        builder.unnest();
       } else if (node.initializers.isNotEmpty) {
         _visitConstructorInitializers(node);
       }
@@ -526,7 +564,8 @@ class SourceVisitor implements AstVisitor {
   }
 
   void _visitConstructorRedirects(ConstructorDeclaration node) {
-    token(node.separator /* = */, before: space, after: space);
+    token(node.separator /* = */, before: space);
+    soloSplit();
     visitCommaSeparatedNodes(node.initializers);
     visit(node.redirectedConstructor);
   }
@@ -600,7 +639,7 @@ class SourceVisitor implements AstVisitor {
       if (node.separator.type == TokenType.EQ) space();
       token(node.separator);
 
-      soloSplit(Cost.assignment);
+      soloSplit(_assignmentCost(node.defaultValue));
       visit(node.defaultValue);
 
       builder.unnest();
@@ -609,18 +648,22 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitDoStatement(DoStatement node) {
-    _simpleStatement(node, () {
-      token(node.doKeyword);
-      space();
-      visit(node.body);
-      space();
-      token(node.whileKeyword);
-      space();
-      token(node.leftParenthesis);
-      soloZeroSplit();
-      visit(node.condition);
-      token(node.rightParenthesis);
-    });
+    builder.nestExpression();
+    token(node.doKeyword);
+    space();
+    builder.unnest(now: false);
+    visit(node.body);
+
+    builder.nestExpression();
+    space();
+    token(node.whileKeyword);
+    space();
+    token(node.leftParenthesis);
+    soloZeroSplit();
+    visit(node.condition);
+    token(node.rightParenthesis);
+    token(node.semicolon);
+    builder.unnest();
   }
 
   visitDoubleLiteral(DoubleLiteral node) {
@@ -682,7 +725,10 @@ class SourceVisitor implements AstVisitor {
     // Split after the "=>", using the rule created before the parameters
     // by _visitBody().
     split();
-    builder.endRule();
+
+    // If the body is a binary operator expression, then we want to force the
+    // split at `=>` if the operators split. See visitBinaryExpression().
+    if (node.expression is! BinaryExpression) builder.endRule();
 
     if (_isInLambda(node)) builder.endSpan();
 
@@ -691,6 +737,8 @@ class SourceVisitor implements AstVisitor {
     visit(node.expression);
     builder.endSpan();
     builder.endBlockArgumentNesting();
+
+    if (node.expression is BinaryExpression) builder.endRule();
 
     token(node.semicolon);
   }
@@ -744,9 +792,9 @@ class SourceVisitor implements AstVisitor {
     space();
     visit(node.iterable);
     token(node.rightParenthesis);
-    space();
-    visit(node.body);
-    builder.unnest();
+    builder.unnest(now: false);
+
+    _visitLoopBody(node.body);
   }
 
   visitFormalParameterList(FormalParameterList node) {
@@ -771,6 +819,8 @@ class SourceVisitor implements AstVisitor {
     builder.nestExpression();
     token(node.leftParenthesis);
 
+    _metadataRules.add(new MetadataRule());
+
     var rule;
     if (requiredParams.isNotEmpty) {
       if (requiredParams.length > 1) {
@@ -778,6 +828,8 @@ class SourceVisitor implements AstVisitor {
       } else {
         rule = new SinglePositionalRule(null);
       }
+
+      _metadataRules.last.bindPositionalRule(rule);
 
       builder.startRule(rule);
       if (_isInLambda(node)) {
@@ -806,13 +858,17 @@ class SourceVisitor implements AstVisitor {
     }
 
     if (optionalParams.isNotEmpty) {
-      var namedRule = new NamedRule(null);
+      var namedRule = new NamedRule(null, 0, 0);
       if (rule != null) rule.setNamedArgsRule(namedRule);
+
+      _metadataRules.last.bindNamedRule(namedRule);
 
       builder.startRule(namedRule);
 
-      namedRule
-          .beforeArguments(builder.split(space: requiredParams.isNotEmpty));
+      // Make sure multi-line default values are indented.
+      builder.startBlockArgumentNesting();
+
+      namedRule.beforeArgument(builder.split(space: requiredParams.isNotEmpty));
 
       // "[" or "{" for optional parameters.
       token(node.leftDelimiter);
@@ -822,14 +878,17 @@ class SourceVisitor implements AstVisitor {
 
         // Write the trailing comma.
         if (param != node.parameters.last) token(param.endToken.next);
-        if (param != optionalParams.last) split();
+        if (param != optionalParams.last) namedRule.beforeArgument(split());
       }
 
+      builder.endBlockArgumentNesting();
       builder.endRule();
 
       // "]" or "}" for optional parameters.
       token(node.rightDelimiter);
     }
+
+    _metadataRules.removeLast();
 
     token(node.rightParenthesis);
     builder.unnest();
@@ -847,9 +906,9 @@ class SourceVisitor implements AstVisitor {
     if (node.initialization != null) {
       visit(node.initialization);
     } else if (node.variables != null) {
-      // Indent split variables more so they aren't at the same level
+      // Nest split variables more so they aren't at the same level
       // as the rest of the loop clauses.
-      builder.indent(Indent.loopVariable);
+      builder.nestExpression();
 
       // Allow the variables to stay unsplit even if the clauses split.
       builder.startRule();
@@ -864,7 +923,7 @@ class SourceVisitor implements AstVisitor {
       });
 
       builder.endRule();
-      builder.unindent();
+      builder.unnest();
     }
 
     token(node.leftSeparator);
@@ -890,21 +949,11 @@ class SourceVisitor implements AstVisitor {
     builder.endRule();
     builder.unnest();
 
-    // The body.
-    if (node.body is! EmptyStatement) space();
-    visit(node.body);
+    _visitLoopBody(node.body);
   }
 
   visitFunctionDeclaration(FunctionDeclaration node) {
-    visitMemberMetadata(node.metadata);
-
-    builder.nestExpression();
-    modifier(node.externalKeyword);
-    visit(node.returnType, after: space);
-    modifier(node.propertyKeyword);
-    visit(node.name);
-    visit(node.functionExpression);
-    builder.unnest();
+    _visitMemberDeclaration(node, node.functionExpression);
   }
 
   visitFunctionDeclarationStatement(FunctionDeclarationStatement node) {
@@ -956,10 +1005,35 @@ class SourceVisitor implements AstVisitor {
     token(node.leftParenthesis);
     visit(node.condition);
     token(node.rightParenthesis);
+    builder.unnest(now: false);
 
-    space();
-    visit(node.thenStatement);
-    builder.unnest();
+    visitClause(Statement clause) {
+      if (clause is Block || clause is IfStatement) {
+        space();
+        visit(clause);
+      } else {
+        // Allow splitting in an expression-bodied if even though it's against
+        // the style guide. Since we can't fix the code itself to follow the
+        // style guide, we should at least format it as well as we can.
+        builder.nestExpression(indent: 2, now: true);
+        builder.startRule();
+
+        // If there is an else clause, always split before both the then and
+        // else statements.
+        if (node.elseStatement != null) {
+          builder.writeWhitespace(Whitespace.nestedNewline);
+        } else {
+          split();
+        }
+
+        visit(clause);
+
+        builder.endRule();
+        builder.unnest();
+      }
+    }
+
+    visitClause(node.thenStatement);
 
     if (node.elseStatement != null) {
       if (node.thenStatement is Block) {
@@ -972,8 +1046,7 @@ class SourceVisitor implements AstVisitor {
       }
 
       token(node.elseKeyword);
-      space();
-      visit(node.elseStatement);
+      visitClause(node.elseStatement);
     }
   }
 
@@ -1012,8 +1085,18 @@ class SourceVisitor implements AstVisitor {
       visit(node.target);
     }
 
+    finishIndexExpression(node);
+
+    builder.unnest();
+  }
+
+  /// Visit the index part of [node], excluding the target.
+  ///
+  /// Called by [CallChainVisitor] to handle index expressions in the middle of
+  /// call chains.
+  void finishIndexExpression(IndexExpression node) {
     if (node.target is IndexExpression) {
-      // Corner case: On a chain of [] accesses, allow splitting between them.
+      // Edge case: On a chain of [] accesses, allow splitting between them.
       // Produces nicer output in cases like:
       //
       //     someJson['property']['property']['property']['property']...
@@ -1026,14 +1109,15 @@ class SourceVisitor implements AstVisitor {
     visit(node.index);
     token(node.rightBracket);
     builder.endSpan();
-    builder.unnest();
   }
 
   visitInstanceCreationExpression(InstanceCreationExpression node) {
     builder.startSpan();
     token(node.keyword);
     space();
+    builder.startSpan(Cost.constructorName);
     visit(node.constructorName);
+    builder.endSpan();
     visit(node.argumentList);
     builder.endSpan();
   }
@@ -1112,16 +1196,7 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitMethodDeclaration(MethodDeclaration node) {
-    visitMemberMetadata(node.metadata);
-
-    modifier(node.externalKeyword);
-    modifier(node.modifierKeyword);
-    visit(node.returnType, after: space);
-    modifier(node.propertyKeyword);
-    modifier(node.operatorKeyword);
-    visit(node.name);
-
-    _visitBody(node.parameters, node.body);
+    _visitMemberDeclaration(node, node);
   }
 
   visitMethodInvocation(MethodInvocation node) {
@@ -1149,7 +1224,16 @@ class SourceVisitor implements AstVisitor {
     builder.nestExpression();
     builder.startSpan();
     visit(node.name);
-    visit(node.expression, before: soloSplit);
+
+    // Don't allow a split between a name and a collection. Instead, we want
+    // the collection itself to split, or to split before the argument.
+    if (node.expression is ListLiteral || node.expression is MapLiteral) {
+      space();
+    } else {
+      soloSplit();
+    }
+
+    visit(node.expression);
     builder.endSpan();
     builder.unnest();
   }
@@ -1184,6 +1268,8 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitPartDirective(PartDirective node) {
+    visitDeclarationMetadata(node.metadata);
+
     _simpleStatement(node, () {
       token(node.keyword);
       space();
@@ -1192,6 +1278,8 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitPartOfDirective(PartOfDirective node) {
+    visitDeclarationMetadata(node.metadata);
+
     _simpleStatement(node, () {
       token(node.keyword);
       space();
@@ -1207,9 +1295,7 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitPrefixedIdentifier(PrefixedIdentifier node) {
-    visit(node.prefix);
-    token(node.period);
-    visit(node.identifier);
+    new CallChainVisitor(this, node).visit();
   }
 
   visitPrefixExpression(PrefixExpression node) {
@@ -1357,6 +1443,7 @@ class SourceVisitor implements AstVisitor {
     token(node.rightParenthesis);
     space();
     token(node.leftBracket);
+    builder.unnest();
     builder.indent();
     newline();
 
@@ -1365,7 +1452,6 @@ class SourceVisitor implements AstVisitor {
       builder.unindent();
       newline();
     });
-    builder.unnest();
   }
 
   visitSymbolLiteral(SymbolLiteral node) {
@@ -1425,7 +1511,11 @@ class SourceVisitor implements AstVisitor {
   }
 
   visitTypeParameterList(TypeParameterList node) {
+    _metadataRules.add(new MetadataRule());
+
     _visitGenericList(node.leftBracket, node.rightBracket, node.typeParameters);
+
+    _metadataRules.removeLast();
   }
 
   visitVariableDeclaration(VariableDeclaration node) {
@@ -1437,8 +1527,14 @@ class SourceVisitor implements AstVisitor {
 
   visitVariableDeclarationList(VariableDeclarationList node) {
     visitDeclarationMetadata(node.metadata);
+
+    // Allow but try to avoid splitting between the type and name.
+    builder.startSpan();
+
     modifier(node.keyword);
-    visit(node.type, after: space);
+    visit(node.type, after: soloSplit);
+
+    builder.endSpan();
 
     // Use a single rule for all of the variables. If there are multiple
     // declarations, we will try to keep them all on one line. If that isn't
@@ -1463,9 +1559,9 @@ class SourceVisitor implements AstVisitor {
     soloZeroSplit();
     visit(node.condition);
     token(node.rightParenthesis);
-    if (node.body is! EmptyStatement) space();
-    visit(node.body);
-    builder.unnest();
+    builder.unnest(now: false);
+
+    _visitLoopBody(node.body);
   }
 
   visitWithClause(WithClause node) {
@@ -1524,10 +1620,28 @@ class SourceVisitor implements AstVisitor {
   /// These are always on the same line as the parameter.
   void visitParameterMetadata(
       NodeList<Annotation> metadata, void visitParameter()) {
+    if (metadata == null || metadata.isEmpty) {
+      visitParameter();
+      return;
+    }
+
     // Split before all of the annotations or none.
-    builder.startRule();
-    visitNodes(metadata, between: split, after: split);
+    builder.startLazyRule(_metadataRules.last);
+
+    visitNodes(metadata, between: split, after: () {
+      // Don't nest until right before the last metadata. Ensures we only
+      // indent the parameter and not any of the metadata:
+      //
+      //     function(
+      //         @LongAnnotation
+      //         @LongAnnotation
+      //             indentedParameter) {}
+      builder.nestExpression(now: true);
+      split();
+    });
     visitParameter();
+
+    builder.unnest();
 
     // Wrap the rule around the parameter too. If it splits, we want to force
     // the annotations to split as well.
@@ -1543,7 +1657,7 @@ class SourceVisitor implements AstVisitor {
   void _visitAssignment(Token equalsOperator, Expression rightHandSide) {
     space();
     token(equalsOperator);
-    soloSplit(Cost.assignment);
+    soloSplit(_assignmentCost(rightHandSide));
     builder.startSpan();
     visit(rightHandSide);
     builder.endSpan();
@@ -1575,6 +1689,37 @@ class SourceVisitor implements AstVisitor {
     builder.unnest();
     builder.endSpan();
     builder.endRule();
+  }
+
+  /// Visits a top-level function or method declaration.
+  ///
+  /// The two AST node types are very similar but, alas, share no common
+  /// interface type in analyzer, hence the dynamic typing.
+  void _visitMemberDeclaration(
+      /* FunctionDeclaration|MethodDeclaration */ node,
+      /* FunctionExpression|MethodDeclaration */ function) {
+    visitMemberMetadata(node.metadata);
+
+    // Nest the signature in case we have to split between the return type and
+    // name.
+    builder.nestExpression();
+    builder.startSpan();
+    modifier(node.externalKeyword);
+    if (node is MethodDeclaration) modifier(node.modifierKeyword);
+    visit(node.returnType, after: soloSplit);
+    modifier(node.propertyKeyword);
+    if (node is MethodDeclaration) modifier(node.operatorKeyword);
+    visit(node.name);
+    builder.endSpan();
+
+    // If the body is a block, we need to exit any nesting first. If it's an
+    // expression, we want to wrap the nesting around that so that the body
+    // gets nested farther.
+    if (function.body is! ExpressionFunctionBody) builder.unnest();
+
+    _visitBody(function.parameters, function.body);
+
+    if (function.body is ExpressionFunctionBody) builder.unnest();
   }
 
   /// Visit the given function [parameters] followed by its [body], printing a
@@ -1611,21 +1756,43 @@ class SourceVisitor implements AstVisitor {
       builder.nestExpression();
 
       // This rule is ended by visitExpressionFunctionBody().
-      builder.startLazyRule(new SimpleRule(cost: Cost.arrow));
+      builder.startLazyRule(new Rule(Cost.arrow));
     }
 
     if (parameters != null) {
       builder.nestExpression();
-
       visit(parameters);
-      if (afterParameters != null) afterParameters();
-
       builder.unnest();
+
+      if (afterParameters != null) afterParameters();
     }
 
     visit(body);
 
     if (body is ExpressionFunctionBody) builder.unnest();
+  }
+
+  /// Visits the body statement of a `for` or `for in` loop.
+  void _visitLoopBody(Statement body) {
+    if (body is EmptyStatement) {
+      // No space before the ";".
+      visit(body);
+    } else if (body is Block) {
+      space();
+      visit(body);
+    } else {
+      // Allow splitting in an expression-bodied for even though it's against
+      // the style guide. Since we can't fix the code itself to follow the
+      // style guide, we should at least format it as well as we can.
+      builder.nestExpression(indent: 2, now: true);
+      builder.startRule();
+
+      split();
+      visit(body);
+
+      builder.endRule();
+      builder.unnest();
+    }
   }
 
   /// Visit a list of [nodes] if not null, optionally separated and/or preceded
@@ -1674,10 +1841,6 @@ class SourceVisitor implements AstVisitor {
     if (elements.isEmpty && rightBracket.precedingComments == null) {
       token(leftBracket);
       token(rightBracket);
-
-      // Clear this out in case this empty collection is in an argument list.
-      // We don't want this rule to bleed over to some other collection.
-      _nextLiteralBodyRule = null;
       return;
     }
 
@@ -1694,7 +1857,7 @@ class SourceVisitor implements AstVisitor {
     // Always use a hard rule to split the elements. The parent chunk of
     // the collection will handle the unsplit case, so this only comes
     // into play when the collection is split.
-    var rule = new HardSplitRule();
+    var rule = new Rule.hard();
     builder.startRule(rule);
 
     // If a collection contains a line comment, we assume it's a big complex
@@ -1712,7 +1875,7 @@ class SourceVisitor implements AstVisitor {
             soloSplit();
           }
         } else {
-          builder.blockSplit(space: true);
+          builder.split(nest: false, space: true);
         }
       }
 
@@ -1731,6 +1894,37 @@ class SourceVisitor implements AstVisitor {
     var force = _collectionSplits.removeLast();
 
     _endLiteralBody(rightBracket, ignoredRule: rule, forceSplit: force);
+  }
+
+  /// Gets the cost to split at an assignment (or `:` in the case of a named
+  /// default value) with the given [rightHandSide].
+  ///
+  /// "Block-like" expressions (collections and cascades) bind a bit tighter
+  /// because it looks better to have code like:
+  ///
+  ///     var list = [
+  ///       element,
+  ///       element,
+  ///       element
+  ///     ];
+  ///
+  ///     var builder = new SomeBuilderClass()
+  ///       ..method()
+  ///       ..method();
+  ///
+  /// over:
+  ///
+  ///     var list =
+  ///         [element, element, element];
+  ///
+  ///     var builder =
+  ///         new SomeBuilderClass()..method()..method();
+  int _assignmentCost(Expression rightHandSide) {
+    if (rightHandSide is ListLiteral) return Cost.assignBlock;
+    if (rightHandSide is MapLiteral) return Cost.assignBlock;
+    if (rightHandSide is CascadeExpression) return Cost.assignBlock;
+
+    return Cost.assign;
   }
 
   /// Returns `true` if the collection withs [elements] delimited by
@@ -1765,16 +1959,21 @@ class SourceVisitor implements AstVisitor {
   void _startLiteralBody(Token leftBracket) {
     token(leftBracket);
 
-    // Split the literal. Use the explicitly given rule if we have one.
-    // Otherwise, create a new rule.
-    var rule = _nextLiteralBodyRule;
-    _nextLiteralBodyRule = null;
+    // See if this literal is associated with an argument list that wants to
+    // handle splitting and indenting it. If not, we'll use a default rule.
+    var rule;
+    var argumentChunk;
+    if (_collectionArgumentLists.containsKey(leftBracket)) {
+      var argumentList = _collectionArgumentLists[leftBracket];
+      rule = argumentList.collectionRule;
+      argumentChunk = argumentList.previousSplit;
+    }
 
     // Create a rule for whether or not to split the block contents.
     builder.startRule(rule);
 
     // Process the collection contents as a separate set of chunks.
-    builder = builder.startBlock();
+    builder = builder.startBlock(argumentChunk);
   }
 
   /// Ends the literal body started by a call to [_startLiteralBody()].
@@ -1834,10 +2033,13 @@ class SourceVisitor implements AstVisitor {
     builder.unnest();
   }
 
-  /// Makes [rule] the rule that will be used for the contents of a collection
-  /// or function literal body that are about to be visited.
-  void setNextLiteralBodyRule(Rule rule) {
-    _nextLiteralBodyRule = rule;
+  /// Marks the collection literal that starts with [leftBracket] as being
+  /// controlled by [argumentList].
+  ///
+  /// When the collection is visited, [argumentList] will determine the
+  /// indentation and splitting rule for the collection.
+  void beforeCollection(Token leftBracket, ArgumentSublist argumentList) {
+    _collectionArgumentLists[leftBracket] = argumentList;
   }
 
   /// Writes an bracket-delimited body and handles indenting and starting the
@@ -1854,14 +2056,14 @@ class SourceVisitor implements AstVisitor {
 
     // Split after the bracket.
     builder.startRule();
-    builder.blockSplit(space: space, isDouble: false);
+    builder.split(isDouble: false, nest: false, space: space);
 
     body();
 
     token(rightBracket, before: () {
       // Split before the closing bracket character.
       builder.unindent();
-      builder.blockSplit(space: space);
+      builder.split(nest: false, space: space);
     });
 
     builder.endRule();
@@ -1869,7 +2071,8 @@ class SourceVisitor implements AstVisitor {
 
   /// Returns `true` if [node] is immediately contained within an anonymous
   /// [FunctionExpression].
-  bool _isInLambda(AstNode node) => node.parent is FunctionExpression &&
+  bool _isInLambda(AstNode node) =>
+      node.parent is FunctionExpression &&
       node.parent.parent is! FunctionDeclaration;
 
   /// Writes the string literal [string] to the output.
@@ -1945,7 +2148,7 @@ class SourceVisitor implements AstVisitor {
 
   /// Writes a single space split with its own rule.
   void soloSplit([int cost]) {
-    builder.startRule(new SimpleRule(cost: cost));
+    builder.startRule(new Rule(cost));
     split();
     builder.endRule();
   }

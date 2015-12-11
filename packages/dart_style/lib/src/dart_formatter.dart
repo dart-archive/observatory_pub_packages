@@ -60,7 +60,8 @@ class DartFormatter {
     }
 
     return formatSource(
-        new SourceCode(source, uri: uri, isCompilationUnit: true)).text;
+            new SourceCode(source, uri: uri, isCompilationUnit: true))
+        .text;
   }
 
   /// Formats the given [source] string containing a single Dart statement.
@@ -109,7 +110,7 @@ class DartFormatter {
       // Make sure we consumed all of the source.
       var token = node.endToken.next;
       if (token.type != TokenType.EOF) {
-        var error = new AnalysisError.con2(
+        var error = new AnalysisError(
             stringSource,
             token.offset,
             math.max(token.length, 1),

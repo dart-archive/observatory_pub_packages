@@ -6,7 +6,7 @@ library usage.common_test;
 
 import 'dart:async';
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:usage/src/usage_impl.dart';
 
 AnalyticsImplMock createMock({bool setOptIn: true}) =>
@@ -42,9 +42,9 @@ class MockProperties extends PersistentProperties {
 }
 
 class MockPostHandler extends PostHandler {
-  List<Map> sentValues = [];
+  List<Map<String, dynamic>> sentValues = [];
 
-  Future sendPost(String url, Map<String, String> parameters) {
+  Future sendPost(String url, Map<String, dynamic> parameters) {
     sentValues.add(parameters);
 
     return new Future.value();

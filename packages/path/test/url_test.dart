@@ -2,7 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:path/path.dart' as path;
 
 main() {
@@ -627,6 +627,31 @@ main() {
           isTrue);
       expect(context.isWithin('baz', 'http://dartlang.org/root/path/bang/baz'),
           isFalse);
+    });
+
+    test('complex cases', () {
+      expect(context.isWithin('foo/./bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo//bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo/qux/../bar', 'foo/bar/baz'), isTrue);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/../..'), isFalse);
+      expect(context.isWithin('foo/bar', 'foo/bar///'), isFalse);
+      expect(context.isWithin('foo/.bar', 'foo/.bar/baz'), isTrue);
+      expect(context.isWithin('foo/./bar', 'foo/.bar/baz'), isFalse);
+      expect(context.isWithin('foo/..bar', 'foo/..bar/baz'), isTrue);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/..'), isFalse);
+      expect(context.isWithin('foo/bar', 'foo/bar/baz/../qux'), isTrue);
+      expect(context.isWithin('http://example.org/', 'http://example.com/foo'),
+          isFalse);
+      expect(context.isWithin('http://example.org/', 'http://dartlang.org/foo'),
+          isFalse);
+    });
+
+    test('with root-relative paths', () {
+      expect(context.isWithin('/foo', 'http://dartlang.org/foo/bar'), isTrue);
+      expect(context.isWithin('http://dartlang.org/foo', '/foo/bar'), isTrue);
+      expect(context.isWithin('/root', 'foo/bar'), isTrue);
+      expect(context.isWithin('foo', '/root/path/foo/bar'), isTrue);
+      expect(context.isWithin('/foo', '/foo/bar'), isTrue);
     });
 
     test('from a relative root', () {

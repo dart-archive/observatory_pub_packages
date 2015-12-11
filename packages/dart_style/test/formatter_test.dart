@@ -149,7 +149,8 @@ void testDirectory(String name) {
     }
 
     group("$name ${p.basename(entry.path)}", () {
-      var lines = (entry as File).readAsLinesSync();
+      // Explicitly create a File, in case the entry is a Link.
+      var lines = new File(entry.path).readAsLinesSync();
 
       // The first line may have a "|" to indicate the page width.
       var pageWidth;
@@ -207,7 +208,13 @@ void testDirectory(String name) {
           var actualText = actual.text;
           if (!isCompilationUnit) actualText += "\n";
 
-          expect(actualText, equals(expected.text));
+          // Fail with an explicit message because it's easier to read than
+          // the matcher output.
+          if (actualText != expected.text) {
+            fail("Formatting did not match expectation. Expected:\n"
+                "${expected.text}\nActual:\n$actualText");
+          }
+
           expect(actual.selectionStart, equals(expected.selectionStart));
           expect(actual.selectionLength, equals(expected.selectionLength));
         });

@@ -14,6 +14,9 @@ class FormatterOptions {
   /// The [OutputReporter] used to show the formatting results.
   final OutputReporter reporter;
 
+  /// The number of spaces of indentation to prefix the output with.
+  final int indent;
+
   /// The number of columns that formatted output should be constrained to fit
   /// within.
   final int pageWidth;
@@ -22,7 +25,7 @@ class FormatterOptions {
   final bool followLinks;
 
   FormatterOptions(this.reporter,
-      {this.pageWidth: 80, this.followLinks: false});
+      {this.indent: 0, this.pageWidth: 80, this.followLinks: false});
 }
 
 /// How the formatter reports the results it produces.
@@ -47,20 +50,23 @@ abstract class OutputReporter {
   /// Describe the symlink at [path] that wasn't followed.
   void showSkippedLink(String path) {}
 
-  /// Describe the hidden file at [path] that wasn't processed.
-  void showHiddenFile(String path) {}
+  /// Describe the hidden [path] that wasn't processed.
+  void showHiddenPath(String path) {}
+
+  /// Called when [file] is about to be formatted.
+  void beforeFile(File file, String label) {}
 
   /// Describe the processed file at [path] whose formatted result is [output].
   ///
   /// If the contents of the file are the same as the formatted output,
   /// [changed] will be false.
-  void showFile(File file, String label, SourceCode output, {bool changed});
+  void afterFile(File file, String label, SourceCode output, {bool changed});
 }
 
 /// Prints only the names of files whose contents are different from their
 /// formatted version.
 class _DryRunReporter extends OutputReporter {
-  void showFile(File file, String label, SourceCode output, {bool changed}) {
+  void afterFile(File file, String label, SourceCode output, {bool changed}) {
     // Only show the changed files.
     if (changed) print(label);
   }
@@ -76,11 +82,11 @@ class _PrintReporter extends OutputReporter {
     print("Skipping link $path");
   }
 
-  void showHiddenFile(String path) {
-    print("Skipping hidden file $path");
+  void showHiddenPath(String path) {
+    print("Skipping hidden path $path");
   }
 
-  void showFile(File file, String label, SourceCode output, {bool changed}) {
+  void afterFile(File file, String label, SourceCode output, {bool changed}) {
     // Don't add an extra newline.
     stdout.write(output.text);
   }
@@ -89,7 +95,7 @@ class _PrintReporter extends OutputReporter {
 /// Prints the formatted result and selection info of each file to stdout as a
 /// JSON map.
 class _PrintJsonReporter extends OutputReporter {
-  void showFile(File file, String label, SourceCode output, {bool changed}) {
+  void afterFile(File file, String label, SourceCode output, {bool changed}) {
     // TODO(rnystrom): Put an empty selection in here to remain compatible with
     // the old formatter. Since there's no way to pass a selection on the
     // command line, this will never be used, which is why it's hard-coded to
@@ -108,12 +114,86 @@ class _PrintJsonReporter extends OutputReporter {
 
 /// Overwrites each file with its formatted result.
 class _OverwriteReporter extends _PrintReporter {
-  void showFile(File file, String label, SourceCode output, {bool changed}) {
+  void afterFile(File file, String label, SourceCode output, {bool changed}) {
     if (changed) {
       file.writeAsStringSync(output.text);
       print("Formatted $label");
     } else {
       print("Unchanged $label");
     }
+  }
+}
+
+/// A decorating reporter that reports how long it took for format each file.
+class ProfileReporter implements OutputReporter {
+  final OutputReporter _inner;
+
+  /// The files that have been started but have not completed yet.
+  ///
+  /// Maps a file label to the time that it started being formatted.
+  final Map<String, DateTime> _ongoing = {};
+
+  /// The elapsed time it took to format each completed file.
+  final Map<String, Duration> _elapsed = {};
+
+  /// The number of files that completed so fast that they aren't worth
+  /// tracking.
+  int _elided = 0;
+
+  ProfileReporter(this._inner);
+
+  /// Show the times for the slowest files to format.
+  void showProfile() {
+    // Everything should be done.
+    assert(_ongoing.isEmpty);
+
+    var files = _elapsed.keys.toList();
+    files.sort((a, b) => _elapsed[b].compareTo(_elapsed[a]));
+
+    for (var file in files) {
+      print("${_elapsed[file]}: $file");
+    }
+
+    if (_elided >= 1) {
+      var s = _elided > 1 ? 's' : '';
+      print("...$_elided more file$s each took less than 10ms.");
+    }
+  }
+
+  /// Describe the directory whose contents are about to be processed.
+  void showDirectory(String path) {
+    _inner.showDirectory(path);
+  }
+
+  /// Describe the symlink at [path] that wasn't followed.
+  void showSkippedLink(String path) {
+    _inner.showSkippedLink(path);
+  }
+
+  /// Describe the hidden [path] that wasn't processed.
+  void showHiddenPath(String path) {
+    _inner.showHiddenPath(path);
+  }
+
+  /// Called when [file] is about to be formatted.
+  void beforeFile(File file, String label) {
+    _inner.beforeFile(file, label);
+
+    _ongoing[label] = new DateTime.now();
+  }
+
+  /// Describe the processed file at [path] whose formatted result is [output].
+  ///
+  /// If the contents of the file are the same as the formatted output,
+  /// [changed] will be false.
+  void afterFile(File file, String label, SourceCode output, {bool changed}) {
+    var elapsed = new DateTime.now().difference(_ongoing.remove(label));
+    if (elapsed.inMilliseconds >= 10) {
+      _elapsed[label] = elapsed;
+    } else {
+      _elided++;
+    }
+
+    _inner.afterFile(file, label, output, changed: changed);
   }
 }

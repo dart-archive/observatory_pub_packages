@@ -1,3 +1,32 @@
+# 0.2.1
+
+* `--version` command line argument (#240).
+* Split the first `.` in a method chain if the target splits (#255).
+* Don't collapse states that differ by unbound rule constraints (#424).
+* Better handling for functions in method chains (#367, #398).
+* Better handling of large parameter metadata annotations (#387, #444).
+* Smarter splitting around collections in named parameters (#394).
+* Split calls if properties in a chain split (#399).
+* Don't allow splitting inside empty functions (#404).
+* Consider a rule live if it constrains a rule in the overflow line (#407).
+* Allow splitting in prefix expressions (#410).
+* Correctly constrain collections in argument lists (#420, #463, #465).
+* Better indentation of collection literals (#421, #469).
+* Only show a hidden directory once in the output (#428).
+* Allow splitting between type and variable name (#429, #439, #454).
+* Better indentation for binary operators in `=>` bodies (#434.
+* Tweak splitting around assignment (#436, #437).
+* Indent multi-line collections in default values (#441).
+* Don't drop metadata on part directives (#443).
+* Handle `if` statements without curly bodies better (#448).
+* Handle loop statements without curly bodies better (#449).
+* Allow splitting before `get` and `set` (#462).
+* Add `--indent` to specify leading indent (#464).
+* Ensure collection elements line split separately (#474).
+* Allow redirecting constructors to wrap (#475).
+* Handle index expressions in the middle of call chains.
+* Optimize splitting lines with many rules.
+
 # 0.2.0
 
 * Treat functions nested inside function calls like block arguments (#366).

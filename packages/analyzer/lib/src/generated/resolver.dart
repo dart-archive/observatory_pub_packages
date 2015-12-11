@@ -1521,14 +1521,14 @@ class DeadCodeVerifier extends RecursiveAstVisitor<Object> {
       if (!_isDebugConstant(lhsCondition)) {
         EvaluationResultImpl lhsResult = _getConstantBooleanValue(lhsCondition);
         if (lhsResult != null) {
-          if (lhsResult.value.isTrue && isBarBar) {
+          if (lhsResult.value.toBoolValue() == true && isBarBar) {
             // report error on else block: true || !e!
             _errorReporter.reportErrorForNode(
                 HintCode.DEAD_CODE, node.rightOperand);
             // only visit the LHS:
             _safelyVisit(lhsCondition);
             return null;
-          } else if (lhsResult.value.isFalse && isAmpAmp) {
+          } else if (lhsResult.value.toBoolValue() == false && isAmpAmp) {
             // report error on if block: false && !e!
             _errorReporter.reportErrorForNode(
                 HintCode.DEAD_CODE, node.rightOperand);
@@ -1582,7 +1582,7 @@ class DeadCodeVerifier extends RecursiveAstVisitor<Object> {
       EvaluationResultImpl result =
           _getConstantBooleanValue(conditionExpression);
       if (result != null) {
-        if (result.value.isTrue) {
+        if (result.value.toBoolValue() == true) {
           // report error on else block: true ? 1 : !2!
           _errorReporter.reportErrorForNode(
               HintCode.DEAD_CODE, node.elseExpression);
@@ -1608,7 +1608,7 @@ class DeadCodeVerifier extends RecursiveAstVisitor<Object> {
       EvaluationResultImpl result =
           _getConstantBooleanValue(conditionExpression);
       if (result != null) {
-        if (result.value.isTrue) {
+        if (result.value.toBoolValue() == true) {
           // report error on else block: if(true) {} else {!}
           Statement elseStatement = node.elseStatement;
           if (elseStatement != null) {
@@ -1717,7 +1717,7 @@ class DeadCodeVerifier extends RecursiveAstVisitor<Object> {
       EvaluationResultImpl result =
           _getConstantBooleanValue(conditionExpression);
       if (result != null) {
-        if (result.value.isFalse) {
+        if (result.value.toBoolValue() == false) {
           // report error on if block: while (false) {!}
           _errorReporter.reportErrorForNode(HintCode.DEAD_CODE, node.body);
           return null;
@@ -3234,6 +3234,9 @@ class ElementBuilder extends RecursiveAstVisitor<Object> {
         variable = new TopLevelVariableElementImpl.forNode(variableName);
       }
       element = variable;
+      if (node.parent.parent is TopLevelVariableDeclaration) {
+        _setDocRange(element, node.parent.parent);
+      }
       if ((node.parent as VariableDeclarationList).type == null) {
         variable.hasImplicitType = true;
       }
@@ -14419,11 +14422,11 @@ class TypeResolverVisitor extends ScopedVisitor {
       PropertyInducingElementImpl variable =
           accessor.variable as PropertyInducingElementImpl;
       if (accessor.isGetter) {
-        variable.type = type.returnType;
+        variable.type = type.baseReturnType;
       } else if (variable.type == null) {
-        List<DartType> parameterTypes = type.normalParameterTypes;
-        if (parameterTypes != null && parameterTypes.length > 0) {
-          variable.type = parameterTypes[0];
+        List<ParameterElement> parameters = type.baseParameters;
+        if (parameters != null && parameters.length > 0) {
+          variable.type = parameters[0].type;
         }
       }
     }
@@ -15721,11 +15724,20 @@ class VariableResolverVisitor extends ScopedVisitor {
   @override
   Object visitSimpleIdentifier(SimpleIdentifier node) {
     // Ignore if already resolved - declaration or type.
-    if (node.staticElement != null) {
+    if (node.inDeclarationContext()) {
+      return null;
+    }
+    // Ignore if it cannot be a reference to a local variable.
+    AstNode parent = node.parent;
+    if (parent is FieldFormalParameter) {
+      return null;
+    } else if (parent is ConstructorDeclaration && parent.returnType == node) {
+      return null;
+    } else if (parent is ConstructorFieldInitializer &&
+        parent.fieldName == node) {
       return null;
     }
     // Ignore if qualified.
-    AstNode parent = node.parent;
     if (parent is PrefixedIdentifier && identical(parent.identifier, node)) {
       return null;
     }
@@ -15773,6 +15785,11 @@ class VariableResolverVisitor extends ScopedVisitor {
         }
       }
     }
+    return null;
+  }
+
+  @override
+  Object visitTypeName(TypeName node) {
     return null;
   }
 }

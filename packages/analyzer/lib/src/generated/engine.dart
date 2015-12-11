@@ -18,8 +18,10 @@ import 'package:analyzer/src/plugin/options_plugin.dart';
 import 'package:analyzer/src/services/lint.dart';
 import 'package:analyzer/src/task/manager.dart';
 import 'package:analyzer/task/dart.dart';
+import 'package:analyzer/task/model.dart' as newContext;
 import 'package:analyzer/task/model.dart';
 import 'package:html/dom.dart' show Document;
+import 'package:path/path.dart' as pathos;
 import 'package:plugin/manager.dart';
 import 'package:plugin/plugin.dart';
 
@@ -589,6 +591,14 @@ abstract class AnalysisContext {
       Source unitSource, Source librarySource);
 
   /**
+   * Return configuration data associated with the given key or `null` if no
+   * state has been associated with the given [key].
+   *
+   * See [setConfigurationData].
+   */
+  Object getConfigurationData(ResultDescriptor key);
+
+  /**
    * Return the contents and timestamp of the given [source].
    *
    * This method should be used rather than the method [Source.getContents]
@@ -885,6 +895,13 @@ abstract class AnalysisContext {
       Source source, String contents, int offset, int oldLength, int newLength);
 
   /**
+   * Associate this configuration [data] object with the given descriptor [key].
+   *
+   * See [getConfigurationData].
+   */
+  void setConfigurationData(ResultDescriptor key, Object data);
+
+  /**
    * Set the contents of the given [source] to the given [contents] and mark the
    * source as having changed. This has the effect of overriding the default
    * contents of the source. If the contents are `null` the override is removed
@@ -935,6 +952,12 @@ class AnalysisContextImpl implements InternalAnalysisContext {
    * client has not provided a name.
    */
   String name;
+
+  /**
+   * Configuration data associated with this context.
+   */
+  final HashMap<ResultDescriptor, Object> _configurationData =
+      new HashMap<ResultDescriptor, Object>();
 
   /**
    * The set of analysis options controlling the behavior of this context.
@@ -1568,6 +1591,11 @@ class AnalysisContextImpl implements InternalAnalysisContext {
   }
 
   @override
+  List<newContext.WorkManager> get workManagers {
+    throw new NotImplementedException('In not task-based AnalysisContext.');
+  }
+
+  @override
   void addListener(AnalysisListener listener) {
     if (!_listeners.contains(listener)) {
       _listeners.add(listener);
@@ -1932,6 +1960,9 @@ class AnalysisContextImpl implements InternalAnalysisContext {
     }
     return null;
   }
+
+  @override
+  Object getConfigurationData(ResultDescriptor key) => _configurationData[key];
 
   @override
   TimestampedData<String> getContents(Source source) {
@@ -2627,6 +2658,11 @@ class AnalysisContextImpl implements InternalAnalysisContext {
       _onSourcesChangedController.add(new SourcesChangedEvent.changedRange(
           source, contents, offset, oldLength, newLength));
     }
+  }
+
+  @override
+  void setConfigurationData(ResultDescriptor key, Object data) {
+    _configurationData[key] = data;
   }
 
   @override
@@ -5840,6 +5876,11 @@ class AnalysisEngine {
   static const String SUFFIX_HTML = "html";
 
   /**
+   * The file name used for analysis options files.
+   */
+  static const String ANALYSIS_OPTIONS_FILE = '.analysis_options';
+
+  /**
    * The unique instance of this class.
    */
   static final AnalysisEngine instance = new AnalysisEngine._();
@@ -6005,6 +6046,18 @@ class AnalysisEngine {
       return new newContext.AnalysisContextImpl();
     }
     return new AnalysisContextImpl();
+  }
+
+  /**
+   * Return `true` if the given [fileName] is an analysis options file.
+   */
+  static bool isAnalysisOptionsFileName(String fileName,
+      [pathos.Context context]) {
+    if (fileName == null) {
+      return false;
+    }
+    return (context ?? pathos.posix).basename(fileName) ==
+        ANALYSIS_OPTIONS_FILE;
   }
 
   /**
@@ -9393,6 +9446,11 @@ abstract class InternalAnalysisContext implements AnalysisContext {
    * A factory to override how [TypeResolverVisitor] is created.
    */
   TypeResolverVisitorFactory get typeResolverVisitorFactory;
+
+  /**
+   * A list of all [WorkManager]s used by this context.
+   */
+  List<newContext.WorkManager> get workManagers;
 
   /**
    * Return a list containing the sources of the libraries that are exported by
