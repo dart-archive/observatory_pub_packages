@@ -45,8 +45,12 @@ class LinearScale implements Scale {
         : ScaleUtils.bilinearScale;
 
     Function uninterpolator = clamp ? uninterpolateClamp : uninterpolateNumber;
-    InterpolatorGenerator interpolator =
-        _rounded ? createRoundedNumberInterpolator : createNumberInterpolator;
+    InterpolatorGenerator interpolator;
+    if (rounded) {
+      interpolator = createRoundedNumberInterpolator;
+    } else {
+      interpolator = createNumberInterpolator;
+    }
 
     _invert = linear(_range, _domain, uninterpolator, createNumberInterpolator);
     _scale = linear(_domain, _range, uninterpolator, interpolator);
@@ -126,10 +130,10 @@ class LinearScale implements Scale {
   Extent get rangeExtent => ScaleUtils.extent(_range);
 
   @override
-  num scale(num value) => _scale(value);
+  scale(value) => _scale(value);
 
   @override
-  num invert(num value) => _invert(value);
+  invert(value) => _invert(value);
 
   Range _linearTickRange([Extent extent]) {
     if (extent == null) {

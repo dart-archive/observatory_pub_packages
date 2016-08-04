@@ -30,7 +30,7 @@ abstract class ChartTheme {
 
   /// Markup for filters that is added to all chart elements. These filters
   /// can be referenced using url() in values returned by [getFilterForState].
-  String filters;
+  String get filters;
 
   /// Returns any filters that must be applied based on the element's state
   String getFilterForState(int state);
@@ -119,8 +119,10 @@ abstract class ChartAxisTheme {
   /// visualization.
   int get verticalAxisWidth => 200;
 
-  /// Height of horizontal axis. Width of horizontal axis is automatically
-  /// computed based on width of the visualization.
+  /// Max height of horizontal axis, this is used when the axis label need to be
+  /// rotated.  If rotated label would be ellipsed if the height is greater than
+  /// this value. Width of horizontal axis is automatically computed based on
+  /// width of the visualization.
   int get horizontalAxisHeight => 200;
 
   /// Font used by axis ticks. When specified, axis uses efficient off-screen
