@@ -108,7 +108,7 @@ class ScriptCompactor {
         primaryInput.path.replaceFirst('.html', '.bootstrap.dart'));
 
     var buffer = new StringBuffer();
-    buffer.writeln('library ${_libraryNameFor(bootstrapId)};');
+    buffer.writeln('library ${_libraryNameFor(bootstrapId, logger)};');
     buffer.writeln();
     var i = 0;
     for (var script in importScripts) {
@@ -133,7 +133,6 @@ class ScriptCompactor {
   Future _extractInlineScripts(AssetId asset, dom.Document doc) {
     var scripts = doc.querySelectorAll('script[type="$dartType"]');
     return Future.forEach(scripts, (script) {
-      var type = script.attributes['type'];
       var src = script.attributes['src'];
 
       if (src != null) {
@@ -147,7 +146,7 @@ class ScriptCompactor {
       // TODO(sigmund): ensure this path is unique (dartbug.com/12618).
       var newId = primaryInput.addExtension('.$count.dart');
       if (!_hasLibraryDirective(code)) {
-        var libName = _libraryNameFor(primaryInput, count);
+        var libName = _libraryNameFor(primaryInput, logger, count);
         code = "library $libName;\n$code";
       }
 
@@ -162,8 +161,8 @@ class ScriptCompactor {
         // the new source file.
         if (primaryInput == asset) {
           script.text = '';
-          script.attributes['src'] = path.url.relative(newId.path,
-              from: path.url.dirname(primaryInput.path));
+          script.attributes['src'] = path.url
+              .relative(newId.path, from: path.url.dirname(primaryInput.path));
         }
       });
     });
@@ -174,7 +173,6 @@ class ScriptCompactor {
     var unit = parseDirectives(code, suppressErrors: true);
     var file = new SourceFile(code, url: spanUrlFor(from, to, logger));
     var output = new TextEditTransaction(code, file);
-    var foundLibraryDirective = false;
     for (Directive directive in unit.directives) {
       if (directive is UriBasedDirective) {
         var uri = directive.uri.stringValue;
@@ -188,8 +186,6 @@ class ScriptCompactor {
         if (newUri != uri) {
           output.edit(span.start.offset, span.end.offset, "'$newUri'");
         }
-      } else if (directive is LibraryDirective) {
-        foundLibraryDirective = true;
       }
     }
 
@@ -228,22 +224,29 @@ class ScriptCompactor {
 }
 
 /// Generate a library name for an asset.
-String _libraryNameFor(AssetId id, [int suffix]) {
+String _libraryNameFor(AssetId id, BuildLogger logger, [int suffix]) {
+  if (_isInvalidPackageName(id.package)) {
+    logger.error('Invalid package name `${id.package}`. Package names should '
+        'be valid dart identifiers, as indicated at '
+        'https://www.dartlang.org/tools/pub/pubspec.html#name.');
+  }
   var name = '${path.withoutExtension(id.path)}_'
       '${path.extension(id.path).substring(1)}';
   if (name.startsWith('lib/')) name = name.substring(4);
-  name = name.split('/').map((part) {
-    part = part.replaceAll(_invalidLibCharsRegex, '_');
-    if (part.startsWith(_numRegex)) part = '_${part}';
-    return part;
-  }).join(".");
+  validLibName(String name) {
+    name = name.replaceAll(_invalidLibCharsRegex, '_');
+    if (name.startsWith(_numRegex)) name = '_${name}';
+    return name;
+  }
+  name = name.split('/').map(validLibName).join(".");
   var suffixString = suffix != null ? '_$suffix' : '';
   return '${id.package}.${name}$suffixString';
 }
 
 /// Parse [code] and determine whether it has a library directive.
 bool _hasLibraryDirective(String code) =>
-    parseDirectives(code, suppressErrors: true).directives
+    parseDirectives(code, suppressErrors: true)
+        .directives
         .any((d) => d is LibraryDirective);
 
 /// Returns the dart import path to reach [id] relative to [primaryInput].
@@ -254,6 +257,12 @@ String _importPath(AssetId id, AssetId primaryInput) {
     return 'package:${path.url.joinAll(parts)}';
   }
   return path.url.relative(id.path, from: path.url.dirname(primaryInput.path));
+}
+
+bool _isInvalidPackageName(String name) {
+  return name.split('.').any((part) {
+    return part.isEmpty || part.contains(_invalidLibCharsRegex);
+  });
 }
 
 // Constant and final variables

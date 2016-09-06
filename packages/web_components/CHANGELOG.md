@@ -1,3 +1,47 @@
+#### 0.12.3
+  * Update to JS version
+    [0.7.21](https://github.com/webcomponents/webcomponentsjs/tree/v0.7.21).
+
+#### 0.12.2+2
+
+* Update to transformer_test `0.2.x`.
+
+#### 0.12.2+2
+
+* Add support for code_transformers `0.4.x`.
+
+#### 0.12.2+1
+  * Allow periods in package names (but can't end or begin with one).
+
+#### 0.12.2
+  * Update to JS version
+    [0.7.20](https://github.com/webcomponents/webcomponentsjs/tree/v0.7.20).
+
+#### 0.12.1
+  * Update analyzer to `^0.27.0` and update to the test package.
+
+#### 0.12.0+4
+  * The transformer will now give an informative error on package names with
+    hyphens.
+
+#### 0.12.0+3
+  * Update analyzer dependency to `<0.27.0` and fix up some tests.
+
+#### 0.12.0+2
+  * Don't create new resolvers each time the transformer runs on a file.
+
+#### 0.12.0+1
+  * Fix hang on reload with the `web_components` transformer in pub serve,
+    [27](https://github.com/dart-lang/web-components/issues/27).
+
+#### 0.12.0
+  * Update to js version
+    [0.7.3](https://github.com/webcomponents/webcomponentsjs/tree/v0.7.3).
+  * Some release notes
+    (here)[http://webcomponents.org/articles/polyfills-0-6-0/].
+  * Also added all the individual polyfills as well as the
+    `webcomponents-lite.js` version, which does not include shadow dom.
+
 #### 0.11.4+2
   * Don't inline type="css" imports.
 
@@ -128,8 +172,8 @@
     *Note*: Html imports included this way cannot contain dart script tags. The
     mirror based implementation injects the imports dynamically and dart script
     tags are not allowed to be injected in that way.
-    
-    *Note*:  Relative urls cannot be used in inlined script tags. Either move 
+
+    *Note*:  Relative urls cannot be used in inlined script tags. Either move
     the script code to a Dart file, use a `package:` url, or use a normal HTML
     import. See https://github.com/dart-lang/web-components/issues/6.
 
@@ -143,7 +187,7 @@
         - web_components:
             entry_points:
               - web/index.html
-    
+
     If no `entry_points` option is supplied then any html file under `web` or
     `test` will be treated as an entry point.
 
@@ -176,7 +220,7 @@
     providing Dart APIs for js custom elements.
 
 #### 0.8.0
-  * Re-apply changes from 0.7.1+1 and also cherry pick 
+  * Re-apply changes from 0.7.1+1 and also cherry pick
     [efdbbc](https://github.com/polymer/CustomElements/commit/efdbbc) to fix
     the customElementsTakeRecords function.
   * **Breaking Change** The customElementsTakeRecords function now has an
@@ -204,7 +248,7 @@
   * Updated to 0.4.0-5a7353d release, with same cherry pick as 0.6.0+1.
   * Many features were moved into the polymer package, this package is now
     purely focused on polyfills.
-  * Change Platform.deliverDeclarations to 
+  * Change Platform.deliverDeclarations to
     Platform.consumeDeclarations(callback).
   * Cherry pick https://github.com/Polymer/ShadowDOM/pull/505 to fix mem leak.
 
@@ -217,7 +261,7 @@
     This is more recent than the 0.3.5 release as there were multiple breakages
     that required updating past that.
   * There is a bug in this version where selecting non-rendered elements doesn't
-    work, but it shouldn't affect most people. See 
+    work, but it shouldn't affect most people. See
     https://github.com/Polymer/ShadowDOM/issues/495.
 
 #### 0.5.0+1

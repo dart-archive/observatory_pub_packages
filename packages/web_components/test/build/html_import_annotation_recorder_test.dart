@@ -1,13 +1,13 @@
 // Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
+@TestOn('vm')
 library web_components.test.build.html_import_annotation_recorder_test;
 
-import 'package:code_transformers/tests.dart' hide testPhases;
+import 'package:transformer_test/utils.dart' hide testPhases;
 import 'package:web_components/build/html_import_annotation_recorder.dart';
 import 'package:initialize/transformer.dart';
-import 'package:unittest/compact_vm_config.dart';
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'common.dart';
 
 testPhases(String name, Map<String, String> inputs,
@@ -18,7 +18,9 @@ testPhases(String name, Map<String, String> inputs,
 
   test(name, () {
     // Run the transformer and test the output.
-    return applyTransformers([[transformer]],
+    return applyTransformers([
+      [transformer]
+    ],
         inputs: inputs,
         results: expected,
         formatter: StringFormatter.noNewlinesOrSurroundingWhitespace).then((_) {
@@ -29,8 +31,6 @@ testPhases(String name, Map<String, String> inputs,
 }
 
 main() {
-  useCompactVMConfiguration();
-
   testPhases('basic', {
     'a|web/index.dart': '''
         @HtmlImport('index.html')

@@ -1,12 +1,12 @@
 // Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
+@TestOn('browser')
 library web_components.test.custom_element_test;
 
 import 'dart:async';
 import 'dart:html';
-import 'package:unittest/html_config.dart';
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:web_components/web_components.dart';
 
 @CustomElement('basic-element')
@@ -32,8 +32,7 @@ class ExtendedElement extends InputElement {
 }
 
 main() {
-  useHtmlConfiguration();
-  initWebComponents().then((_) {
+  return initWebComponents().then((_) {
     var container = querySelector('#container') as DivElement;
 
     setUp(() {
@@ -47,9 +46,9 @@ main() {
     test('basic custom element', () {
       expect(document.querySelector('basic-element') is BasicElement, isTrue);
       container.append(new BasicElement());
-      container.appendHtml('<basic-element></basic-element>');
-      // TODO(jakemac): after appendHtml elements are upgraded asynchronously,
-      // why? https://github.com/dart-lang/web-components/issues/4
+      container.appendHtml('<basic-element></basic-element>',
+          treeSanitizer: nullSanitizer);
+      // elements are upgraded asynchronously
       return new Future(() {}).then((_) {
         var elements = container.querySelectorAll('basic-element');
         expect(elements.length, 2);
@@ -62,9 +61,9 @@ main() {
     test('child custom element', () {
       expect(document.querySelector('child-element') is ChildElement, isTrue);
       container.append(new ChildElement());
-      container.appendHtml('<child-element></child-element>');
-      // TODO(jakemac): after appendHtml elements are upgraded asynchronously,
-      // why? https://github.com/dart-lang/web-components/issues/4
+      container.appendHtml('<child-element></child-element>',
+          treeSanitizer: nullSanitizer);
+      // elements are upgraded asynchronously
       return new Future(() {}).then((_) {
         var elements = container.querySelectorAll('child-element');
         expect(elements.length, 2);
@@ -77,9 +76,9 @@ main() {
     test('extends input element', () {
       expect(document.querySelector('input') is ExtendedElement, isTrue);
       container.append(new ExtendedElement());
-      container.appendHtml('<input is="extended-element" />');
-      // TODO(jakemac): after appendHtml elements are upgraded asynchronously,
-      // why? https://github.com/dart-lang/web-components/issues/4
+      container.appendHtml('<input is="extended-element" />',
+          treeSanitizer: nullSanitizer);
+      // elements are upgraded asynchronously
       return new Future(() {}).then((_) {
         var elements = container.querySelectorAll('input');
         expect(elements.length, 2);
@@ -90,3 +89,10 @@ main() {
     });
   });
 }
+
+class NullTreeSanitizer implements NodeTreeSanitizer {
+  const NullTreeSanitizer();
+  void sanitizeTree(Node node) {}
+}
+
+final nullSanitizer = const NullTreeSanitizer();
