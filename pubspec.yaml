@@ -3,7 +3,6 @@ version: 1.6.0-dev.1
 transformers:
 - dart_to_js_script_rewriter
 - $dart2js:
-    $include: "**/*.polymer.bootstrap.dart"
     suppressWarnings: false
     commandLineOptions: [--show-package-warnings]
 dependencies:
