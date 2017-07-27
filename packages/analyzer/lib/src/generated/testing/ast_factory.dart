@@ -2,11 +2,12 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.testing.ast_factory;
+library analyzer.src.generated.testing.ast_factory;
 
-import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
-import 'package:analyzer/src/generated/scanner.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/src/dart/ast/ast.dart';
 import 'package:analyzer/src/generated/testing/token_factory.dart';
 import 'package:analyzer/src/generated/utilities_dart.dart';
 
@@ -21,7 +22,10 @@ import 'package:analyzer/src/generated/utilities_dart.dart';
  * nodes that are part of a cascade expression. These methods are all prefixed with 'cascaded'. The
  * second is places where a shorter name seemed unambiguous and easier to read, such as using
  * 'identifier' rather than 'prefixedIdentifier', or 'integer' rather than 'integerLiteral'.
+ *
+ * Deprecated.  Please use [AstTestFactory] instead.
  */
+@deprecated
 class AstFactory {
   static AdjacentStrings adjacentStrings(List<StringLiteral> strings) =>
       new AdjacentStrings(strings);
@@ -34,7 +38,9 @@ class AstFactory {
       new Annotation(
           TokenFactory.tokenFromType(TokenType.AT),
           name,
-          TokenFactory.tokenFromType(TokenType.PERIOD),
+          constructorName == null
+              ? null
+              : TokenFactory.tokenFromType(TokenType.PERIOD),
           constructorName,
           arguments);
 
@@ -46,11 +52,14 @@ class AstFactory {
       new AsExpression(
           expression, TokenFactory.tokenFromKeyword(Keyword.AS), type);
 
-  static AssertStatement assertStatement(Expression condition) =>
+  static AssertStatement assertStatement(Expression condition,
+          [Expression message]) =>
       new AssertStatement(
           TokenFactory.tokenFromKeyword(Keyword.ASSERT),
           TokenFactory.tokenFromType(TokenType.OPEN_PAREN),
           condition,
+          message == null ? null : TokenFactory.tokenFromType(TokenType.COMMA),
+          message,
           TokenFactory.tokenFromType(TokenType.CLOSE_PAREN),
           TokenFactory.tokenFromType(TokenType.SEMICOLON));
 
@@ -431,6 +440,7 @@ class AstFactory {
           metadata,
           TokenFactory.tokenFromKeyword(Keyword.EXPORT),
           string2(uri),
+          null,
           combinators,
           TokenFactory.tokenFromType(TokenType.SEMICOLON));
 
@@ -657,6 +667,7 @@ class AstFactory {
           metadata,
           TokenFactory.tokenFromKeyword(Keyword.IMPORT),
           string2(uri),
+          null,
           !isDeferred ? null : TokenFactory.tokenFromKeyword(Keyword.DEFERRED),
           prefix == null ? null : TokenFactory.tokenFromKeyword(Keyword.AS),
           prefix == null ? null : identifier3(prefix),
@@ -794,6 +805,10 @@ class AstFactory {
       new MapLiteralEntry(
           string2(key), TokenFactory.tokenFromType(TokenType.COLON), value);
 
+  static MapLiteralEntry mapLiteralEntry2(Expression key, Expression value) =>
+      new MapLiteralEntry(
+          key, TokenFactory.tokenFromType(TokenType.COLON), value);
+
   static MethodDeclaration methodDeclaration(
           Keyword modifier,
           TypeName returnType,
@@ -854,6 +869,28 @@ class AstFactory {
           operator == null ? null : TokenFactory.tokenFromKeyword(operator),
           name,
           typeParameters,
+          parameters,
+          body);
+
+  static MethodDeclaration methodDeclaration4(
+          {bool external: false,
+          Keyword modifier,
+          TypeName returnType,
+          Keyword property,
+          bool operator: false,
+          String name,
+          FormalParameterList parameters,
+          FunctionBody body}) =>
+      new MethodDeclaration(
+          null,
+          null,
+          external ? TokenFactory.tokenFromKeyword(Keyword.EXTERNAL) : null,
+          modifier == null ? null : TokenFactory.tokenFromKeyword(modifier),
+          returnType,
+          property == null ? null : TokenFactory.tokenFromKeyword(property),
+          operator ? TokenFactory.tokenFromKeyword(Keyword.OPERATOR) : null,
+          identifier3(name),
+          null,
           parameters,
           body);
 

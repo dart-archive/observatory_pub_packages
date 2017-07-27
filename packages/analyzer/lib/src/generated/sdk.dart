@@ -2,13 +2,23 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.sdk;
+library analyzer.src.generated.sdk;
 
 import 'dart:collection';
 
-import 'ast.dart';
-import 'engine.dart' show AnalysisContext;
-import 'source.dart' show ContentCache, Source, UriKind;
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/src/generated/engine.dart'
+    show AnalysisContext, AnalysisOptions, AnalysisOptionsImpl;
+import 'package:analyzer/src/generated/source.dart' show Source;
+import 'package:analyzer/src/generated/utilities_general.dart';
+import 'package:analyzer/src/summary/idl.dart' show PackageBundle;
+
+/**
+ * A function used to create a new DartSdk with the given [options]. If the
+ * passed [options] are `null`, then default options are used.
+ */
+typedef DartSdk SdkCreator(AnalysisOptions options);
 
 /**
  * A Dart SDK installed in a specified location.
@@ -17,23 +27,28 @@ abstract class DartSdk {
   /**
    * The short name of the dart SDK 'async' library.
    */
-  static final String DART_ASYNC = "dart:async";
+  static const String DART_ASYNC = "dart:async";
 
   /**
    * The short name of the dart SDK 'core' library.
    */
-  static final String DART_CORE = "dart:core";
+  static const String DART_CORE = "dart:core";
 
   /**
    * The short name of the dart SDK 'html' library.
    */
-  static final String DART_HTML = "dart:html";
+  static const String DART_HTML = "dart:html";
+
+  /**
+   * The prefix shared by all dart library URIs.
+   */
+  static const String DART_LIBRARY_PREFIX = "dart:";
 
   /**
    * The version number that is returned when the real version number could not
    * be determined.
    */
-  static final String DEFAULT_VERSION = "0";
+  static const String DEFAULT_VERSION = "0";
 
   /**
    * Return the analysis context used for all of the sources in this [DartSdk].
@@ -64,6 +79,14 @@ abstract class DartSdk {
   Source fromFileUri(Uri uri);
 
   /**
+   * Return the linked [PackageBundle] for this SDK, if it can be provided, or
+   * `null` otherwise.
+   *
+   * This is a temporary API, don't use it.
+   */
+  PackageBundle getLinkedBundle();
+
+  /**
    * Return the library representing the library with the given 'dart:' [uri],
    * or `null` if the given URI does not denote a library in this SDK.
    */
@@ -77,6 +100,79 @@ abstract class DartSdk {
 }
 
 /**
+ * Manages the DartSdk's that have been created. Clients need to create multiple
+ * SDKs when the analysis options associated with those SDK's contexts will
+ * produce different analysis results.
+ */
+class DartSdkManager {
+  /**
+   * The absolute path to the directory containing the default SDK.
+   */
+  final String defaultSdkDirectory;
+
+  /**
+   * A flag indicating whether it is acceptable to use summaries when they are
+   * available.
+   */
+  final bool canUseSummaries;
+
+  /**
+   * The function used to create new SDK's.
+   */
+  final SdkCreator sdkCreator;
+
+  /**
+   * A table mapping (an encoding of) analysis options and SDK locations to the
+   * DartSdk from that location that has been configured with those options.
+   */
+  Map<SdkDescription, DartSdk> sdkMap = new HashMap<SdkDescription, DartSdk>();
+
+  /**
+   * Initialize a newly created manager.
+   */
+  DartSdkManager(
+      this.defaultSdkDirectory, this.canUseSummaries, this.sdkCreator);
+
+  /**
+   * Return any SDK that has been created, or `null` if no SDKs have been
+   * created.
+   */
+  DartSdk get anySdk {
+    if (sdkMap.isEmpty) {
+      return null;
+    }
+    return sdkMap.values.first;
+  }
+
+  /**
+   * Return a list of the descriptors of the SDKs that are currently being
+   * managed.
+   */
+  List<SdkDescription> get sdkDescriptors => sdkMap.keys.toList();
+
+  /**
+   * Return the Dart SDK that is appropriate for the given analysis [options].
+   * If such an SDK has not yet been created, then the [sdkCreator] will be
+   * invoked to create it.
+   */
+  DartSdk getSdk(SdkDescription description, DartSdk ifAbsent()) {
+    return sdkMap.putIfAbsent(description, ifAbsent);
+  }
+
+  /**
+   * Return the Dart SDK that is appropriate for the given analysis [options].
+   * If such an SDK has not yet been created, then the [sdkCreator] will be
+   * invoked to create it.
+   */
+  DartSdk getSdkForOptions(AnalysisOptions options) {
+    // TODO(brianwilkerson) Remove this method and the field sdkCreator.
+    SdkDescription description =
+        new SdkDescription(<String>[defaultSdkDirectory], options);
+    return getSdk(description, () => sdkCreator(options));
+  }
+}
+
+/**
  * A map from Dart library URI's to the [SdkLibraryImpl] representing that
  * library.
  */
@@ -84,8 +180,8 @@ class LibraryMap {
   /**
    * A table mapping Dart library URI's to the library.
    */
-  HashMap<String, SdkLibraryImpl> _libraryMap =
-      new HashMap<String, SdkLibraryImpl>();
+  LinkedHashMap<String, SdkLibraryImpl> _libraryMap =
+      new LinkedHashMap<String, SdkLibraryImpl>();
 
   /**
    * Return a list containing all of the sdk libraries in this mapping.
@@ -95,7 +191,7 @@ class LibraryMap {
   /**
    * Return a list containing the library URI's for which a mapping is available.
    */
-  List<String> get uris => new List.from(_libraryMap.keys.toSet());
+  List<String> get uris => _libraryMap.keys.toList();
 
   /**
    * Return the library with the given 'dart:' [uri], or `null` if the URI does
@@ -114,6 +210,82 @@ class LibraryMap {
    * Return the number of library URI's for which a mapping is available.
    */
   int size() => _libraryMap.length;
+}
+
+/**
+ * A description of a [DartSdk].
+ */
+class SdkDescription {
+  /**
+   * The paths to the files or directories that define the SDK.
+   */
+  final List<String> paths;
+
+  /**
+   * The analysis options that will be used by the SDK's context.
+   */
+  final AnalysisOptions options;
+
+  /**
+   * Initialize a newly created SDK description to describe an SDK based on the
+   * files or directories at the given [paths] that is analyzed using the given
+   * [options].
+   */
+  SdkDescription(this.paths, this.options);
+
+  @override
+  int get hashCode {
+    int hashCode = options.encodeCrossContextOptions();
+    for (String path in paths) {
+      hashCode = JenkinsSmiHash.combine(hashCode, path.hashCode);
+    }
+    return JenkinsSmiHash.finish(hashCode);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is SdkDescription) {
+      if (options.encodeCrossContextOptions() !=
+          other.options.encodeCrossContextOptions()) {
+        return false;
+      }
+      int length = paths.length;
+      if (other.paths.length != length) {
+        return false;
+      }
+      for (int i = 0; i < length; i++) {
+        if (other.paths[i] != paths[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  String toString() {
+    StringBuffer buffer = new StringBuffer();
+    bool needsSeparator = false;
+    void add(String optionName) {
+      if (needsSeparator) {
+        buffer.write(', ');
+      }
+      buffer.write(optionName);
+      needsSeparator = true;
+    }
+    for (String path in paths) {
+      add(path);
+    }
+    if (needsSeparator) {
+      buffer.write(' ');
+    }
+    buffer.write('(');
+    buffer.write(AnalysisOptionsImpl
+        .decodeCrossContextOptions(options.encodeCrossContextOptions()));
+    buffer.write(')');
+    return buffer.toString();
+  }
 }
 
 class SdkLibrariesReader_LibraryBuilder extends RecursiveAstVisitor<Object> {
@@ -183,16 +355,20 @@ class SdkLibrariesReader_LibraryBuilder extends RecursiveAstVisitor<Object> {
    */
   LibraryMap get librariesMap => _librariesMap;
 
-
   // To be backwards-compatible the new categories field is translated to
   // an old approximation.
   String convertCategories(String categories) {
     switch (categories) {
-      case "": return "Internal";
-      case "Client": return "Client";
-      case "Server": return "Server";
-      case "Client,Server": return "Shared";
-      case "Client,Server,Embedded": return "Shared";
+      case "":
+        return "Internal";
+      case "Client":
+        return "Client";
+      case "Server":
+        return "Server";
+      case "Client,Server":
+        return "Shared";
+      case "Client,Server,Embedded":
+        return "Shared";
     }
     return "Shared";
   }
@@ -218,7 +394,7 @@ class SdkLibrariesReader_LibraryBuilder extends RecursiveAstVisitor<Object> {
             library.category =
                 convertCategories((expression as StringLiteral).stringValue);
           } else if (name == _IMPLEMENTATION) {
-            library.implementation = (expression as BooleanLiteral).value;
+            library._implementation = (expression as BooleanLiteral).value;
           } else if (name == _DOCUMENTED) {
             library.documented = (expression as BooleanLiteral).value;
           } else if (name == _PLATFORMS) {
@@ -311,16 +487,14 @@ class SdkLibraryImpl implements SdkLibrary {
    */
   static int VM_PLATFORM = 2;
 
-  /**
-   * The short name of the library. This is the name used after 'dart:' in a
-   * URI.
-   */
+  @override
   final String shortName;
 
   /**
    * The path to the file defining the library. The path is relative to the
    * 'lib' directory within the SDK.
    */
+  @override
   String path = null;
 
   /**
@@ -328,6 +502,7 @@ class SdkLibraryImpl implements SdkLibrary {
    * in the libraries file all libraries are assumed to be shared between server
    * and client.
    */
+  @override
   String category = "Shared";
 
   /**
@@ -358,13 +533,6 @@ class SdkLibraryImpl implements SdkLibrary {
     this._documented = documented;
   }
 
-  /**
-   * Set whether the library is an implementation library.
-   */
-  void set implementation(bool implementation) {
-    this._implementation = implementation;
-  }
-
   @override
   bool get isDart2JsLibrary => (_platforms & DART2JS_PLATFORM) != 0;
 
@@ -375,7 +543,7 @@ class SdkLibraryImpl implements SdkLibrary {
   bool get isImplementation => _implementation;
 
   @override
-  bool get isInternal => "Internal" == category;
+  bool get isInternal => category == "Internal";
 
   @override
   bool get isShared => category == "Shared";

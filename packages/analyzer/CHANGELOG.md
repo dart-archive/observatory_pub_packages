@@ -1,3 +1,76 @@
+## 0.29.2
+* Add new ResolverMap class for accessing the results of resolution from the AST.  In a future release, this will replace the existing AST getters.
+* Add new base classes MethodReferenceExpression and ConstructorReferenceNode.
+
+## 0.29.1
+* Add new AstTestFactory class.  This will replace the existing AstFactory class in 0.30.
+* Add new AstFactory class.  This will replace explicit AST constructors in 0.30.
+
+## 0.29.0-alpha.0
+* Removed `Element.docRange`.
+
+## 0.28.2-alpha.0
+* Corresponds with the analyzer/server in the `1.20.0-dev.1.0 ` SDK.
+
+## 0.28.0-alpha.2
+* Fixed PubSummaryManager linking when a listed package does not have the unlinked bundle.
+
+## 0.27.4-alpha.19
+* Added support for running the dev compiler in the browser.
+
+## 0.27.4-alpha.18
+* Support for references to operators in doc comments (#26929).
+
+## 0.27.4-alpha.17
+* Support for trailing commas in parameter and argument lists (#26647).
+* Strong mode breaking change: can now infer generic type arguments from the constructor invocation arguments (#25220).
+
+## 0.27.4-alpha.16
+* (Internal) Corresponds with the analyzer/server in the `1.18.0-dev.4.0` SDK.
+
+## 0.27.4-alpha.9
+* Restore EmbedderUriResolver API.
+
+## 0.27.4-alpha.8
+* Ignore processing performance improvements.
+* EmbedderUriResolver API updates.
+
+## 0.27.4
+
+* Added support for 'analysis_options.yaml' files as an alternative to '.analysis_options' files.
+
+## 0.27.1
+* Moved the public and private API's for the element model into their proper places.
+* Added back support for auto-processing of plugins.
+
+## 0.27.0
+* Support for DEP 37 (Assert with optional message).
+* Lexical support for DEP 40 (Interface libraries). This does not include any semantic checking to ensure that the
+  implementation libraries are compatible with the interface library.
+* Cleaned up the initialization of plugins. Clients are now required to initialize plugins, possibly using the utility
+  method AnalysisEngine.processRequiredPlugins().
+* Removed the old task model and code that supported it. None of the removed code was intended to be public API, but
+  might be in use anyway.
+* Removed previously deprecated API's (marked with the @deprecated annotation).
+
+## 0.26.4
+* Options processing API updated to accept untyped options maps (#25126).
+
+## 0.26.3
+* (Internal) Support for `_embedder.yaml` discovery and processing.
+
+## 0.26.2
+* Add code generation utilities for use in both analyzer and analysis server.
+
+## 0.26.1+17
+* (Internal) Introduced context configuration logic (`configureContext()` extracted from server).
+
+## 0.26.1+16
+* (Internal) Options validation plugin API update.
+
+## 0.26.1+15
+* (Internal) Provisional options validation plugin API.
+
 ## 0.26.1+13
 * (Internal) Plugin processing fixes.
 
@@ -73,7 +146,7 @@
 
 ## 0.25.2-alpha.0
 
-* Initial support for analyzing `dart:sdk` extensions from `.sdkext`. 
+* Initial support for analyzing `dart:sdk` extensions from `.sdkext`.
 
 ## 0.25.1
 
@@ -97,7 +170,7 @@
 ## 0.22.0
 
   New API:
-  
+
 * `Source.uri` added.
 
   Breaking changes:

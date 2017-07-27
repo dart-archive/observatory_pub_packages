@@ -4,10 +4,10 @@
 
 library analyzer.task.dart;
 
-import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
-import 'package:analyzer/src/generated/error.dart';
-import 'package:analyzer/src/generated/scanner.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/error/error.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/generated/utilities_general.dart';
 import 'package:analyzer/src/task/dart.dart';
@@ -68,15 +68,6 @@ final ListResultDescriptor<Source> INCLUDED_PARTS =
     new ListResultDescriptor<Source>('INCLUDED_PARTS', Source.EMPTY_LIST);
 
 /**
- * A flag specifying whether a library is dependent on code that is only
- * available in a client.
- *
- * The result is only available for [Source]s representing a library.
- */
-final ResultDescriptor<bool> IS_CLIENT =
-    new ResultDescriptor<bool>('IS_CLIENT', false);
-
-/**
  * A flag specifying whether a library is launchable.
  *
  * The result is only available for [Source]s representing a library.
@@ -111,7 +102,7 @@ final ResultDescriptor<CompilationUnit> PARSED_UNIT =
  */
 final ResultDescriptor<CompilationUnit> RESOLVED_UNIT =
     new ResultDescriptor<CompilationUnit>('RESOLVED_UNIT', null,
-        cachingPolicy: AST_CACHING_POLICY);
+        cachingPolicy: AST_RESOLVED_CACHING_POLICY);
 
 /**
  * The kind of a [Source].
@@ -151,6 +142,9 @@ final ListResultDescriptor<Source> UNITS =
  * change if a single part is included in more than one library.
  */
 class LibrarySpecificUnit implements AnalysisTarget {
+  static const List<LibrarySpecificUnit> EMPTY_LIST =
+      const <LibrarySpecificUnit>[];
+
   /**
    * The defining compilation unit of the library in which the [unit]
    * is analyzed.
@@ -171,6 +165,9 @@ class LibrarySpecificUnit implements AnalysisTarget {
   int get hashCode {
     return JenkinsSmiHash.combine(library.hashCode, unit.hashCode);
   }
+
+  @override
+  Source get librarySource => library;
 
   @override
   Source get source => unit;

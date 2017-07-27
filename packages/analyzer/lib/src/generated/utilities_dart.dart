@@ -2,9 +2,67 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.utilities.dart;
+library analyzer.src.generated.utilities_dart;
 
-import 'java_core.dart';
+import 'package:analyzer/dart/ast/ast.dart' show AnnotatedNode, Comment;
+import 'package:analyzer/dart/ast/token.dart' show Token;
+import 'package:analyzer/exception/exception.dart';
+import 'package:analyzer/src/dart/element/element.dart' show ElementImpl;
+import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/src/util/fast_uri.dart';
+
+/**
+ * Resolve the [containedUri] against [baseUri] using Dart rules.
+ *
+ * This function behaves similarly to [Uri.resolveUri], except that it properly
+ * handles situations like the following:
+ *
+ *     resolveRelativeUri(dart:core, bool.dart) -> dart:core/bool.dart
+ *     resolveRelativeUri(package:a/b.dart, ../c.dart) -> package:a/c.dart
+ */
+Uri resolveRelativeUri(Uri baseUri, Uri containedUri) {
+  if (containedUri.isAbsolute) {
+    return containedUri;
+  }
+  Uri origBaseUri = baseUri;
+  try {
+    String scheme = baseUri.scheme;
+    // dart:core => dart:core/core.dart
+    if (scheme == DartUriResolver.DART_SCHEME) {
+      String part = baseUri.path;
+      if (part.indexOf('/') < 0) {
+        baseUri = FastUri.parse('$scheme:$part/$part.dart');
+      }
+    }
+    // foo.dart + ../bar.dart = ../bar.dart
+    // TODO(scheglov) Remove this temporary workaround.
+    // Should be fixed as https://github.com/dart-lang/sdk/issues/27447
+    List<String> baseSegments = baseUri.pathSegments;
+    List<String> containedSegments = containedUri.pathSegments;
+    if (baseSegments.length == 1 &&
+        containedSegments.length > 0 &&
+        containedSegments[0] == '..') {
+      return containedUri;
+    }
+    return baseUri.resolveUri(containedUri);
+  } catch (exception, stackTrace) {
+    throw new AnalysisException(
+        "Could not resolve URI ($containedUri) relative to source ($origBaseUri)",
+        new CaughtException(exception, stackTrace));
+  }
+}
+
+/**
+ * If the given [node] has a documentation comment, remember its content
+ * and range into the given [element].
+ */
+void setElementDocumentationComment(ElementImpl element, AnnotatedNode node) {
+  Comment comment = node.documentationComment;
+  if (comment != null && comment.isDocumentation) {
+    element.documentationComment =
+        comment.tokens.map((Token t) => t.lexeme).join('\n');
+  }
+}
 
 /**
  * Check whether [uri1] starts with (or 'is prefixed by') [uri2] by checking
@@ -35,11 +93,11 @@ bool startsWith(Uri uri1, Uri uri2) {
 }
 
 /**
- * The enumeration `ParameterKind` defines the different kinds of parameters. There are two
- * basic kinds of parameters: required and optional. Optional parameters are further divided into
- * two kinds: positional optional and named optional.
+ * The kinds of a parameter. There are two basic kinds of parameters: required
+ * and optional. Optional parameters are further divided into two kinds:
+ * positional optional and named optional.
  */
-class ParameterKind extends Enum<ParameterKind> {
+class ParameterKind implements Comparable<ParameterKind> {
   static const ParameterKind REQUIRED =
       const ParameterKind('REQUIRED', 0, false);
 
@@ -51,15 +109,31 @@ class ParameterKind extends Enum<ParameterKind> {
   static const List<ParameterKind> values = const [REQUIRED, POSITIONAL, NAMED];
 
   /**
+   * The name of this parameter.
+   */
+  final String name;
+
+  /**
+   * The ordinal value of the parameter.
+   */
+  final int ordinal;
+
+  /**
    * A flag indicating whether this is an optional parameter.
    */
   final bool isOptional;
 
   /**
    * Initialize a newly created kind with the given state.
-   *
-   * @param isOptional `true` if this is an optional parameter
    */
-  const ParameterKind(String name, int ordinal, this.isOptional)
-      : super(name, ordinal);
+  const ParameterKind(this.name, this.ordinal, this.isOptional);
+
+  @override
+  int get hashCode => ordinal;
+
+  @override
+  int compareTo(ParameterKind other) => ordinal - other.ordinal;
+
+  @override
+  String toString() => name;
 }

@@ -2,11 +2,15 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+library usage_impl;
+
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'uuid.dart';
 import '../usage.dart';
-import '../uuid/uuid.dart';
+
+final int _MAX_EXCEPTION_LENGTH = 100;
 
 String postEncode(Map<String, dynamic> map) {
   // &foo=bar
@@ -17,11 +21,11 @@ String postEncode(Map<String, dynamic> map) {
 }
 
 /**
- * A throttling algorithm. This models the throttling after a bucket with
+ * A throttling algorithim. This models the throttling after a bucket with
  * water dripping into it at the rate of 1 drop per second. If the bucket has
  * water when an operation is requested, 1 drop of water is removed and the
- * operation is performed. If not the operation is skipped. This algorithm
- * lets operations be performed in bursts without throttling, but holds the
+ * operation is performed. If not the operation is skipped. This algorithim
+ * lets operations be peformed in bursts without throttling, but holds the
  * overall average rate of operations to 1 per second.
  */
 class ThrottlingBucket {
@@ -56,16 +60,11 @@ class ThrottlingBucket {
   }
 }
 
-class AnalyticsImpl implements Analytics {
-  static const String _defaultAnalyticsUrl =
-      'https://www.google-analytics.com/collect';
+abstract class AnalyticsImpl extends Analytics {
+  static const String _defaultAnalyticsUrl = 'https://www.google-analytics.com/collect';
 
-  @override
+  /// Tracking ID / Property ID.
   final String trackingId;
-  @override
-  final String applicationName;
-  @override
-  final String applicationVersion;
 
   final PersistentProperties properties;
   final PostHandler postHandler;
@@ -75,16 +74,16 @@ class AnalyticsImpl implements Analytics {
 
   final List<Future> _futures = [];
 
-  @override
-  AnalyticsOpt analyticsOpt = AnalyticsOpt.optOut;
-
   String _url;
 
-  StreamController<Map<String, dynamic>> _sendController =
-      new StreamController.broadcast(sync: true);
-
-  AnalyticsImpl(this.trackingId, this.properties, this.postHandler,
-      {this.applicationName, this.applicationVersion, String analyticsUrl}) {
+  AnalyticsImpl(
+    this.trackingId,
+    this.properties,
+    this.postHandler, {
+    String applicationName,
+    String applicationVersion,
+    String analyticsUrl
+  }) {
     assert(trackingId != null);
 
     if (applicationName != null) setSessionValue('an', applicationName);
@@ -93,82 +92,52 @@ class AnalyticsImpl implements Analytics {
     _url = analyticsUrl ?? _defaultAnalyticsUrl;
   }
 
-  bool _firstRun;
+  bool get optIn => properties['optIn'] == true;
 
-  @override
-  bool get firstRun {
-    if (_firstRun == null) {
-      _firstRun = properties['firstRun'] == null;
-
-      if (properties['firstRun'] != false) {
-        properties['firstRun'] = false;
-      }
-    }
-
-    return _firstRun;
+  set optIn(bool value) {
+    properties['optIn'] = value;
   }
 
-  @override
-  bool get enabled {
-    bool optIn = analyticsOpt == AnalyticsOpt.optIn;
-    return optIn
-        ? properties['enabled'] == true
-        : properties['enabled'] != false;
-  }
+  bool get hasSetOptIn => properties['optIn'] != null;
 
-  @override
-  set enabled(bool value) {
-    properties['enabled'] = value;
-  }
-
-  @override
-  Future sendScreenView(String viewName, {Map<String, String> parameters}) {
+  Future sendScreenView(String viewName) {
     Map<String, dynamic> args = {'cd': viewName};
-    if (parameters != null) {
-      args.addAll(parameters);
-    }
     return _sendPayload('screenview', args);
   }
 
-  @override
-  Future sendEvent(String category, String action,
-      {String label, int value, Map<String, String> parameters}) {
+  Future sendEvent(String category, String action, {String label, int value}) {
+    if (!optIn) return new Future.value();
+
     Map<String, dynamic> args = {'ec': category, 'ea': action};
     if (label != null) args['el'] = label;
     if (value != null) args['ev'] = value;
-    if (parameters != null) {
-      args.addAll(parameters);
-    }
     return _sendPayload('event', args);
   }
 
-  @override
   Future sendSocial(String network, String action, String target) {
+    if (!optIn) return new Future.value();
+
     Map<String, dynamic> args = {'sn': network, 'sa': action, 'st': target};
     return _sendPayload('social', args);
   }
 
-  @override
-  Future sendTiming(String variableName, int time,
-      {String category, String label}) {
+  Future sendTiming(String variableName, int time, {String category,
+        String label}) {
+    if (!optIn) return new Future.value();
+
     Map<String, dynamic> args = {'utv': variableName, 'utt': time};
     if (label != null) args['utl'] = label;
     if (category != null) args['utc'] = category;
     return _sendPayload('timing', args);
   }
 
-  @override
-  AnalyticsTimer startTimer(String variableName,
-      {String category, String label}) {
-    return new AnalyticsTimer(this, variableName,
-        category: category, label: label);
+  AnalyticsTimer startTimer(String variableName, {String category, String label}) {
+    return new AnalyticsTimer(this,
+        variableName, category: category, label: label);
   }
 
-  @override
   Future sendException(String description, {bool fatal}) {
-    // We trim exceptions to a max length; google analytics will apply it's own
-    // truncation, likely around 150 chars or so.
-    const int maxExceptionLength = 1000;
+    if (!optIn) return new Future.value();
 
     // In order to ensure that the client of this API is not sending any PII
     // data, we strip out any stack trace that may reference a path on the
@@ -177,10 +146,8 @@ class AnalyticsImpl implements Analytics {
       description = description.substring(0, description.indexOf('file:/'));
     }
 
-    description = description.replaceAll('\n', '; ');
-
-    if (description.length > maxExceptionLength) {
-      description = description.substring(0, maxExceptionLength);
+    if (description != null && description.length > _MAX_EXCEPTION_LENGTH) {
+      description = description.substring(0, _MAX_EXCEPTION_LENGTH);
     }
 
     Map<String, dynamic> args = {'exd': description};
@@ -188,10 +155,6 @@ class AnalyticsImpl implements Analytics {
     return _sendPayload('exception', args);
   }
 
-  @override
-  dynamic getSessionValue(String param) => _variableMap[param];
-
-  @override
   void setSessionValue(String param, dynamic value) {
     if (value == null) {
       _variableMap.remove(param);
@@ -200,10 +163,6 @@ class AnalyticsImpl implements Analytics {
     }
   }
 
-  @override
-  Stream<Map<String, dynamic>> get onSend => _sendController.stream;
-
-  @override
   Future waitForLastPing({Duration timeout}) {
     Future f = Future.wait(_futures).catchError((e) => null);
 
@@ -214,41 +173,31 @@ class AnalyticsImpl implements Analytics {
     return f;
   }
 
-  @override
-  void close() => postHandler.close();
-
-  @override
-  String get clientId => properties['clientId'] ??= new Uuid().generateV4();
-
   /**
-   * Send raw data to analytics. Callers should generally use one of the typed
-   * methods (`sendScreenView`, `sendEvent`, ...).
-   *
-   * Valid values for [hitType] are: 'pageview', 'screenview', 'event',
-   * 'transaction', 'item', 'social', 'exception', and 'timing'.
+   * Anonymous Client ID. The value of this field should be a random UUID v4.
    */
-  Future sendRaw(String hitType, Map<String, dynamic> args) {
-    return _sendPayload(hitType, args);
+  String get _clientId => properties['clientId'];
+
+  void _initClientId() {
+    if (_clientId == null) {
+      properties['clientId'] = new Uuid().generateV4();
+    }
   }
 
-  /**
-   * Valid values for [hitType] are: 'pageview', 'screenview', 'event',
-   * 'transaction', 'item', 'social', 'exception', and 'timing'.
-   */
+  // Valid values for [hitType] are: 'pageview', 'screenview', 'event',
+  // 'transaction', 'item', 'social', 'exception', and 'timing'.
   Future _sendPayload(String hitType, Map<String, dynamic> args) {
-    if (!enabled) return new Future.value();
-
     if (_bucket.removeDrop()) {
+      _initClientId();
+
       _variableMap.forEach((key, value) {
         args[key] = value;
       });
 
       args['v'] = '1'; // protocol version
       args['tid'] = trackingId;
-      args['cid'] = clientId;
+      args['cid'] = _clientId;
       args['t'] = hitType;
-
-      _sendController.add(args);
 
       return _recordFuture(postHandler.sendPost(_url, args));
     } else {
@@ -267,7 +216,7 @@ class AnalyticsImpl implements Analytics {
  * of these injected into it. There are default implementations for `dart:io`
  * and `dart:html` clients.
  *
- * The [name] parameter is used to uniquely store these properties on disk /
+ * The [name] paramater is used to uniquely store these properties on disk /
  * persistent storage.
  */
 abstract class PersistentProperties {
@@ -275,12 +224,8 @@ abstract class PersistentProperties {
 
   PersistentProperties(this.name);
 
-  dynamic operator [](String key);
-  void operator []=(String key, dynamic value);
-
-  /// Re-read settings from the backing store. This may be a no-op on some
-  /// platforms.
-  void syncSettings();
+  dynamic operator[](String key);
+  void operator[]=(String key, dynamic value);
 }
 
 /**
@@ -294,7 +239,4 @@ abstract class PersistentProperties {
  */
 abstract class PostHandler {
   Future sendPost(String url, Map<String, dynamic> parameters);
-
-  /// Free any used resources.
-  void close();
 }

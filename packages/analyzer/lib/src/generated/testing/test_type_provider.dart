@@ -2,12 +2,19 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.testing.test_type_provider;
+library analyzer.src.generated.testing.test_type_provider;
 
-import 'package:analyzer/src/generated/ast.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/src/dart/element/element.dart';
+import 'package:analyzer/src/dart/element/type.dart';
 import 'package:analyzer/src/generated/constant.dart';
-import 'package:analyzer/src/generated/element.dart';
+import 'package:analyzer/src/generated/engine.dart' show AnalysisContext;
 import 'package:analyzer/src/generated/resolver.dart';
+import 'package:analyzer/src/generated/sdk.dart' show DartSdk;
+import 'package:analyzer/src/generated/source.dart' show Source;
 import 'package:analyzer/src/generated/testing/ast_factory.dart';
 import 'package:analyzer/src/generated/testing/element_factory.dart';
 
@@ -15,7 +22,7 @@ import 'package:analyzer/src/generated/testing/element_factory.dart';
  * A type provider that can be used by tests without creating the element model
  * for the core library.
  */
-class TestTypeProvider implements TypeProvider {
+class TestTypeProvider extends TypeProviderBase {
   /**
    * The type representing the built-in type 'bool'.
    */
@@ -142,9 +149,17 @@ class TestTypeProvider implements TypeProvider {
   InterfaceType _typeType;
 
   /**
-   * The type representing typenames that can't be resolved.
+   * The type representing type names that can't be resolved.
    */
   DartType _undefinedType;
+
+  /**
+   * The analysis context, if any. Used to create an appropriate 'dart:async'
+   * library to back `Future<T>`.
+   */
+  AnalysisContext _context;
+
+  TestTypeProvider([this._context]);
 
   @override
   InterfaceType get boolType {
@@ -155,7 +170,10 @@ class TestTypeProvider implements TypeProvider {
           .constructorElement(boolElement, "fromEnvironment", true);
       fromEnvironment.parameters = <ParameterElement>[
         ElementFactory.requiredParameter2("name", stringType),
-        ElementFactory.namedParameter2("defaultValue", _boolType)
+        ElementFactory.namedParameter3("defaultValue",
+            type: _boolType,
+            initializer: AstFactory.booleanLiteral(false),
+            initializerCode: 'false')
       ];
       fromEnvironment.factory = true;
       fromEnvironment.isCycleFree = true;
@@ -177,12 +195,22 @@ class TestTypeProvider implements TypeProvider {
     if (_deprecatedType == null) {
       ClassElementImpl deprecatedElement =
           ElementFactory.classElement2("Deprecated");
-      ConstructorElementImpl constructor = ElementFactory.constructorElement(
-          deprecatedElement, null, true, [stringType]);
-      constructor.constantInitializers = <ConstructorInitializer>[
-        AstFactory.constructorFieldInitializer(
-            true, 'expires', AstFactory.identifier3('expires'))
+      FieldElementImpl expiresField = ElementFactory.fieldElement(
+          'expires', false, true, false, stringType);
+      deprecatedElement.fields = <FieldElement>[expiresField];
+      deprecatedElement.accessors = <PropertyAccessorElement>[
+        expiresField.getter
       ];
+      ConstructorElementImpl constructor = ElementFactory
+          .constructorElement(deprecatedElement, '', true, [stringType]);
+      (constructor.parameters[0] as ParameterElementImpl).name = 'expires';
+      ConstructorFieldInitializer expiresInit =
+          AstFactory.constructorFieldInitializer(
+              true, 'expires', AstFactory.identifier3('expires'));
+      expiresInit.fieldName.staticElement = expiresField;
+      (expiresInit.expression as SimpleIdentifier).staticElement =
+          constructor.parameters[0];
+      constructor.constantInitializers = <ConstructorInitializer>[expiresInit];
       deprecatedElement.constructors = <ConstructorElement>[constructor];
       _deprecatedType = deprecatedElement.type;
     }
@@ -208,7 +236,11 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get functionType {
     if (_functionType == null) {
-      _functionType = ElementFactory.classElement2("Function").type;
+      ClassElementImpl functionClass = ElementFactory.classElement2("Function");
+      functionClass.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(functionClass, null, false)
+      ];
+      _functionType = functionClass.type;
     }
     return _functionType;
   }
@@ -216,7 +248,7 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get futureDynamicType {
     if (_futureDynamicType == null) {
-      _futureDynamicType = futureType.substitute4(<DartType>[dynamicType]);
+      _futureDynamicType = futureType.instantiate(<DartType>[dynamicType]);
     }
     return _futureDynamicType;
   }
@@ -224,7 +256,7 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get futureNullType {
     if (_futureNullType == null) {
-      _futureNullType = futureType.substitute4(<DartType>[nullType]);
+      _futureNullType = futureType.instantiate(<DartType>[nullType]);
     }
     return _futureNullType;
   }
@@ -232,7 +264,18 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get futureType {
     if (_futureType == null) {
-      _futureType = ElementFactory.classElement2("Future", ["T"]).type;
+      Source asyncSource = _context.sourceFactory.forUri(DartSdk.DART_ASYNC);
+      _context.setContents(asyncSource, "");
+      CompilationUnitElementImpl asyncUnit =
+          new CompilationUnitElementImpl("async.dart");
+      LibraryElementImpl asyncLibrary = new LibraryElementImpl.forNode(
+          _context, AstFactory.libraryIdentifier2(["dart.async"]));
+      asyncLibrary.definingCompilationUnit = asyncUnit;
+      asyncUnit.librarySource = asyncUnit.source = asyncSource;
+
+      ClassElementImpl future = ElementFactory.classElement2("Future", ["T"]);
+      _futureType = future.type;
+      asyncUnit.types = <ClassElement>[future];
     }
     return _futureType;
   }
@@ -248,7 +291,7 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get iterableDynamicType {
     if (_iterableDynamicType == null) {
-      _iterableDynamicType = iterableType.substitute4(<DartType>[dynamicType]);
+      _iterableDynamicType = iterableType.instantiate(<DartType>[dynamicType]);
     }
     return _iterableDynamicType;
   }
@@ -262,10 +305,13 @@ class TestTypeProvider implements TypeProvider {
       DartType eType = iterableElement.typeParameters[0].type;
       _setAccessors(iterableElement, <PropertyAccessorElement>[
         ElementFactory.getterElement(
-            "iterator", false, iteratorType.substitute4(<DartType>[eType])),
+            "iterator", false, iteratorType.instantiate(<DartType>[eType])),
         ElementFactory.getterElement("last", false, eType)
       ]);
-      iterableElement.constructors = ConstructorElement.EMPTY_LIST;
+      iterableElement.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(iterableElement, '', true)
+          ..isCycleFree = true
+      ];
       _propagateTypeArguments(iterableElement);
     }
     return _iterableType;
@@ -280,7 +326,9 @@ class TestTypeProvider implements TypeProvider {
       _setAccessors(iteratorElement, <PropertyAccessorElement>[
         ElementFactory.getterElement("current", false, eType)
       ]);
-      iteratorElement.constructors = ConstructorElement.EMPTY_LIST;
+      iteratorElement.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(iteratorElement, null, false)
+      ];
       _propagateTypeArguments(iteratorElement);
     }
     return _iteratorType;
@@ -297,15 +345,15 @@ class TestTypeProvider implements TypeProvider {
       _listType = listElement.type;
       DartType eType = listElement.typeParameters[0].type;
       InterfaceType iterableType =
-          this.iterableType.substitute4(<DartType>[eType]);
+          this.iterableType.instantiate(<DartType>[eType]);
       listElement.interfaces = <InterfaceType>[iterableType];
       _setAccessors(listElement, <PropertyAccessorElement>[
         ElementFactory.getterElement("length", false, intType)
       ]);
       listElement.methods = <MethodElement>[
         ElementFactory.methodElement("[]", eType, [intType]),
-        ElementFactory.methodElement(
-            "[]=", VoidTypeImpl.instance, [intType, eType]),
+        ElementFactory
+            .methodElement("[]=", VoidTypeImpl.instance, [intType, eType]),
         ElementFactory.methodElement("add", VoidTypeImpl.instance, [eType])
       ];
       _propagateTypeArguments(listElement);
@@ -326,24 +374,18 @@ class TestTypeProvider implements TypeProvider {
       ]);
       mapElement.methods = <MethodElement>[
         ElementFactory.methodElement("[]", vType, [objectType]),
-        ElementFactory.methodElement(
-            "[]=", VoidTypeImpl.instance, [kType, vType])
+        ElementFactory
+            .methodElement("[]=", VoidTypeImpl.instance, [kType, vType])
       ];
-      mapElement.constructors = ConstructorElement.EMPTY_LIST;
+      mapElement.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(mapElement, '', false)
+          ..external = true
+          ..factory = true
+      ];
       _propagateTypeArguments(mapElement);
     }
     return _mapType;
   }
-
-  @override
-  List<InterfaceType> get nonSubtypableTypes => <InterfaceType>[
-        nullType,
-        numType,
-        intType,
-        doubleType,
-        boolType,
-        stringType
-      ];
 
   @override
   DartObjectImpl get nullObject {
@@ -357,7 +399,10 @@ class TestTypeProvider implements TypeProvider {
   InterfaceType get nullType {
     if (_nullType == null) {
       ClassElementImpl nullElement = ElementFactory.classElement2("Null");
-      nullElement.constructors = ConstructorElement.EMPTY_LIST;
+      nullElement.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(
+            nullElement, '_uninstantiatable', false)..factory = true
+      ];
       _nullType = nullElement.type;
     }
     return _nullType;
@@ -377,7 +422,7 @@ class TestTypeProvider implements TypeProvider {
       ClassElementImpl objectElement = ElementFactory.object;
       _objectType = objectElement.type;
       ConstructorElementImpl constructor =
-          ElementFactory.constructorElement(objectElement, null, true);
+          ElementFactory.constructorElement(objectElement, '', true);
       constructor.constantInitializers = <ConstructorInitializer>[];
       objectElement.constructors = <ConstructorElement>[constructor];
       objectElement.methods = <MethodElement>[
@@ -396,7 +441,12 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get stackTraceType {
     if (_stackTraceType == null) {
-      _stackTraceType = ElementFactory.classElement2("StackTrace").type;
+      ClassElementImpl stackTraceElement =
+          ElementFactory.classElement2("StackTrace");
+      stackTraceElement.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(stackTraceElement, null, false)
+      ];
+      _stackTraceType = stackTraceElement.type;
     }
     return _stackTraceType;
   }
@@ -404,7 +454,7 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get streamDynamicType {
     if (_streamDynamicType == null) {
-      _streamDynamicType = streamType.substitute4(<DartType>[dynamicType]);
+      _streamDynamicType = streamType.instantiate(<DartType>[dynamicType]);
     }
     return _streamDynamicType;
   }
@@ -420,13 +470,13 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get stringType {
     if (_stringType == null) {
-      _stringType = ElementFactory.classElement2("String").type;
-      ClassElementImpl stringElement = _stringType.element as ClassElementImpl;
+      ClassElementImpl stringElement = ElementFactory.classElement2("String");
+      _stringType = stringElement.type;
       _setAccessors(stringElement, <PropertyAccessorElement>[
         ElementFactory.getterElement("isEmpty", false, boolType),
         ElementFactory.getterElement("length", false, intType),
         ElementFactory.getterElement(
-            "codeUnits", false, listType.substitute4(<DartType>[intType]))
+            "codeUnits", false, listType.instantiate(<DartType>[intType]))
       ]);
       stringElement.methods = <MethodElement>[
         ElementFactory.methodElement("+", _stringType, [_stringType]),
@@ -437,7 +487,7 @@ class TestTypeProvider implements TypeProvider {
           .constructorElement(stringElement, "fromEnvironment", true);
       fromEnvironment.parameters = <ParameterElement>[
         ElementFactory.requiredParameter2("name", stringType),
-        ElementFactory.namedParameter2("defaultValue", _stringType)
+        ElementFactory.namedParameter3("defaultValue", type: _stringType)
       ];
       fromEnvironment.factory = true;
       fromEnvironment.isCycleFree = true;
@@ -450,8 +500,8 @@ class TestTypeProvider implements TypeProvider {
   InterfaceType get symbolType {
     if (_symbolType == null) {
       ClassElementImpl symbolClass = ElementFactory.classElement2("Symbol");
-      ConstructorElementImpl constructor = ElementFactory.constructorElement(
-          symbolClass, null, true, [stringType]);
+      ConstructorElementImpl constructor = ElementFactory
+          .constructorElement(symbolClass, '', true, [stringType]);
       constructor.factory = true;
       constructor.isCycleFree = true;
       symbolClass.constructors = <ConstructorElement>[constructor];
@@ -463,7 +513,12 @@ class TestTypeProvider implements TypeProvider {
   @override
   InterfaceType get typeType {
     if (_typeType == null) {
-      _typeType = ElementFactory.classElement2("Type").type;
+      ClassElementImpl typeClass = ElementFactory.classElement2("Type");
+      typeClass.constructors = <ConstructorElement>[
+        ElementFactory.constructorElement(typeClass, null, false)
+          ..synthetic = true
+      ];
+      _typeType = typeClass.type;
     }
     return _typeType;
   }
@@ -525,10 +580,10 @@ class TestTypeProvider implements TypeProvider {
       ElementFactory.methodElement("toInt", _intType),
       ElementFactory.methodElement("toDouble", _doubleType),
       ElementFactory.methodElement("toStringAsFixed", _stringType, [_intType]),
-      ElementFactory.methodElement(
-          "toStringAsExponential", _stringType, [_intType]),
-      ElementFactory.methodElement(
-          "toStringAsPrecision", _stringType, [_intType]),
+      ElementFactory
+          .methodElement("toStringAsExponential", _stringType, [_intType]),
+      ElementFactory
+          .methodElement("toStringAsPrecision", _stringType, [_intType]),
       ElementFactory.methodElement("toRadixString", _stringType, [_intType])
     ];
     intElement.methods = <MethodElement>[
@@ -550,21 +605,36 @@ class TestTypeProvider implements TypeProvider {
         ElementFactory.constructorElement(intElement, "fromEnvironment", true);
     fromEnvironment.parameters = <ParameterElement>[
       ElementFactory.requiredParameter2("name", stringType),
-      ElementFactory.namedParameter2("defaultValue", _intType)
+      ElementFactory.namedParameter3("defaultValue", type: _intType)
     ];
     fromEnvironment.factory = true;
     fromEnvironment.isCycleFree = true;
-    numElement.constructors = ConstructorElement.EMPTY_LIST;
+    numElement.constructors = <ConstructorElement>[
+      ElementFactory.constructorElement(numElement, null, false)
+        ..synthetic = true
+    ];
     intElement.constructors = <ConstructorElement>[fromEnvironment];
-    doubleElement.constructors = ConstructorElement.EMPTY_LIST;
+    doubleElement.constructors = <ConstructorElement>[
+      ElementFactory.constructorElement(doubleElement, null, false)
+        ..synthetic = true
+    ];
+    ConstFieldElementImpl varINFINITY = ElementFactory.fieldElement(
+        "INFINITY", true, false, true, _doubleType,
+        initializer: AstFactory.doubleLiteral(double.INFINITY));
+    varINFINITY.constantInitializer = AstFactory.binaryExpression(
+        AstFactory.integer(1), TokenType.SLASH, AstFactory.integer(0));
     List<FieldElement> fields = <FieldElement>[
-      ElementFactory.fieldElement("NAN", true, false, true, _doubleType),
-      ElementFactory.fieldElement("INFINITY", true, false, true, _doubleType),
+      ElementFactory.fieldElement("NAN", true, false, true, _doubleType,
+          initializer: AstFactory.doubleLiteral(double.NAN)),
+      varINFINITY,
       ElementFactory.fieldElement(
-          "NEGATIVE_INFINITY", true, false, true, _doubleType),
+          "NEGATIVE_INFINITY", true, false, true, _doubleType,
+          initializer: AstFactory.doubleLiteral(double.NEGATIVE_INFINITY)),
       ElementFactory.fieldElement(
-          "MIN_POSITIVE", true, false, true, _doubleType),
-      ElementFactory.fieldElement("MAX_FINITE", true, false, true, _doubleType)
+          "MIN_POSITIVE", true, false, true, _doubleType,
+          initializer: AstFactory.doubleLiteral(double.MIN_POSITIVE)),
+      ElementFactory.fieldElement("MAX_FINITE", true, false, true, _doubleType,
+          initializer: AstFactory.doubleLiteral(double.MAX_FINITE))
     ];
     doubleElement.fields = fields;
     int fieldCount = fields.length;
@@ -598,19 +668,11 @@ class TestTypeProvider implements TypeProvider {
    * defined for the class.
    */
   void _propagateTypeArguments(ClassElementImpl classElement) {
-    List<DartType> typeArguments =
-        TypeParameterTypeImpl.getTypes(classElement.typeParameters);
     for (PropertyAccessorElement accessor in classElement.accessors) {
-      FunctionTypeImpl functionType = accessor.type as FunctionTypeImpl;
-      functionType.typeArguments = typeArguments;
+      (accessor as ExecutableElementImpl).type = new FunctionTypeImpl(accessor);
     }
     for (MethodElement method in classElement.methods) {
-      FunctionTypeImpl functionType = method.type as FunctionTypeImpl;
-      functionType.typeArguments = typeArguments;
-    }
-    for (ConstructorElement constructor in classElement.constructors) {
-      FunctionTypeImpl functionType = constructor.type as FunctionTypeImpl;
-      functionType.typeArguments = typeArguments;
+      (method as ExecutableElementImpl).type = new FunctionTypeImpl(method);
     }
   }
 

@@ -2,18 +2,19 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library file_system;
+library analyzer.file_system.file_system;
 
 import 'dart:async';
 
 import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/src/util/absolute_path.dart';
 import 'package:path/path.dart';
 import 'package:watcher/watcher.dart';
 
 /**
  * [File]s are leaf [Resource]s which contain data.
  */
-abstract class File extends Resource {
+abstract class File implements Resource {
   /**
    * Watch for changes to this file
    */
@@ -31,10 +32,42 @@ abstract class File extends Resource {
   Source createSource([Uri uri]);
 
   /**
+   * Synchronously read the entire file contents as a list of bytes.
+   * Throws a [FileSystemException] if the operation fails.
+   */
+  List<int> readAsBytesSync();
+
+  /**
    * Synchronously read the entire file contents as a [String].
    * Throws [FileSystemException] if the file does not exist.
    */
   String readAsStringSync();
+
+  /**
+   * Synchronously rename this file.
+   * Return a [File] instance for the renamed file.
+   *
+   * If [newPath] identifies an existing file, that file is replaced.
+   * If [newPath] identifies an existing resource the operation might fail and
+   * an exception is thrown.
+   */
+  File renameSync(String newPath);
+
+  /**
+   * Synchronously write the given [bytes] to the file. The new content will
+   * replace any existing content.
+   *
+   * Throws a [FileSystemException] if the operation fails.
+   */
+  void writeAsBytesSync(List<int> bytes);
+
+  /**
+   * Synchronously write the given [content] to the file. The new content will
+   * replace any existing content.
+   *
+   * Throws a [FileSystemException] if the operation fails.
+   */
+  void writeAsStringSync(String content);
 }
 
 /**
@@ -46,13 +79,14 @@ class FileSystemException implements Exception {
 
   FileSystemException(this.path, this.message);
 
+  @override
   String toString() => 'FileSystemException(path=$path; message=$message)';
 }
 
 /**
  * [Folder]s are [Resource]s which may contain files and/or other folders.
  */
-abstract class Folder extends Resource {
+abstract class Folder implements Resource {
   /**
    * Watch for changes to the files inside this folder (and in any nested
    * folders, including folders reachable via links).
@@ -61,7 +95,7 @@ abstract class Folder extends Resource {
 
   /**
    * If the path [path] is a relative path, convert it to an absolute path
-   * by interpreting it relative to this folder.  If it is already an aboslute
+   * by interpreting it relative to this folder.  If it is already an absolute
    * path, then don't change it.
    *
    * However, regardless of whether [path] is relative or absolute, normalize
@@ -79,6 +113,14 @@ abstract class Folder extends Resource {
    * Return a not existing [File] if no such child exist.
    */
   Resource getChild(String relPath);
+
+  /**
+   * Return a [File] representing a child [Resource] with the given
+   * [relPath].  This call does not check whether a file with the given name
+   * exists on the filesystem - client must call the [File]'s `exists` getter
+   * to determine whether the folder actually exists.
+   */
+  File getChildAssumingFile(String relPath);
 
   /**
    * Return a [Folder] representing a child [Resource] with the given
@@ -122,10 +164,28 @@ abstract class Resource {
   String get shortName;
 
   /**
+   * Synchronously deletes this resource and its children.
+   *
+   * Throws an exception if the resource cannot be deleted.
+   */
+  void delete();
+
+  /**
    * Return `true` if absolute [path] references this resource or a resource in
    * this folder.
    */
   bool isOrContains(String path);
+
+  /**
+   * Return a resource that refers to the same resource as this resource, but
+   * whose path does not contain any symbolic links.
+   */
+  Resource resolveSymbolicLinksSync();
+
+  /**
+   * Return a Uri representing this resource.
+   */
+  Uri toUri();
 }
 
 /**
@@ -133,6 +193,11 @@ abstract class Resource {
  * [Resource]s.
  */
 abstract class ResourceProvider {
+  /**
+   * Get the absolute path context used by this resource provider.
+   */
+  AbsolutePathContext get absolutePathContext;
+
   /**
    * Get the path context used by this resource provider.
    */
@@ -151,6 +216,14 @@ abstract class ResourceProvider {
    * A folder may or may not exist at this location.
    */
   Folder getFolder(String path);
+
+  /**
+   * Complete with a list of modification times for the given [sources].
+   *
+   * If the file of a source is not managed by this provider, return `null`.
+   * If the file a source does not exist, return `-1`.
+   */
+  Future<List<int>> getModificationTimes(List<Source> sources);
 
   /**
    * Return the [Resource] that corresponds to the given [path].
@@ -174,21 +247,23 @@ class ResourceUriResolver extends UriResolver {
   /**
    * The name of the `file` scheme.
    */
-  static String _FILE_SCHEME = "file";
+  static final String FILE_SCHEME = "file";
 
   final ResourceProvider _provider;
 
   ResourceUriResolver(this._provider);
 
+  ResourceProvider get provider => _provider;
+
   @override
   Source resolveAbsolute(Uri uri, [Uri actualUri]) {
-    if (!_isFileUri(uri)) {
+    if (!isFileUri(uri)) {
       return null;
     }
     Resource resource =
         _provider.getResource(_provider.pathContext.fromUri(uri));
     if (resource is File) {
-      return resource.createSource(actualUri != null ? actualUri : uri);
+      return resource.createSource(actualUri ?? uri);
     }
     return null;
   }
@@ -200,5 +275,5 @@ class ResourceUriResolver extends UriResolver {
   /**
    * Return `true` if the given [uri] is a `file` URI.
    */
-  static bool _isFileUri(Uri uri) => uri.scheme == _FILE_SCHEME;
+  static bool isFileUri(Uri uri) => uri.scheme == FILE_SCHEME;
 }

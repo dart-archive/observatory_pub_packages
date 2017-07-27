@@ -6,7 +6,6 @@
 library usage.web_test;
 
 import 'dart:async';
-import 'dart:html';
 
 import 'package:test/test.dart';
 import 'package:usage/src/usage_impl_html.dart';
@@ -23,34 +22,32 @@ void main() {
   usage_impl_test.defineTests();
   uuid_test.defineTests();
 
-  // Define some web specific tests.
+  // Define some web specfic tests.
   defineWebTests();
 }
 
 void defineWebTests() {
   group('HtmlPostHandler', () {
-    test('sendPost', () async {
+    test('sendPost', () {
       MockRequestor client = new MockRequestor();
-      HtmlPostHandler postHandler =
-          new HtmlPostHandler(mockRequestor: client.request);
+      HtmlPostHandler postHandler = new HtmlPostHandler(
+          mockRequestor: client.request);
       Map<String, dynamic> args = {'utv': 'varName', 'utt': 123};
-
-      await postHandler.sendPost('http://www.google.com', args);
-      expect(client.sendCount, 1);
+      return postHandler.sendPost('http://www.google.com', args).then((_) {
+        expect(client.sendCount, 1);
+      });
     });
   });
 
   group('HtmlPersistentProperties', () {
     test('add', () {
-      HtmlPersistentProperties props =
-          new HtmlPersistentProperties('foo_props');
+      HtmlPersistentProperties props = new HtmlPersistentProperties('foo_props');
       props['foo'] = 'bar';
       expect(props['foo'], 'bar');
     });
 
     test('remove', () {
-      HtmlPersistentProperties props =
-          new HtmlPersistentProperties('foo_props');
+      HtmlPersistentProperties props = new HtmlPersistentProperties('foo_props');
       props['foo'] = 'bar';
       expect(props['foo'], 'bar');
       props['foo'] = null;
@@ -62,7 +59,7 @@ void defineWebTests() {
 class MockRequestor {
   int sendCount = 0;
 
-  Future<HttpRequest> request(String url, {String method, sendData}) {
+  Future request(String url, {String method, String sendData}) {
     expect(url, isNotEmpty);
     expect(method, isNotEmpty);
     expect(sendData, isNotEmpty);

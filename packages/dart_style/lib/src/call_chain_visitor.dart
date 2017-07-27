@@ -94,7 +94,7 @@ class CallChainVisitor {
     var target;
 
     // Recursively walk the chain of calls and turn the tree into a list.
-    var calls = [];
+    var calls = <Expression>[];
     flatten(expression) {
       target = expression;
 
@@ -130,11 +130,13 @@ class CallChainVisitor {
     //     address.street.number
     //       .toString()
     //       .length;
-    var properties = [];
+    var properties = <Expression>[];
     if (target is SimpleIdentifier) {
       properties = calls.takeWhile((call) {
         // Step into index expressions to see what the index is on.
-        while (call is IndexExpression) call = call.target;
+        while (call is IndexExpression) {
+          call = (call as IndexExpression).target;
+        }
         return call is! MethodInvocation;
       }).toList();
     }
@@ -142,7 +144,7 @@ class CallChainVisitor {
     calls.removeRange(0, properties.length);
 
     // Separate out the block calls, if there are any.
-    var blockCalls;
+    List<Expression> blockCalls;
     var hangingCall;
 
     var inBlockCalls = false;
@@ -207,7 +209,7 @@ class CallChainVisitor {
 
     if (splitOnTarget) {
       if (_properties.length > 1) {
-        _propertyRule = new MultiplePositionalRule(null, 0, 0);
+        _propertyRule = new PositionalRule(null, 0, 0);
         _visitor.builder.startLazyRule(_propertyRule);
       } else if (_calls.isNotEmpty) {
         _enableRule(lazy: true);
@@ -223,7 +225,7 @@ class CallChainVisitor {
       _writeCall(_properties.single);
     } else if (_properties.length > 1) {
       if (!splitOnTarget) {
-        _propertyRule = new MultiplePositionalRule(null, 0, 0);
+        _propertyRule = new PositionalRule(null, 0, 0);
         _visitor.builder.startRule(_propertyRule);
       }
 
@@ -315,7 +317,7 @@ class CallChainVisitor {
 
     // If the expression ends in an argument list, base the splitting on the
     // last argument.
-    var argumentList;
+    ArgumentList argumentList;
     if (expression is MethodInvocation) {
       argumentList = expression.argumentList;
     } else if (expression is InstanceCreationExpression) {
@@ -329,7 +331,9 @@ class CallChainVisitor {
     if (argumentList.arguments.isEmpty) return true;
 
     var argument = argumentList.arguments.last;
-    if (argument is NamedExpression) argument = argument.expression;
+    if (argument is NamedExpression) {
+      argument = (argument as NamedExpression).expression;
+    }
 
     // TODO(rnystrom): This logic is similar (but not identical) to
     // ArgumentListVisitor.hasBlockArguments. They overlap conceptually and
@@ -397,12 +401,16 @@ class CallChainVisitor {
       _endSpan();
     }
 
-    _visitor.visit(invocation.argumentList);
+    _visitor.builder.nestExpression();
+    _visitor.visit(invocation.typeArguments);
+    _visitor.visitArgumentList(invocation.argumentList, nestExpression: false);
+    _visitor.builder.unnest();
   }
 
   void _writeBlockCall(MethodInvocation invocation) {
     _visitor.token(invocation.operator);
     _visitor.token(invocation.methodName.token);
+    _visitor.visit(invocation.typeArguments);
     _visitor.visit(invocation.argumentList);
   }
 

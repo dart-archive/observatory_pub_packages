@@ -81,11 +81,9 @@ void main() {
       new DartFormatter().formatStatement("var x = 1;;");
 
       fail("Should throw.");
-    } catch (err) {
-      expect(err, new isInstanceOf<FormatterException>());
-      var message = err.message();
-      expect(message, contains("Unexpected token"));
-      expect(message, contains("column 11"));
+    } on FormatterException catch (ex) {
+      expect(ex.errors.length, equals(1));
+      expect(ex.errors.first.offset, equals(10));
     }
   });
 
@@ -139,7 +137,7 @@ void testDirectory(String name) {
   var testDir = p.dirname(currentMirrorSystem()
       .findLibrary(#dart_style.test.formatter_test)
       .uri
-      .path);
+      .toFilePath());
 
   var entries = new Directory(p.join(testDir, name))
       .listSync(recursive: true, followLinks: false);
@@ -186,6 +184,12 @@ void testDirectory(String name) {
         var expectedOutput = "";
         while (++i < lines.length && !lines[i].startsWith(">>>")) {
           expectedOutput += lines[i] + "\n";
+        }
+
+        // TODO(rnystrom): Stop skipping these tests when possible.
+        if (description.contains("(skip:")) {
+          print("skipping $description");
+          continue;
         }
 
         test(description, () {

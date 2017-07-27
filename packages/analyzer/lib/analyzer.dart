@@ -6,20 +6,27 @@ library analyzer;
 
 import 'dart:io';
 
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/error/error.dart';
+import 'package:analyzer/error/listener.dart';
+import 'package:analyzer/file_system/file_system.dart' hide File;
+import 'package:analyzer/file_system/physical_file_system.dart';
+import 'package:analyzer/src/dart/scanner/reader.dart';
+import 'package:analyzer/src/dart/scanner/scanner.dart';
+import 'package:analyzer/src/error.dart';
+import 'package:analyzer/src/generated/parser.dart';
+import 'package:analyzer/src/generated/source_io.dart';
+import 'package:analyzer/src/string_source.dart';
 import 'package:path/path.dart' as pathos;
 
-import 'src/error.dart';
-import 'src/generated/ast.dart';
-import 'src/generated/error.dart';
-import 'src/generated/parser.dart';
-import 'src/generated/scanner.dart';
-import 'src/generated/source_io.dart';
-import 'src/string_source.dart';
-
-export 'src/error.dart';
-export 'src/generated/ast.dart';
-export 'src/generated/error.dart';
-export 'src/generated/utilities_dart.dart';
+export 'package:analyzer/dart/ast/ast.dart';
+export 'package:analyzer/dart/ast/visitor.dart';
+export 'package:analyzer/error/error.dart';
+export 'package:analyzer/error/listener.dart';
+export 'package:analyzer/src/dart/ast/utilities.dart';
+export 'package:analyzer/src/error.dart';
+export 'package:analyzer/src/error/codes.dart';
+export 'package:analyzer/src/generated/utilities_dart.dart';
 
 /// Parses a string of Dart code into an AST.
 ///
@@ -33,8 +40,7 @@ export 'src/generated/utilities_dart.dart';
 /// parsed.
 CompilationUnit parseCompilationUnit(String contents,
     {String name, bool suppressErrors: false, bool parseFunctionBodies: true}) {
-  if (name == null) name = '<unknown source>';
-  var source = new StringSource(contents, name);
+  Source source = new StringSource(contents, name);
   return _parseSource(contents, source,
       suppressErrors: suppressErrors, parseFunctionBodies: parseFunctionBodies);
 }
@@ -49,7 +55,8 @@ CompilationUnit parseCompilationUnit(String contents,
 CompilationUnit parseDartFile(String path,
     {bool suppressErrors: false, bool parseFunctionBodies: true}) {
   String contents = new File(path).readAsStringSync();
-  var sourceFactory = new SourceFactory([new FileUriResolver()]);
+  var sourceFactory = new SourceFactory(
+      [new ResourceUriResolver(PhysicalResourceProvider.INSTANCE)]);
 
   var absolutePath = pathos.absolute(path);
   var source = sourceFactory.forUri(pathos.toUri(absolutePath).toString());
@@ -64,22 +71,6 @@ CompilationUnit parseDartFile(String path,
       suppressErrors: suppressErrors, parseFunctionBodies: parseFunctionBodies);
 }
 
-CompilationUnit _parseSource(String contents, Source source,
-    {bool suppressErrors: false, bool parseFunctionBodies: true}) {
-  var reader = new CharSequenceReader(contents);
-  var errorCollector = new _ErrorCollector();
-  var scanner = new Scanner(source, reader, errorCollector);
-  var token = scanner.tokenize();
-  var parser = new Parser(source, errorCollector)
-    ..parseFunctionBodies = parseFunctionBodies;
-  var unit = parser.parseCompilationUnit(token)
-    ..lineInfo = new LineInfo(scanner.lineStarts);
-
-  if (errorCollector.hasErrors && !suppressErrors) throw errorCollector.group;
-
-  return unit;
-}
-
 /// Parses the script tag and directives in a string of Dart code into an AST.
 ///
 /// Stops parsing when the first non-directive is encountered. The rest of the
@@ -92,7 +83,6 @@ CompilationUnit _parseSource(String contents, Source source,
 /// [suppressErrors] is `true`, in which case any errors are discarded.
 CompilationUnit parseDirectives(String contents,
     {String name, bool suppressErrors: false}) {
-  if (name == null) name = '<unknown source>';
   var source = new StringSource(contents, name);
   var errorCollector = new _ErrorCollector();
   var reader = new CharSequenceReader(contents);
@@ -112,7 +102,23 @@ String stringLiteralToString(StringLiteral literal) {
   return literal.stringValue;
 }
 
-/// A simple error listener that collects errors into an [AnalysisErrorGroup].
+CompilationUnit _parseSource(String contents, Source source,
+    {bool suppressErrors: false, bool parseFunctionBodies: true}) {
+  var reader = new CharSequenceReader(contents);
+  var errorCollector = new _ErrorCollector();
+  var scanner = new Scanner(source, reader, errorCollector);
+  var token = scanner.tokenize();
+  var parser = new Parser(source, errorCollector)
+    ..parseFunctionBodies = parseFunctionBodies;
+  var unit = parser.parseCompilationUnit(token)
+    ..lineInfo = new LineInfo(scanner.lineStarts);
+
+  if (errorCollector.hasErrors && !suppressErrors) throw errorCollector.group;
+
+  return unit;
+}
+
+/// A simple error listener that collects errors into an [AnalyzerErrorGroup].
 class _ErrorCollector extends AnalysisErrorListener {
   final _errors = <AnalysisError>[];
 
@@ -125,5 +131,6 @@ class _ErrorCollector extends AnalysisErrorListener {
   /// Whether any errors where collected.
   bool get hasErrors => !_errors.isEmpty;
 
+  @override
   void onError(AnalysisError error) => _errors.add(error);
 }

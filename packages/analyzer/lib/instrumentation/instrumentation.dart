@@ -2,8 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library instrumentation;
+library analyzer.instrumentation.instrumentation;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:analyzer/task/model.dart';
@@ -21,6 +22,11 @@ class AnalysisPerformanceKind {
  * server.
  */
 abstract class InstrumentationServer {
+  /**
+   * Return the identifier used to identify the current session.
+   */
+  String get sessionId;
+
   /**
    * Pass the given [message] to the instrumentation server so that it will be
    * logged with other messages.
@@ -43,7 +49,7 @@ abstract class InstrumentationServer {
    * server. This method should be invoked exactly one time and no other methods
    * should be invoked on this instance after this method has been invoked.
    */
-  void shutdown();
+  Future shutdown();
 }
 
 /**
@@ -83,8 +89,8 @@ class InstrumentationService {
   int _subprocessCounter = 0;
 
   /**
-   * Initialize a newly created instrumentation service to comunicate with the
-   * given [instrumentationServer].
+   * Initialize a newly created instrumentation service to communicate with the
+   * given [_instrumentationServer].
    */
   InstrumentationService(this._instrumentationServer);
 
@@ -95,6 +101,11 @@ class InstrumentationService {
   bool get isActive => _instrumentationServer != null;
 
   /**
+   * Return the identifier used to identify the current session.
+   */
+  String get sessionId => _instrumentationServer?.sessionId ?? '';
+
+  /**
    * The current time, expressed as a decimal encoded number of milliseconds.
    */
   String get _timestamp => new DateTime.now().millisecondsSinceEpoch.toString();
@@ -103,14 +114,10 @@ class InstrumentationService {
    * Log that the given analysis [task] is being performed in the given
    * [context].
    */
-  void logAnalysisTask(String context, dynamic task) {
-    // TODO(brianwilkerson) When the old task model is removed, change the
-    // parameter type to AnalysisTask.
+  void logAnalysisTask(String context, AnalysisTask task) {
     if (_instrumentationServer != null) {
-      String description =
-          (task is AnalysisTask) ? task.description : task.toString();
       _instrumentationServer
-          .log(_join([TAG_ANALYSIS_TASK, context, description]));
+          .log(_join([TAG_ANALYSIS_TASK, context, task.description]));
     }
   }
 
@@ -216,7 +223,7 @@ class InstrumentationService {
 
   /**
    * Log the result of executing a subprocess.  [subprocessId] should be the
-   * unique IDreturned by [logSubprocessStart].
+   * unique ID returned by [logSubprocessStart].
    */
   void logSubprocessResult(
       int subprocessId, int exitCode, String stdout, String stderr) {
@@ -290,9 +297,9 @@ class InstrumentationService {
    * server. This method should be invoked exactly one time and no other methods
    * should be invoked on this instance after this method has been invoked.
    */
-  void shutdown() {
+  Future shutdown() async {
     if (_instrumentationServer != null) {
-      _instrumentationServer.shutdown();
+      await _instrumentationServer.shutdown();
       _instrumentationServer = null;
     }
   }
@@ -323,9 +330,10 @@ class InstrumentationService {
   String _join(List<String> fields) {
     StringBuffer buffer = new StringBuffer();
     buffer.write(_timestamp);
-    for (String field in fields) {
+    int length = fields.length;
+    for (int i = 0; i < length; i++) {
       buffer.write(':');
-      _escape(buffer, field);
+      _escape(buffer, fields[i]);
     }
     return buffer.toString();
   }
@@ -359,6 +367,9 @@ class MulticastInstrumentationServer implements InstrumentationServer {
   MulticastInstrumentationServer(this._servers);
 
   @override
+  String get sessionId => _servers[0].sessionId;
+
+  @override
   void log(String message) {
     for (InstrumentationServer server in _servers) {
       server.log(message);
@@ -373,9 +384,9 @@ class MulticastInstrumentationServer implements InstrumentationServer {
   }
 
   @override
-  void shutdown() {
+  Future shutdown() async {
     for (InstrumentationServer server in _servers) {
-      server.shutdown();
+      await server.shutdown();
     }
   }
 }

@@ -7,9 +7,9 @@ library analyzer.task.model;
 import 'dart:collection';
 import 'dart:developer';
 
-import 'package:analyzer/src/generated/engine.dart' hide AnalysisTask;
-import 'package:analyzer/src/generated/error.dart' show AnalysisError;
-import 'package:analyzer/src/generated/java_engine.dart';
+import 'package:analyzer/error/error.dart' show AnalysisError;
+import 'package:analyzer/exception/exception.dart';
+import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/generated/utilities_general.dart';
 import 'package:analyzer/src/task/driver.dart';
@@ -36,6 +36,14 @@ typedef AnalysisTask BuildTask(AnalysisContext context, AnalysisTarget target);
 typedef Map<String, TaskInput> CreateTaskInputs(AnalysisTarget target);
 
 /**
+ * A function that takes the target for which a task will produce results and
+ * returns an indication of how suitable the task is for the target. Such
+ * functions are passed to a [TaskDescriptor] to be used to determine their
+ * suitability for computing results.
+ */
+typedef TaskSuitability SuitabilityFor(AnalysisTarget target);
+
+/**
  * A function that converts an object of the type [B] into a [TaskInput].
  * This is used, for example, by a [ListTaskInput] to create task inputs
  * for each value in a list of values.
@@ -53,6 +61,9 @@ class AnalysisContextTarget implements AnalysisTarget {
   AnalysisContextTarget(this.context);
 
   @override
+  Source get librarySource => null;
+
+  @override
   Source get source => null;
 }
 
@@ -64,6 +75,12 @@ class AnalysisContextTarget implements AnalysisTarget {
  * required to correctly implement [==] and [hashCode].
  */
 abstract class AnalysisTarget {
+  /**
+   * If this target is associated with a library, return the source of the
+   * library's defining compilation unit; otherwise return `null`.
+   */
+  Source get librarySource;
+
   /**
    * Return the source associated with this target, or `null` if this target is
    * not associated with a source.
@@ -78,6 +95,11 @@ abstract class AnalysisTarget {
  * Clients must extend this class when creating new tasks.
  */
 abstract class AnalysisTask {
+  /**
+   * A queue storing the last 10 task descriptions for diagnostic purposes.
+   */
+  static final LimitedQueue<String> LAST_TASKS = new LimitedQueue<String>(10);
+
   /**
    * A table mapping the types of analysis tasks to the number of times each
    * kind of task has been performed.
@@ -158,14 +180,25 @@ abstract class AnalysisTask {
   bool get handlesDependencyCycles => false;
 
   /**
+   * Return the value of the input with the given [name], or `null` if the input
+   * value is not defined.
+   */
+  Object getOptionalInput(String name) {
+    if (inputs == null || !inputs.containsKey(name)) {
+      return null;
+    }
+    return inputs[name];
+  }
+
+  /**
    * Return the value of the input with the given [name]. Throw an exception if
    * the input value is not defined.
    */
-  Object getRequiredInput(String name) {
+  Object/*=E*/ getRequiredInput/*<E>*/(String name) {
     if (inputs == null || !inputs.containsKey(name)) {
       throw new AnalysisException("Could not $description: missing $name");
     }
-    return inputs[name];
+    return inputs[name] as Object/*=E*/;
   }
 
   /**
@@ -206,12 +239,57 @@ abstract class AnalysisTask {
     } on AnalysisException catch (exception, stackTrace) {
       caughtException = new CaughtException(exception, stackTrace);
       AnalysisEngine.instance.logger
-          .logInformation("Task failed: ${description}", caughtException);
+          .logError("Task failed: $description", caughtException);
     }
   }
 
   @override
   String toString() => description;
+
+  /**
+   * Given a strongly connected component, find and return a list of
+   * [TargetedResult]s that describes a cyclic path within the cycle.  Returns
+   * null if no cyclic path is found.
+   */
+  List<TargetedResult> _findCyclicPath(List<WorkItem> cycle) {
+    WorkItem findInCycle(AnalysisTarget target, ResultDescriptor descriptor) {
+      for (WorkItem item in cycle) {
+        if (target == item.target && descriptor == item.spawningResult) {
+          return item;
+        }
+      }
+      return null;
+    }
+
+    HashSet<WorkItem> active = new HashSet<WorkItem>();
+    List<TargetedResult> path = null;
+    bool traverse(WorkItem item) {
+      if (!active.add(item)) {
+        // We've found a cycle
+        path = <TargetedResult>[];
+        return true;
+      }
+      for (TargetedResult result in item.inputTargetedResults) {
+        WorkItem item = findInCycle(result.target, result.result);
+        // Ignore edges that leave the cycle.
+        if (item != null) {
+          if (traverse(item)) {
+            // This edge is in a cycle (or leads to a cycle) so add it to the
+            // path
+            path.add(result);
+            return true;
+          }
+        }
+      }
+      // There was no cycle.
+      return false;
+    }
+
+    if (cycle.length > 0) {
+      traverse(cycle[0]);
+    }
+    return path;
+  }
 
   /**
    * Perform this analysis task, ensuring that all exceptions are wrapped in an
@@ -221,6 +299,11 @@ abstract class AnalysisTask {
    */
   void _safelyPerform() {
     try {
+      //
+      // Store task description for diagnostics.
+      //
+      LAST_TASKS.add(description);
+
       //
       // Report that this task is being performed.
       //
@@ -250,7 +333,8 @@ abstract class AnalysisTask {
       //
       try {
         if (dependencyCycle != null && !handlesDependencyCycles) {
-          throw new InfiniteTaskLoopException(this, dependencyCycle);
+          throw new InfiniteTaskLoopException(
+              this, dependencyCycle, _findCyclicPath(dependencyCycle));
         }
         internalPerform();
       } finally {
@@ -260,6 +344,8 @@ abstract class AnalysisTask {
 //        previousTag.makeCurrent();
 //      }
     } on AnalysisException {
+      rethrow;
+    } on ModificationTimeMismatchError {
       rethrow;
     } catch (exception, stackTrace) {
       throw new AnalysisException(
@@ -282,8 +368,8 @@ abstract class ListResultDescriptor<E> implements ResultDescriptor<List<E>> {
    * values associated with this result will remain in the cache.
    */
   factory ListResultDescriptor(String name, List<E> defaultValue,
-      {ResultCachingPolicy<List<E>> cachingPolicy}) = ListResultDescriptorImpl<
-      E>;
+          {ResultCachingPolicy<List<E>> cachingPolicy}) =
+      ListResultDescriptorImpl<E>;
 
   @override
   ListTaskInput<E> of(AnalysisTarget target, {bool flushOnAccess: false});
@@ -295,34 +381,41 @@ abstract class ListResultDescriptor<E> implements ResultDescriptor<List<E>> {
  *
  * Clients may not extend, implement or mix-in this class.
  */
-abstract class ListTaskInput<E> extends TaskInput<List<E>> {
+abstract class ListTaskInput<E> implements TaskInput<List<E>> {
+  /**
+   * Return a task input that can be used to compute a flatten list whose
+   * elements are combined [subListResult]'s associated with those elements.
+   */
+  ListTaskInput/*<V>*/ toFlattenListOf/*<V>*/(
+      ListResultDescriptor/*<V>*/ subListResult);
+
   /**
    * Return a task input that can be used to compute a list whose elements are
    * the result of passing the elements of this input to the [mapper] function.
    */
-  ListTaskInput /*<V>*/ toList(UnaryFunction<E, dynamic /*<V>*/ > mapper);
+  ListTaskInput/*<V>*/ toList/*<V>*/(UnaryFunction<E, dynamic/*=V*/ > mapper);
 
   /**
    * Return a task input that can be used to compute a list whose elements are
    * [valueResult]'s associated with those elements.
    */
-  ListTaskInput /*<V>*/ toListOf(ResultDescriptor /*<V>*/ valueResult);
+  ListTaskInput/*<V>*/ toListOf/*<V>*/(ResultDescriptor/*<V>*/ valueResult);
 
   /**
    * Return a task input that can be used to compute a map whose keys are the
    * elements of this input and whose values are the result of passing the
    * corresponding key to the [mapper] function.
    */
-  MapTaskInput<E, dynamic /*V*/ > toMap(
-      UnaryFunction<E, dynamic /*<V>*/ > mapper);
+  MapTaskInput<E, dynamic/*=V*/ > toMap/*<V>*/(
+      UnaryFunction<E, dynamic/*=V*/ > mapper);
 
   /**
    * Return a task input that can be used to compute a map whose keys are the
    * elements of this input and whose values are the [valueResult]'s associated
    * with those elements.
    */
-  MapTaskInput<AnalysisTarget, dynamic /*V*/ > toMapOf(
-      ResultDescriptor /*<V>*/ valueResult);
+  MapTaskInput<AnalysisTarget, dynamic/*=V*/ > toMapOf/*<V>*/(
+      ResultDescriptor/*<V>*/ valueResult);
 }
 
 /**
@@ -330,15 +423,27 @@ abstract class ListTaskInput<E> extends TaskInput<List<E>> {
  *
  * Clients may not extend, implement or mix-in this class.
  */
-abstract class MapTaskInput<K, V> extends TaskInput<Map<K, V>> {
+abstract class MapTaskInput<K, V> implements TaskInput<Map<K, V>> {
   /**
    * [V] must be a [List].
    * Return a task input that can be used to compute a list whose elements are
    * the result of passing keys [K] and the corresponding elements of [V] to
    * the [mapper] function.
    */
-  TaskInput<List /*<E>*/ > toFlattenList(
-      BinaryFunction<K, dynamic /*element of V*/, dynamic /*<E>*/ > mapper);
+  TaskInput<List/*<E>*/ > toFlattenList/*<E>*/(
+      BinaryFunction<K, dynamic /*element of V*/, dynamic/*=E*/ > mapper);
+}
+
+/**
+ * Instances of this class are thrown when a task detects that the modification
+ * time of a cache entry is not the same as the actual modification time.  This
+ * means that any analysis results based on the content of the target cannot be
+ * used anymore and must be invalidated.
+ */
+class ModificationTimeMismatchError {
+  final Source source;
+
+  ModificationTimeMismatchError(this.source);
 }
 
 /**
@@ -376,6 +481,13 @@ abstract class ResultCachingPolicy<T> {
  */
 abstract class ResultDescriptor<V> {
   /**
+   * A comparator that can be used to sort result descriptors by their name.
+   */
+  static final Comparator<ResultDescriptor> SORT_BY_NAME =
+      (ResultDescriptor first, ResultDescriptor second) =>
+          first.name.compareTo(second.name);
+
+  /**
    * Initialize a newly created analysis result to have the given [name] and
    * [defaultValue].
    *
@@ -384,7 +496,7 @@ abstract class ResultDescriptor<V> {
    * never evicted from the cache, and removed only when they are invalidated.
    */
   factory ResultDescriptor(String name, V defaultValue,
-      {ResultCachingPolicy<V> cachingPolicy}) = ResultDescriptorImpl;
+      {ResultCachingPolicy<V> cachingPolicy}) = ResultDescriptorImpl<V>;
 
   /**
    * Return the caching policy for results described by this descriptor.
@@ -460,14 +572,14 @@ abstract class TaskDescriptor {
   /**
    * Initialize a newly created task descriptor to have the given [name] and to
    * describe a task that takes the inputs built using the given [inputBuilder],
-   * and produces the given [results]. The [buildTask] will be used to create
-   * the instance of [AnalysisTask] thusly described.
+   * and produces the given [results]. The [buildTask] function will be used to
+   * create the instance of [AnalysisTask] being described. If provided, the
+   * [isAppropriateFor] function will be used to determine whether the task can
+   * be used on a specific target.
    */
-  factory TaskDescriptor(
-      String name,
-      BuildTask buildTask,
-      CreateTaskInputs inputBuilder,
-      List<ResultDescriptor> results) = TaskDescriptorImpl;
+  factory TaskDescriptor(String name, BuildTask buildTask,
+      CreateTaskInputs inputBuilder, List<ResultDescriptor> results,
+      {SuitabilityFor suitabilityFor}) = TaskDescriptorImpl;
 
   /**
    * Return the builder used to build the inputs to the task.
@@ -490,6 +602,11 @@ abstract class TaskDescriptor {
    */
   AnalysisTask createTask(AnalysisContext context, AnalysisTarget target,
       Map<String, dynamic> inputs);
+
+  /**
+   * Return an indication of how suitable this task is for the given [target].
+   */
+  TaskSuitability suitabilityFor(AnalysisTarget target);
 }
 
 /**
@@ -508,7 +625,7 @@ abstract class TaskInput<V> {
    * Return a task input that can be used to compute a list whose elements are
    * the result of passing the result of this input to the [mapper] function.
    */
-  ListTaskInput /*<E>*/ mappedToList(List /*<E>*/ mapper(V value));
+  ListTaskInput/*<E>*/ mappedToList/*<E>*/(List/*<E>*/ mapper(V value));
 }
 
 /**
@@ -586,6 +703,11 @@ abstract class TaskInputBuilder<V> {
    */
   bool moveNext();
 }
+
+/**
+ * An indication of how suitable a task is for a given target.
+ */
+enum TaskSuitability { NONE, LOWEST, HIGHEST }
 
 /**
  * [WorkManager]s are used to drive analysis.

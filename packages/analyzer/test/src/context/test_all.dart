@@ -2,11 +2,12 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.src.context.test_all;
+library analyzer.test.src.context.test_all;
 
 import 'package:unittest/unittest.dart';
 
 import '../../utils.dart';
+import 'builder_test.dart' as builder_test;
 import 'cache_test.dart' as cache_test;
 import 'context_test.dart' as context_test;
 
@@ -14,6 +15,7 @@ import 'context_test.dart' as context_test;
 main() {
   initializeTestEnvironment();
   group('context tests', () {
+    builder_test.main();
     cache_test.main();
     context_test.main();
   });

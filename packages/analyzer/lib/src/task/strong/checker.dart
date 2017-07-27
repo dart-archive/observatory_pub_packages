@@ -7,89 +7,1145 @@
 library analyzer.src.task.strong.checker;
 
 import 'package:analyzer/analyzer.dart';
-import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
-import 'package:analyzer/src/generated/scanner.dart' show Token, TokenType;
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart' show TokenType;
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/src/dart/element/type.dart';
+import 'package:analyzer/src/error/codes.dart' show StrongModeCode;
+import 'package:analyzer/src/generated/engine.dart' show AnalysisOptionsImpl;
+import 'package:analyzer/src/generated/resolver.dart' show TypeProvider;
+import 'package:analyzer/src/generated/type_system.dart';
 
-import 'info.dart';
-import 'rules.dart';
+import 'ast_properties.dart';
+
+/// Given an [expression] and a corresponding [typeSystem] and [typeProvider],
+/// gets the known static type of the expression.
+///
+/// Normally when we ask for an expression's type, we get the type of the
+/// storage slot that would contain it. For function types, this is necessarily
+/// a "fuzzy arrow" that treats `dynamic` as bottom. However, if we're
+/// interested in the expression's own type, it can often be a "strict arrow"
+/// because we know it evaluates to a specific, concrete function, and we can
+/// treat "dynamic" as top for that case, which is more permissive.
+DartType getDefiniteType(
+    Expression expression, TypeSystem typeSystem, TypeProvider typeProvider) {
+  DartType type = expression.staticType ?? DynamicTypeImpl.instance;
+  if (typeSystem is StrongTypeSystemImpl &&
+      type is FunctionType &&
+      _hasStrictArrow(expression)) {
+    // Remove fuzzy arrow if possible.
+    return typeSystem.functionTypeToConcreteType(typeProvider, type);
+  }
+  return type;
+}
+
+bool isKnownFunction(Expression expression) {
+  var element = _getKnownElement(expression);
+  // First class functions and static methods, where we know the original
+  // declaration, will have an exact type, so we know a downcast will fail.
+  return element is FunctionElement ||
+      element is MethodElement && element.isStatic;
+}
+
+DartType _elementType(Element e) {
+  if (e == null) {
+    // Malformed code - just return dynamic.
+    return DynamicTypeImpl.instance;
+  }
+  return (e as dynamic).type;
+}
+
+Element _getKnownElement(Expression expression) {
+  if (expression is ParenthesizedExpression) {
+    expression = (expression as ParenthesizedExpression).expression;
+  }
+  if (expression is FunctionExpression) {
+    return expression.element;
+  } else if (expression is PropertyAccess) {
+    return expression.propertyName.staticElement;
+  } else if (expression is Identifier) {
+    return expression.staticElement;
+  }
+  return null;
+}
+
+/// Return the field on type corresponding to member, or null if none
+/// exists or the "field" is actually a getter/setter.
+FieldElement _getMemberField(
+    InterfaceType type, PropertyAccessorElement member) {
+  String memberName = member.name;
+  FieldElement field;
+  if (member.isGetter) {
+    // The subclass member is an explicit getter or a field
+    // - lookup the getter on the superclass.
+    var getter = type.getGetter(memberName);
+    if (getter == null || getter.isStatic) return null;
+    field = getter.variable;
+  } else if (!member.isSynthetic) {
+    // The subclass member is an explicit setter
+    // - lookup the setter on the superclass.
+    // Note: an implicit (synthetic) setter would have already been flagged on
+    // the getter above.
+    var setter = type.getSetter(memberName);
+    if (setter == null || setter.isStatic) return null;
+    field = setter.variable;
+  } else {
+    return null;
+  }
+  if (field.isSynthetic) return null;
+  return field;
+}
+
+/// Looks up the declaration that matches [member] in [type] and returns it's
+/// declared type.
+FunctionType _getMemberType(InterfaceType type, ExecutableElement member) =>
+    _memberTypeGetter(member)(type);
+
+bool _hasStrictArrow(Expression expression) {
+  var element = _getKnownElement(expression);
+  return element is FunctionElement || element is MethodElement;
+}
+
+_MemberTypeGetter _memberTypeGetter(ExecutableElement member) {
+  String memberName = member.name;
+  final isGetter = member is PropertyAccessorElement && member.isGetter;
+  final isSetter = member is PropertyAccessorElement && member.isSetter;
+
+  FunctionType f(InterfaceType type) {
+    ExecutableElement baseMethod;
+
+    if (member.isPrivate) {
+      var subtypeLibrary = member.library;
+      var baseLibrary = type.element.library;
+      if (baseLibrary != subtypeLibrary) {
+        return null;
+      }
+    }
+
+    try {
+      if (isGetter) {
+        assert(!isSetter);
+        // Look for getter or field.
+        baseMethod = type.getGetter(memberName);
+      } else if (isSetter) {
+        baseMethod = type.getSetter(memberName);
+      } else {
+        baseMethod = type.getMethod(memberName);
+      }
+    } catch (e) {
+      // TODO(sigmund): remove this try-catch block (see issue #48).
+    }
+    if (baseMethod == null || baseMethod.isStatic) return null;
+    return baseMethod.type;
+  }
+
+  return f;
+}
+
+typedef FunctionType _MemberTypeGetter(InterfaceType type);
+
+/// Checks the body of functions and properties.
+class CodeChecker extends RecursiveAstVisitor {
+  final StrongTypeSystemImpl rules;
+  final TypeProvider typeProvider;
+  final AnalysisErrorListener reporter;
+  final AnalysisOptionsImpl _options;
+  _OverrideChecker _overrideChecker;
+
+  bool _failure = false;
+  bool _hasImplicitCasts;
+
+  CodeChecker(TypeProvider typeProvider, StrongTypeSystemImpl rules,
+      AnalysisErrorListener reporter, this._options)
+      : typeProvider = typeProvider,
+        rules = rules,
+        reporter = reporter {
+    _overrideChecker = new _OverrideChecker(this);
+  }
+
+  bool get failure => _failure;
+
+  void checkArgument(Expression arg, DartType expectedType) {
+    // Preserve named argument structure, so their immediate parent is the
+    // method invocation.
+    Expression baseExpression = arg is NamedExpression ? arg.expression : arg;
+    checkAssignment(baseExpression, expectedType);
+  }
+
+  void checkArgumentList(ArgumentList node, FunctionType type) {
+    NodeList<Expression> list = node.arguments;
+    int len = list.length;
+    for (int i = 0; i < len; ++i) {
+      Expression arg = list[i];
+      ParameterElement element = arg.staticParameterElement;
+      if (element == null) {
+        // We found an argument mismatch, the analyzer will report this too,
+        // so no need to insert an error for this here.
+        continue;
+      }
+      checkArgument(arg, _elementType(element));
+    }
+  }
+
+  void checkAssignment(Expression expr, DartType type) {
+    if (expr is ParenthesizedExpression) {
+      checkAssignment(expr.expression, type);
+    } else {
+      _checkImplicitCast(expr, type);
+    }
+  }
+
+  /// Analyzer checks boolean conversions, but we need to check too, because
+  /// it uses the default assignability rules that allow `dynamic` and `Object`
+  /// to be assigned to bool with no message.
+  void checkBoolean(Expression expr) =>
+      checkAssignment(expr, typeProvider.boolType);
+
+  void checkFunctionApplication(InvocationExpression node) {
+    var ft = _getTypeAsCaller(node);
+
+    if (_isDynamicCall(node, ft)) {
+      // If f is Function and this is a method invocation, we should have
+      // gotten an analyzer error, so no need to issue another error.
+      _recordDynamicInvoke(node, node.function);
+    } else {
+      checkArgumentList(node.argumentList, ft);
+    }
+  }
+
+  DartType getType(TypeName name) {
+    return (name == null) ? DynamicTypeImpl.instance : name.type;
+  }
+
+  void reset() {
+    _failure = false;
+  }
+
+  @override
+  void visitAsExpression(AsExpression node) {
+    // We could do the same check as the IsExpression below, but that is
+    // potentially too conservative.  Instead, at runtime, we must fail hard
+    // if the Dart as and the DDC as would return different values.
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    Token operator = node.operator;
+    TokenType operatorType = operator.type;
+    if (operatorType == TokenType.EQ ||
+        operatorType == TokenType.QUESTION_QUESTION_EQ) {
+      DartType staticType = _getDefiniteType(node.leftHandSide);
+      checkAssignment(node.rightHandSide, staticType);
+    } else if (operatorType == TokenType.AMPERSAND_AMPERSAND_EQ ||
+        operatorType == TokenType.BAR_BAR_EQ) {
+      checkAssignment(node.leftHandSide, typeProvider.boolType);
+      checkAssignment(node.rightHandSide, typeProvider.boolType);
+    } else {
+      _checkCompoundAssignment(node);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    var op = node.operator;
+    if (op.isUserDefinableOperator) {
+      var element = node.staticElement;
+      if (element == null) {
+        // Dynamic invocation
+        // TODO(vsm): Move this logic to the resolver?
+        if (op.type != TokenType.EQ_EQ && op.type != TokenType.BANG_EQ) {
+          _recordDynamicInvoke(node, node.leftOperand);
+        }
+      } else {
+        // Method invocation.
+        if (element is MethodElement) {
+          var type = element.type;
+          // Analyzer should enforce number of parameter types, but check in
+          // case we have erroneous input.
+          if (type.normalParameterTypes.isNotEmpty) {
+            checkArgument(node.rightOperand, type.normalParameterTypes[0]);
+          }
+        } else {
+          // TODO(vsm): Assert that the analyzer found an error here?
+        }
+      }
+    } else {
+      // Non-method operator.
+      switch (op.type) {
+        case TokenType.AMPERSAND_AMPERSAND:
+        case TokenType.BAR_BAR:
+          checkBoolean(node.leftOperand);
+          checkBoolean(node.rightOperand);
+          break;
+        case TokenType.BANG_EQ:
+          break;
+        case TokenType.QUESTION_QUESTION:
+          break;
+        default:
+          assert(false);
+      }
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    _overrideChecker.check(node);
+    super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitComment(Comment node) {
+    // skip, no need to do typechecking inside comments (they may contain
+    // comment references which would require resolution).
+  }
+
+  @override
+  void visitCompilationUnit(CompilationUnit node) {
+    _hasImplicitCasts = false;
+    node.visitChildren(this);
+    setHasImplicitCasts(node, _hasImplicitCasts);
+  }
+
+  @override
+  void visitConditionalExpression(ConditionalExpression node) {
+    checkBoolean(node.condition);
+    node.visitChildren(this);
+  }
+
+  /// Check constructor declaration to ensure correct super call placement.
+  @override
+  void visitConstructorDeclaration(ConstructorDeclaration node) {
+    node.visitChildren(this);
+
+    final init = node.initializers;
+    for (int i = 0, last = init.length - 1; i < last; i++) {
+      final node = init[i];
+      if (node is SuperConstructorInvocation) {
+        _recordMessage(node, StrongModeCode.INVALID_SUPER_INVOCATION, [node]);
+      }
+    }
+  }
+
+  // Check invocations
+  @override
+  void visitConstructorFieldInitializer(ConstructorFieldInitializer node) {
+    var field = node.fieldName;
+    var element = field.staticElement;
+    DartType staticType = _elementType(element);
+    checkAssignment(node.expression, staticType);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitDefaultFormalParameter(DefaultFormalParameter node) {
+    // Check that defaults have the proper subtype.
+    var parameter = node.parameter;
+    var parameterType = _elementType(parameter.element);
+    assert(parameterType != null);
+    var defaultValue = node.defaultValue;
+    if (defaultValue != null) {
+      checkAssignment(defaultValue, parameterType);
+    }
+
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitDoStatement(DoStatement node) {
+    checkBoolean(node.condition);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitExpressionFunctionBody(ExpressionFunctionBody node) {
+    _checkReturnOrYield(node.expression, node);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitFieldFormalParameter(FieldFormalParameter node) {
+    var element = node.element;
+    var typeName = node.type;
+    if (typeName != null) {
+      var type = _elementType(element);
+      var fieldElement =
+          node.identifier.staticElement as FieldFormalParameterElement;
+      var fieldType = _elementType(fieldElement.field);
+      if (!rules.isSubtypeOf(type, fieldType)) {
+        _recordMessage(node, StrongModeCode.INVALID_PARAMETER_DECLARATION,
+            [node, fieldType]);
+      }
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitForEachStatement(ForEachStatement node) {
+    var loopVariable = node.identifier ?? node.loopVariable?.identifier;
+
+    // Safely handle malformed statements.
+    if (loopVariable != null) {
+      // Find the element type of the sequence.
+      var sequenceInterface = node.awaitKeyword != null
+          ? typeProvider.streamType
+          : typeProvider.iterableType;
+      var iterableType = _getDefiniteType(node.iterable);
+      var elementType =
+          rules.mostSpecificTypeArgument(iterableType, sequenceInterface);
+
+      // If the sequence is not an Iterable (or Stream for await for) but is a
+      // supertype of it, do an implicit downcast to Iterable<dynamic>. Then
+      // we'll do a separate cast of the dynamic element to the variable's type.
+      if (elementType == null) {
+        var sequenceType =
+            sequenceInterface.instantiate([DynamicTypeImpl.instance]);
+
+        if (rules.isSubtypeOf(sequenceType, iterableType)) {
+          _recordImplicitCast(node.iterable, sequenceType, from: iterableType);
+          elementType = DynamicTypeImpl.instance;
+        }
+      }
+
+      // If the sequence doesn't implement the interface at all, [ErrorVerifier]
+      // will report the error, so ignore it here.
+      if (elementType != null) {
+        // Insert a cast from the sequence's element type to the loop variable's
+        // if needed.
+        _checkImplicitCast(loopVariable, _getDefiniteType(loopVariable),
+            from: elementType);
+      }
+    }
+
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitForStatement(ForStatement node) {
+    if (node.condition != null) {
+      checkBoolean(node.condition);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitFunctionExpression(FunctionExpression node) {
+    _checkForUnsafeBlockClosureInference(node);
+    super.visitFunctionExpression(node);
+  }
+
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    checkFunctionApplication(node);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitIfStatement(IfStatement node) {
+    checkBoolean(node.condition);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    var target = node.realTarget;
+    var element = node.staticElement;
+    if (element == null) {
+      _recordDynamicInvoke(node, target);
+    } else if (element is MethodElement) {
+      var type = element.type;
+      // Analyzer should enforce number of parameter types, but check in
+      // case we have erroneous input.
+      if (type.normalParameterTypes.isNotEmpty) {
+        checkArgument(node.index, type.normalParameterTypes[0]);
+      }
+    } else {
+      // TODO(vsm): Assert that the analyzer found an error here?
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    var arguments = node.argumentList;
+    var element = node.staticElement;
+    if (element != null) {
+      var type = _elementType(node.staticElement);
+      checkArgumentList(arguments, type);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitIsExpression(IsExpression node) {
+    _checkRuntimeTypeCheck(node, node.type);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitListLiteral(ListLiteral node) {
+    DartType type = DynamicTypeImpl.instance;
+    if (node.typeArguments != null) {
+      NodeList<TypeName> targs = node.typeArguments.arguments;
+      if (targs.length > 0) {
+        type = targs[0].type;
+      }
+    } else {
+      DartType staticType = node.staticType;
+      if (staticType is InterfaceType) {
+        List<DartType> targs = staticType.typeArguments;
+        if (targs != null && targs.length > 0) {
+          type = targs[0];
+        }
+      }
+    }
+    NodeList<Expression> elements = node.elements;
+    for (int i = 0; i < elements.length; i++) {
+      checkArgument(elements[i], type);
+    }
+    super.visitListLiteral(node);
+  }
+
+  @override
+  void visitMapLiteral(MapLiteral node) {
+    DartType ktype = DynamicTypeImpl.instance;
+    DartType vtype = DynamicTypeImpl.instance;
+    if (node.typeArguments != null) {
+      NodeList<TypeName> targs = node.typeArguments.arguments;
+      if (targs.length > 0) {
+        ktype = targs[0].type;
+      }
+      if (targs.length > 1) {
+        vtype = targs[1].type;
+      }
+    } else {
+      DartType staticType = node.staticType;
+      if (staticType is InterfaceType) {
+        List<DartType> targs = staticType.typeArguments;
+        if (targs != null) {
+          if (targs.length > 0) {
+            ktype = targs[0];
+          }
+          if (targs.length > 1) {
+            vtype = targs[1];
+          }
+        }
+      }
+    }
+    NodeList<MapLiteralEntry> entries = node.entries;
+    for (int i = 0; i < entries.length; i++) {
+      MapLiteralEntry entry = entries[i];
+      checkArgument(entry.key, ktype);
+      checkArgument(entry.value, vtype);
+    }
+    super.visitMapLiteral(node);
+  }
+
+  @override
+  visitMethodInvocation(MethodInvocation node) {
+    var target = node.realTarget;
+    var element = node.methodName.staticElement;
+    if (element == null && !typeProvider.isObjectMethod(node.methodName.name)) {
+      _recordDynamicInvoke(node, target);
+
+      // Mark the tear-off as being dynamic, too. This lets us distinguish
+      // cases like:
+      //
+      //     dynamic d;
+      //     d.someMethod(...); // the whole method call must be a dynamic send.
+      //
+      // ... from case like:
+      //
+      //     SomeType s;
+      //     s.someDynamicField(...); // static get, followed by dynamic call.
+      //
+      // The first case is handled here, the second case is handled below when
+      // we call [checkFunctionApplication].
+      setIsDynamicInvoke(node.methodName, true);
+    } else {
+      checkFunctionApplication(node);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    _checkUnary(node.operand, node.operator, node.staticElement);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _checkFieldAccess(node, node.prefix, node.identifier);
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    if (node.operator.type == TokenType.BANG) {
+      checkBoolean(node.operand);
+    } else {
+      _checkUnary(node.operand, node.operator, node.staticElement);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _checkFieldAccess(node, node.realTarget, node.propertyName);
+  }
+
+  @override
+  void visitRedirectingConstructorInvocation(
+      RedirectingConstructorInvocation node) {
+    var type = node.staticElement?.type;
+    // TODO(leafp): There's a TODO in visitRedirectingConstructorInvocation
+    // in the element_resolver to handle the case that the element is null
+    // and emit an error.  In the meantime, just be defensive here.
+    if (type != null) {
+      checkArgumentList(node.argumentList, type);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitReturnStatement(ReturnStatement node) {
+    _checkReturnOrYield(node.expression, node);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitSuperConstructorInvocation(SuperConstructorInvocation node) {
+    var element = node.staticElement;
+    if (element != null) {
+      var type = node.staticElement.type;
+      checkArgumentList(node.argumentList, type);
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitSwitchStatement(SwitchStatement node) {
+    // SwitchStatement defines a boolean conversion to check the result of the
+    // case value == the switch value, but in dev_compiler we require a boolean
+    // return type from an overridden == operator (because Object.==), so
+    // checking in SwitchStatement shouldn't be necessary.
+    node.visitChildren(this);
+  }
+
+  @override
+  Object visitVariableDeclaration(VariableDeclaration node) {
+    if (!node.isConst &&
+        !node.isFinal &&
+        node.initializer == null &&
+        rules.isNonNullableType(node?.element?.type)) {
+      _recordMessage(
+          node,
+          StaticTypeWarningCode.NON_NULLABLE_FIELD_NOT_INITIALIZED,
+          [node.name, node?.element?.type]);
+    }
+    return super.visitVariableDeclaration(node);
+  }
+
+  @override
+  void visitVariableDeclarationList(VariableDeclarationList node) {
+    TypeName type = node.type;
+    if (type == null) {
+      // No checks are needed when the type is var. Although internally the
+      // typing rules may have inferred a more precise type for the variable
+      // based on the initializer.
+    } else {
+      for (VariableDeclaration variable in node.variables) {
+        var initializer = variable.initializer;
+        if (initializer != null) {
+          checkAssignment(initializer, type.type);
+        }
+      }
+    }
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitWhileStatement(WhileStatement node) {
+    checkBoolean(node.condition);
+    node.visitChildren(this);
+  }
+
+  @override
+  void visitYieldStatement(YieldStatement node) {
+    _checkReturnOrYield(node.expression, node, yieldStar: node.star != null);
+    node.visitChildren(this);
+  }
+
+  void _checkCompoundAssignment(AssignmentExpression expr) {
+    var op = expr.operator.type;
+    assert(op.isAssignmentOperator && op != TokenType.EQ);
+    var methodElement = expr.staticElement;
+    if (methodElement == null) {
+      // Dynamic invocation.
+      _recordDynamicInvoke(expr, expr.leftHandSide);
+    } else {
+      // Sanity check the operator.
+      assert(methodElement.isOperator);
+      var functionType = methodElement.type;
+      var paramTypes = functionType.normalParameterTypes;
+      assert(paramTypes.length == 1);
+      assert(functionType.namedParameterTypes.isEmpty);
+      assert(functionType.optionalParameterTypes.isEmpty);
+
+      // Refine the return type.
+      var rhsType = _getDefiniteType(expr.rightHandSide);
+      var lhsType = _getDefiniteType(expr.leftHandSide);
+      var returnType = rules.refineBinaryExpressionType(
+          typeProvider, lhsType, op, rhsType, functionType.returnType);
+
+      // Check the argument for an implicit cast.
+      _checkImplicitCast(expr.rightHandSide, paramTypes[0], from: rhsType);
+
+      // Check the return type for an implicit cast.
+      //
+      // If needed, mark the assignment to indicate a down cast when we assign
+      // back to it. So these two implicit casts are equivalent:
+      //
+      //     y = /*implicit cast*/(y + 42);
+      //     /*implicit assignment cast*/y += 42;
+      //
+      _checkImplicitCast(expr.leftHandSide, lhsType,
+          from: returnType, opAssign: true);
+    }
+  }
+
+  /// Returns true if we need an implicit cast of [expr] from [from] type to
+  /// [to] type, otherwise returns false.
+  ///
+  /// If [from] is omitted, uses the static type of [expr].
+  bool _needsImplicitCast(Expression expr, DartType to, {DartType from}) {
+    from ??= _getDefiniteType(expr);
+
+    if (!_checkNonNullAssignment(expr, to, from)) return false;
+
+    // We can use anything as void.
+    if (to.isVoid) return false;
+
+    // fromT <: toT, no coercion needed.
+    if (rules.isSubtypeOf(from, to)) return false;
+
+    // Note: a function type is never assignable to a class per the Dart
+    // spec - even if it has a compatible call method.  We disallow as
+    // well for consistency.
+    if (from is FunctionType && rules.getCallMethodType(to) != null) {
+      return false;
+    }
+
+    // Downcast if toT <: fromT
+    if (rules.isSubtypeOf(to, from)) {
+      return true;
+    }
+
+    // Anything else is an illegal sideways cast.
+    // However, these will have been reported already in error_verifier, so we
+    // don't need to report them again.
+    return false;
+  }
+
+  /// Checks if an implicit cast of [expr] from [from] type to [to] type is
+  /// needed, and if so records it.
+  ///
+  /// If [from] is omitted, uses the static type of [expr].
+  ///
+  /// If [expr] does not require an implicit cast because it is not related to
+  /// [to] or is already a subtype of it, does nothing.
+  void _checkImplicitCast(Expression expr, DartType to,
+      {DartType from, bool opAssign: false}) {
+    from ??= _getDefiniteType(expr);
+
+    if (_needsImplicitCast(expr, to, from: from)) {
+      _recordImplicitCast(expr, to, from: from, opAssign: opAssign);
+    }
+  }
+
+  void _checkFieldAccess(AstNode node, AstNode target, SimpleIdentifier field) {
+    if (field.staticElement == null &&
+        !typeProvider.isObjectMember(field.name)) {
+      _recordDynamicInvoke(node, target);
+    }
+    node.visitChildren(this);
+  }
+
+  /**
+   * Check if the closure [node] is unsafe due to dartbug.com/26947.  If so,
+   * issue a warning.
+   *
+   * TODO(paulberry): eliminate this once dartbug.com/26947 is fixed.
+   */
+  void _checkForUnsafeBlockClosureInference(FunctionExpression node) {
+    if (node.body is! BlockFunctionBody) {
+      return;
+    }
+    if (node.element.returnType.isDynamic) {
+      return;
+    }
+    // Find the enclosing variable declaration whose inferred type might depend
+    // on the inferred return type of the block closure (if any).
+    AstNode prevAncestor = node;
+    AstNode ancestor = node.parent;
+    while (ancestor != null && ancestor is! VariableDeclaration) {
+      if (ancestor is BlockFunctionBody) {
+        // node is inside another block function body; if that block
+        // function body is unsafe, we've already warned about it.
+        return;
+      }
+      if (ancestor is InstanceCreationExpression) {
+        // node appears inside an instance creation expression; we may be safe
+        // if the type of the instance creation expression requires no
+        // inference.
+        TypeName typeName = ancestor.constructorName.type;
+        if (typeName.typeArguments != null) {
+          // Type arguments were explicitly specified.  We are safe.
+          return;
+        }
+        DartType type = typeName.type;
+        if (!(type is ParameterizedType && type.typeParameters.isNotEmpty)) {
+          // Type is not generic.  We are safe.
+          return;
+        }
+      }
+      if (ancestor is MethodInvocation) {
+        // node appears inside a method or function invocation; we may be safe
+        // if the type of the method or function requires no inference.
+        if (ancestor.typeArguments != null) {
+          // Type arguments were explicitly specified.  We are safe.
+          return;
+        }
+        Element methodElement = ancestor.methodName.staticElement;
+        if (!(methodElement is ExecutableElement &&
+            methodElement.typeParameters.isNotEmpty)) {
+          // Method is not generic.  We are safe.
+          return;
+        }
+      }
+      if (ancestor is FunctionExpressionInvocation &&
+          !identical(prevAncestor, ancestor.function)) {
+        // node appears inside an argument to a function expression invocation;
+        // we may be safe if the type of the function expression requires no
+        // inference.
+        if (ancestor.typeArguments != null) {
+          // Type arguments were explicitly specified.  We are safe.
+          return;
+        }
+        DartType type = ancestor.function.staticType;
+        if (!(type is FunctionTypeImpl && type.typeFormals.isNotEmpty)) {
+          // Type is not generic or has had its type parameters instantiated.
+          // We are safe.
+          return;
+        }
+      }
+      if ((ancestor is ListLiteral && ancestor.typeArguments != null) ||
+          (ancestor is MapLiteral && ancestor.typeArguments != null)) {
+        // node appears inside a list or map literal with an explicit type.  We
+        // are safe because no type inference is required.
+        return;
+      }
+      prevAncestor = ancestor;
+      ancestor = ancestor.parent;
+    }
+    if (ancestor == null) {
+      // node is not inside a variable declaration, so it is safe.
+      return;
+    }
+    VariableDeclaration decl = ancestor;
+    VariableElement declElement = decl.element;
+    if (!declElement.hasImplicitType) {
+      // Variable declaration has an explicit type, so it's safe.
+      return;
+    }
+    if (declElement.type.isDynamic) {
+      // No type was successfully inferred for this variable, so it's safe.
+      return;
+    }
+    if (declElement.enclosingElement is ExecutableElement) {
+      // Variable declaration is inside a function or method, so it's safe.
+      return;
+    }
+    _recordMessage(node, StrongModeCode.UNSAFE_BLOCK_CLOSURE_INFERENCE,
+        [declElement.name]);
+  }
+
+  /// Checks if the assignment is valid with respect to non-nullable types.
+  /// Returns `false` if a nullable expression is assigned to a variable of
+  /// non-nullable type and `true` otherwise.
+  bool _checkNonNullAssignment(
+      Expression expression, DartType to, DartType from) {
+    if (rules.isNonNullableType(to) && rules.isNullableType(from)) {
+      _recordMessage(
+          expression, StaticTypeWarningCode.INVALID_ASSIGNMENT, [from, to]);
+      return false;
+    }
+    return true;
+  }
+
+  void _checkReturnOrYield(Expression expression, AstNode node,
+      {bool yieldStar: false}) {
+    FunctionBody body = node.getAncestor((n) => n is FunctionBody);
+    var type = _getExpectedReturnType(body, yieldStar: yieldStar);
+    if (type == null) {
+      // We have a type mismatch: the async/async*/sync* modifier does
+      // not match the return or yield type.  We should have already gotten an
+      // analyzer error in this case.
+      return;
+    }
+    // TODO(vsm): Enforce void or dynamic (to void?) when expression is null.
+    if (expression != null) checkAssignment(expression, type);
+  }
+
+  void _checkRuntimeTypeCheck(AstNode node, TypeName typeName) {
+    var type = getType(typeName);
+    if (!rules.isGroundType(type)) {
+      _recordMessage(node, StrongModeCode.NON_GROUND_TYPE_CHECK_INFO, [type]);
+    }
+  }
+
+  void _checkUnary(Expression operand, Token op, MethodElement element) {
+    bool isIncrementAssign =
+        op.type == TokenType.PLUS_PLUS || op.type == TokenType.MINUS_MINUS;
+    if (op.isUserDefinableOperator || isIncrementAssign) {
+      if (element == null) {
+        _recordDynamicInvoke(operand.parent, operand);
+      } else if (isIncrementAssign) {
+        // For ++ and --, even if it is not dynamic, we still need to check
+        // that the user defined method accepts an `int` as the RHS.
+        //
+        // We assume Analyzer has done this already (in ErrorVerifier).
+        //
+        // However, we also need to check the return type.
+
+        // Refine the return type.
+        var functionType = element.type;
+        var rhsType = typeProvider.intType;
+        var lhsType = _getDefiniteType(operand);
+        var returnType = rules.refineBinaryExpressionType(typeProvider, lhsType,
+            TokenType.PLUS, rhsType, functionType.returnType);
+
+        // Skip the argument check - `int` cannot be downcast.
+        //
+        // Check the return type for an implicit cast.
+        //
+        // If needed, mark the assignment to indicate a down cast when we assign
+        // back to it. So these two implicit casts are equivalent:
+        //
+        //     y = /*implicit cast*/(y + 1);
+        //     /*implicit assignment cast*/y++;
+        //
+        _checkImplicitCast(operand, lhsType, from: returnType, opAssign: true);
+      }
+    }
+  }
+
+  DartType _getDefiniteType(Expression expr) =>
+      getDefiniteType(expr, rules, typeProvider);
+
+  /// Gets the expected return type of the given function [body], either from
+  /// a normal return/yield, or from a yield*.
+  DartType _getExpectedReturnType(FunctionBody body, {bool yieldStar: false}) {
+    FunctionType functionType;
+    var parent = body.parent;
+    if (parent is Declaration) {
+      functionType = _elementType(parent.element);
+    } else {
+      assert(parent is FunctionExpression);
+      functionType =
+          (parent as FunctionExpression).staticType ?? DynamicTypeImpl.instance;
+    }
+
+    var type = functionType.returnType;
+
+    InterfaceType expectedType = null;
+    if (body.isAsynchronous) {
+      if (body.isGenerator) {
+        // Stream<T> -> T
+        expectedType = typeProvider.streamType;
+      } else {
+        // Don't validate return type of async methods.
+        // They're handled by the runtime implementation.
+        return null;
+      }
+    } else {
+      if (body.isGenerator) {
+        // Iterable<T> -> T
+        expectedType = typeProvider.iterableType;
+      } else {
+        // T -> T
+        return type;
+      }
+    }
+    if (yieldStar) {
+      if (type.isDynamic) {
+        // Ensure it's at least a Stream / Iterable.
+        return expectedType.instantiate([typeProvider.dynamicType]);
+      } else {
+        // Analyzer will provide a separate error if expected type
+        // is not compatible with type.
+        return type;
+      }
+    }
+    if (type.isDynamic) {
+      return type;
+    } else if (type is InterfaceType && type.element == expectedType.element) {
+      return type.typeArguments[0];
+    } else {
+      // Malformed type - fallback on analyzer error.
+      return null;
+    }
+  }
+
+  /// Given an expression, return its type assuming it is
+  /// in the caller position of a call (that is, accounting
+  /// for the possibility of a call method).  Returns null
+  /// if expression is not statically callable.
+  FunctionType _getTypeAsCaller(InvocationExpression node) {
+    DartType type = node.staticInvokeType;
+    if (type is FunctionType) {
+      return type;
+    } else if (type is InterfaceType) {
+      return rules.getCallMethodType(type);
+    }
+    return null;
+  }
+
+  /// Returns `true` if the expression is a dynamic function call or method
+  /// invocation.
+  bool _isDynamicCall(InvocationExpression call, FunctionType ft) {
+    // TODO(leafp): This will currently return true if t is Function
+    // This is probably the most correct thing to do for now, since
+    // this code is also used by the back end.  Maybe revisit at some
+    // point?
+    if (ft == null) return true;
+    // Dynamic as the parameter type is treated as bottom.  A function with
+    // a dynamic parameter type requires a dynamic call in general.
+    // However, as an optimization, if we have an original definition, we know
+    // dynamic is reified as Object - in this case a regular call is fine.
+    if (_hasStrictArrow(call.function)) {
+      return false;
+    }
+    return rules.anyParameterType(ft, (pt) => pt.isDynamic);
+  }
+
+  void _recordDynamicInvoke(AstNode node, Expression target) {
+    _recordMessage(node, StrongModeCode.DYNAMIC_INVOKE, [node]);
+    // TODO(jmesserly): we may eventually want to record if the whole operation
+    // (node) was dynamic, rather than the target, but this is an easier fit
+    // with what we used to do.
+    if (target != null) setIsDynamicInvoke(target, true);
+  }
+
+  /// Records an implicit cast for the [expr] from [from] to [to].
+  ///
+  /// This will emit the appropriate error/warning/hint message as well as mark
+  /// the AST node.
+  void _recordImplicitCast(Expression expr, DartType to,
+      {DartType from, bool opAssign: false}) {
+    assert(rules.isSubtypeOf(to, from));
+
+    // Inference "casts":
+    if (expr is Literal || expr is FunctionExpression) {
+      // fromT should be an exact type - this will almost certainly fail at
+      // runtime.
+      _recordMessage(expr, StrongModeCode.STATIC_TYPE_ERROR, [expr, from, to]);
+      return;
+    }
+
+    if (expr is InstanceCreationExpression) {
+      ConstructorElement e = expr.staticElement;
+      if (e == null || !e.isFactory) {
+        // fromT should be an exact type - this will almost certainly fail at
+        // runtime.
+
+        _recordMessage(
+            expr, StrongModeCode.STATIC_TYPE_ERROR, [expr, from, to]);
+        return;
+      }
+    }
+
+    if (isKnownFunction(expr)) {
+      _recordMessage(expr, StrongModeCode.STATIC_TYPE_ERROR, [expr, from, to]);
+      return;
+    }
+
+    // Composite cast: these are more likely to fail.
+    bool downCastComposite = false;
+    if (!rules.isGroundType(to)) {
+      // This cast is (probably) due to our different treatment of dynamic.
+      // It may be more likely to fail at runtime.
+      if (from is InterfaceType) {
+        // For class types, we'd like to allow non-generic down casts, e.g.,
+        // Iterable<T> to List<T>.  The intuition here is that raw (generic)
+        // casts are problematic, and we should complain about those.
+        var typeArgs = from.typeArguments;
+        downCastComposite =
+            typeArgs.isEmpty || typeArgs.any((t) => t.isDynamic);
+      } else {
+        downCastComposite = true;
+      }
+    }
+
+    var parent = expr.parent;
+    ErrorCode errorCode;
+    if (downCastComposite) {
+      errorCode = StrongModeCode.DOWN_CAST_COMPOSITE;
+    } else if (from.isDynamic) {
+      errorCode = StrongModeCode.DYNAMIC_CAST;
+    } else if (parent is VariableDeclaration && parent.initializer == expr) {
+      errorCode = StrongModeCode.ASSIGNMENT_CAST;
+    } else {
+      errorCode = opAssign
+          ? StrongModeCode.DOWN_CAST_IMPLICIT_ASSIGN
+          : StrongModeCode.DOWN_CAST_IMPLICIT;
+    }
+    _recordMessage(expr, errorCode, [from, to]);
+    if (opAssign) {
+      setImplicitAssignmentCast(expr, to);
+    } else {
+      setImplicitCast(expr, to);
+    }
+    _hasImplicitCasts = true;
+  }
+
+  void _recordMessage(AstNode node, ErrorCode errorCode, List arguments) {
+    var severity = errorCode.errorSeverity;
+    if (severity == ErrorSeverity.ERROR) _failure = true;
+    if (severity != ErrorSeverity.INFO || _options.strongModeHints) {
+      int begin = node is AnnotatedNode
+          ? node.firstTokenAfterCommentAndMetadata.offset
+          : node.offset;
+      int length = node.end - begin;
+      var source = (node.root as CompilationUnit).element.source;
+      var error =
+          new AnalysisError(source, begin, length, errorCode, arguments);
+      reporter.onError(error);
+    }
+  }
+}
 
 /// Checks for overriding declarations of fields and methods. This is used to
 /// check overrides between classes and superclasses, interfaces, and mixin
 /// applications.
 class _OverrideChecker {
-  bool _failure = false;
-  final TypeRules _rules;
-  final AnalysisErrorListener _reporter;
+  final StrongTypeSystemImpl rules;
+  final CodeChecker _checker;
 
-  _OverrideChecker(this._rules, this._reporter);
+  _OverrideChecker(CodeChecker checker)
+      : _checker = checker,
+        rules = checker.rules;
 
   void check(ClassDeclaration node) {
     if (node.element.type.isObject) return;
     _checkSuperOverrides(node);
     _checkMixinApplicationOverrides(node);
     _checkAllInterfaceOverrides(node);
-  }
-
-  /// Check overrides from mixin applications themselves. For example, in:
-  ///
-  ///      A extends B with E, F
-  ///
-  ///  we check:
-  ///
-  ///      B & E against B (equivalently how E overrides B)
-  ///      B & E & F against B & E (equivalently how F overrides both B and E)
-  void _checkMixinApplicationOverrides(ClassDeclaration node) {
-    var type = node.element.type;
-    var parent = type.superclass;
-    var mixins = type.mixins;
-
-    // Check overrides from applying mixins
-    for (int i = 0; i < mixins.length; i++) {
-      var seen = new Set<String>();
-      var current = mixins[i];
-      var errorLocation = node.withClause.mixinTypes[i];
-      for (int j = i - 1; j >= 0; j--) {
-        _checkIndividualOverridesFromType(
-            current, mixins[j], errorLocation, seen);
-      }
-      _checkIndividualOverridesFromType(current, parent, errorLocation, seen);
-    }
-  }
-
-  /// Check overrides between a class and its superclasses and mixins. For
-  /// example, in:
-  ///
-  ///      A extends B with E, F
-  ///
-  /// we check A against B, B super classes, E, and F.
-  ///
-  /// Internally we avoid reporting errors twice and we visit classes bottom up
-  /// to ensure we report the most immediate invalid override first. For
-  /// example, in the following code we'll report that `Test` has an invalid
-  /// override with respect to `Parent` (as opposed to an invalid override with
-  /// respect to `Grandparent`):
-  ///
-  ///     class Grandparent {
-  ///         m(A a) {}
-  ///     }
-  ///     class Parent extends Grandparent {
-  ///         m(A a) {}
-  ///     }
-  ///     class Test extends Parent {
-  ///         m(B a) {} // invalid override
-  ///     }
-  void _checkSuperOverrides(ClassDeclaration node) {
-    var seen = new Set<String>();
-    var current = node.element.type;
-    var visited = new Set<InterfaceType>();
-    do {
-      visited.add(current);
-      current.mixins.reversed
-          .forEach((m) => _checkIndividualOverridesFromClass(node, m, seen));
-      _checkIndividualOverridesFromClass(node, current.superclass, seen);
-      current = current.superclass;
-    } while (!current.isObject && !visited.contains(current));
   }
 
   /// Checks that implementations correctly override all reachable interfaces.
@@ -143,6 +1199,84 @@ class _OverrideChecker {
         includeParents: false);
   }
 
+  /// Check that individual methods and fields in [node] correctly override
+  /// the declarations in [baseType].
+  ///
+  /// The [errorLocation] node indicates where errors are reported, see
+  /// [_checkSingleOverride] for more details.
+  _checkIndividualOverridesFromClass(ClassDeclaration node,
+      InterfaceType baseType, Set<String> seen, bool isSubclass) {
+    for (var member in node.members) {
+      if (member is FieldDeclaration) {
+        if (member.isStatic) {
+          continue;
+        }
+        for (var variable in member.fields.variables) {
+          var element = variable.element as PropertyInducingElement;
+          var name = element.name;
+          if (seen.contains(name)) {
+            continue;
+          }
+          var getter = element.getter;
+          var setter = element.setter;
+          bool found = _checkSingleOverride(
+              getter, baseType, variable.name, member, isSubclass);
+          if (!variable.isFinal &&
+              !variable.isConst &&
+              _checkSingleOverride(
+                  setter, baseType, variable.name, member, isSubclass)) {
+            found = true;
+          }
+          if (found) {
+            seen.add(name);
+          }
+        }
+      } else if (member is MethodDeclaration) {
+        if (member.isStatic) {
+          continue;
+        }
+        var method = member.element;
+        if (seen.contains(method.name)) {
+          continue;
+        }
+        if (_checkSingleOverride(
+            method, baseType, member.name, member, isSubclass)) {
+          seen.add(method.name);
+        }
+      } else {
+        assert(member is ConstructorDeclaration);
+      }
+    }
+  }
+
+  /// Check that individual methods and fields in [subType] correctly override
+  /// the declarations in [baseType].
+  ///
+  /// The [errorLocation] node indicates where errors are reported, see
+  /// [_checkSingleOverride] for more details.
+  ///
+  /// The set [seen] is used to avoid reporting overrides more than once. It
+  /// is used when invoking this function multiple times when checking several
+  /// types in a class hierarchy. Errors are reported only the first time an
+  /// invalid override involving a specific member is encountered.
+  _checkIndividualOverridesFromType(
+      InterfaceType subType,
+      InterfaceType baseType,
+      AstNode errorLocation,
+      Set<String> seen,
+      bool isSubclass) {
+    void checkHelper(ExecutableElement e) {
+      if (e.isStatic) return;
+      if (seen.contains(e.name)) return;
+      if (_checkSingleOverride(e, baseType, null, errorLocation, isSubclass)) {
+        seen.add(e.name);
+      }
+    }
+
+    subType.methods.forEach(checkHelper);
+    subType.accessors.forEach(checkHelper);
+  }
+
   /// Checks that [cls] and its super classes (including mixins) correctly
   /// overrides each interface in [interfaces]. If [includeParents] is false,
   /// then mixins are still checked, but the base type and it's transitive
@@ -171,30 +1305,31 @@ class _OverrideChecker {
     // Check direct overrides on [type]
     for (var interfaceType in interfaces) {
       if (node != null) {
-        _checkIndividualOverridesFromClass(node, interfaceType, seen);
+        _checkIndividualOverridesFromClass(node, interfaceType, seen, false);
       } else {
         _checkIndividualOverridesFromType(
-            type, interfaceType, errorLocation, seen);
+            type, interfaceType, errorLocation, seen, false);
       }
     }
 
     // Check overrides from its mixins
     for (int i = 0; i < type.mixins.length; i++) {
-      var loc =
-          errorLocation != null ? errorLocation : node.withClause.mixinTypes[i];
+      var loc = errorLocation ?? node.withClause.mixinTypes[i];
       for (var interfaceType in interfaces) {
         // We copy [seen] so we can report separately if more than one mixin or
         // the base class have an invalid override.
         _checkIndividualOverridesFromType(
-            type.mixins[i], interfaceType, loc, new Set.from(seen));
+            type.mixins[i], interfaceType, loc, new Set.from(seen), false);
       }
     }
 
     // Check overrides from its superclasses
     if (includeParents) {
       var parent = type.superclass;
-      if (parent.isObject) return;
-      var loc = errorLocation != null ? errorLocation : node.extendsClause;
+      if (parent.isObject) {
+        return;
+      }
+      var loc = errorLocation ?? node.extendsClause;
       // No need to copy [seen] here because we made copies above when reporting
       // errors on mixins.
       _checkInterfacesOverrides(parent, interfaces, seen,
@@ -202,62 +1337,30 @@ class _OverrideChecker {
     }
   }
 
-  /// Check that individual methods and fields in [subType] correctly override
-  /// the declarations in [baseType].
+  /// Check overrides from mixin applications themselves. For example, in:
   ///
-  /// The [errorLocation] node indicates where errors are reported, see
-  /// [_checkSingleOverride] for more details.
+  ///      A extends B with E, F
   ///
-  /// The set [seen] is used to avoid reporting overrides more than once. It
-  /// is used when invoking this function multiple times when checking several
-  /// types in a class hierarchy. Errors are reported only the first time an
-  /// invalid override involving a specific member is encountered.
-  _checkIndividualOverridesFromType(InterfaceType subType,
-      InterfaceType baseType, AstNode errorLocation, Set<String> seen) {
-    void checkHelper(ExecutableElement e) {
-      if (e.isStatic) return;
-      if (seen.contains(e.name)) return;
-      if (_checkSingleOverride(e, baseType, null, errorLocation)) {
-        seen.add(e.name);
-      }
-    }
-    subType.methods.forEach(checkHelper);
-    subType.accessors.forEach(checkHelper);
-  }
+  ///  we check:
+  ///
+  ///      B & E against B (equivalently how E overrides B)
+  ///      B & E & F against B & E (equivalently how F overrides both B and E)
+  void _checkMixinApplicationOverrides(ClassDeclaration node) {
+    var type = node.element.type;
+    var parent = type.superclass;
+    var mixins = type.mixins;
 
-  /// Check that individual methods and fields in [subType] correctly override
-  /// the declarations in [baseType].
-  ///
-  /// The [errorLocation] node indicates where errors are reported, see
-  /// [_checkSingleOverride] for more details.
-  _checkIndividualOverridesFromClass(
-      ClassDeclaration node, InterfaceType baseType, Set<String> seen) {
-    for (var member in node.members) {
-      if (member is ConstructorDeclaration) continue;
-      if (member is FieldDeclaration) {
-        if (member.isStatic) continue;
-        for (var variable in member.fields.variables) {
-          var element = variable.element as PropertyInducingElement;
-          var name = element.name;
-          if (seen.contains(name)) continue;
-          var getter = element.getter;
-          var setter = element.setter;
-          bool found = _checkSingleOverride(getter, baseType, variable, member);
-          if (!variable.isFinal &&
-              !variable.isConst &&
-              _checkSingleOverride(setter, baseType, variable, member)) {
-            found = true;
-          }
-          if (found) seen.add(name);
-        }
-      } else {
-        if ((member as MethodDeclaration).isStatic) continue;
-        var method = (member as MethodDeclaration).element;
-        if (seen.contains(method.name)) continue;
-        if (_checkSingleOverride(method, baseType, member, member)) {
-          seen.add(method.name);
-        }
+    // Check overrides from applying mixins
+    for (int i = 0; i < mixins.length; i++) {
+      var seen = new Set<String>();
+      var current = mixins[i];
+      var errorLocation = node.withClause.mixinTypes[i];
+      for (int j = i - 1; j >= 0; j--) {
+        _checkIndividualOverridesFromType(
+            current, mixins[j], errorLocation, seen, true);
       }
+      _checkIndividualOverridesFromType(
+          current, parent, errorLocation, seen, true);
     }
   }
 
@@ -288,698 +1391,96 @@ class _OverrideChecker {
   /// the AST node that defines [element]. This is used to determine whether the
   /// type of the element could be inferred from the types in the super classes.
   bool _checkSingleOverride(ExecutableElement element, InterfaceType type,
-      AstNode node, AstNode errorLocation) {
+      AstNode node, AstNode errorLocation, bool isSubclass) {
     assert(!element.isStatic);
 
-    FunctionType subType = _rules.elementType(element);
+    FunctionType subType = _elementType(element);
     // TODO(vsm): Test for generic
     FunctionType baseType = _getMemberType(type, element);
-
     if (baseType == null) return false;
-    if (!_rules.isAssignable(subType, baseType)) {
-      // See whether non-assignable cases fit one of our common patterns:
-      //
-      // Common pattern 1: Inferable return type (on getters and methods)
-      //   class A {
-      //     int get foo => ...;
-      //     String toString() { ... }
-      //   }
-      //   class B extends A {
-      //     get foo => e; // no type specified.
-      //     toString() { ... } // no return type specified.
-      //   }
-      _recordMessage(new InvalidMethodOverride(
-          errorLocation, element, type, subType, baseType));
-    }
-    return true;
-  }
 
-  void _recordMessage(StaticInfo info) {
-    if (info == null) return;
-    var error = info.toAnalysisError();
-    if (error.errorCode.errorSeverity == ErrorSeverity.ERROR) _failure = true;
-    _reporter.onError(error);
-  }
-}
-
-/// Checks the body of functions and properties.
-class CodeChecker extends RecursiveAstVisitor {
-  final TypeRules rules;
-  final AnalysisErrorListener reporter;
-  final _OverrideChecker _overrideChecker;
-  final bool _hints;
-
-  bool _failure = false;
-  bool get failure => _failure || _overrideChecker._failure;
-
-  void reset() {
-    _failure = false;
-    _overrideChecker._failure = false;
-  }
-
-  CodeChecker(TypeRules rules, AnalysisErrorListener reporter,
-      {bool hints: false})
-      : rules = rules,
-        reporter = reporter,
-        _hints = hints,
-        _overrideChecker = new _OverrideChecker(rules, reporter);
-
-  @override
-  void visitComment(Comment node) {
-    // skip, no need to do typechecking inside comments (they may contain
-    // comment references which would require resolution).
-  }
-
-  @override
-  void visitClassDeclaration(ClassDeclaration node) {
-    _overrideChecker.check(node);
-    super.visitClassDeclaration(node);
-  }
-
-  @override
-  void visitAssignmentExpression(AssignmentExpression node) {
-    var token = node.operator;
-    if (token.type != TokenType.EQ) {
-      _checkCompoundAssignment(node);
-    } else {
-      DartType staticType = _getStaticType(node.leftHandSide);
-      checkAssignment(node.rightHandSide, staticType);
-    }
-    node.visitChildren(this);
-  }
-
-  /// Check constructor declaration to ensure correct super call placement.
-  @override
-  void visitConstructorDeclaration(ConstructorDeclaration node) {
-    node.visitChildren(this);
-
-    final init = node.initializers;
-    for (int i = 0, last = init.length - 1; i < last; i++) {
-      final node = init[i];
-      if (node is SuperConstructorInvocation) {
-        _recordMessage(new InvalidSuperInvocation(node));
+    if (isSubclass && element is PropertyAccessorElement) {
+      // Disallow any overriding if the base class defines this member
+      // as a field.  We effectively treat fields as final / non-virtual,
+      // unless they are explicitly marked as @virtual
+      var field = _getMemberField(type, element);
+      if (field != null && !field.isVirtual) {
+        _checker._recordMessage(
+            errorLocation, StrongModeCode.INVALID_FIELD_OVERRIDE, [
+          element.enclosingElement.name,
+          element.name,
+          subType,
+          type,
+          baseType
+        ]);
       }
     }
-  }
-
-  @override
-  void visitConstructorFieldInitializer(ConstructorFieldInitializer node) {
-    var field = node.fieldName;
-    var element = field.staticElement;
-    DartType staticType = rules.elementType(element);
-    checkAssignment(node.expression, staticType);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitForEachStatement(ForEachStatement node) {
-    // Check that the expression is an Iterable.
-    var expr = node.iterable;
-    var iterableType = node.awaitKeyword != null
-        ? rules.provider.streamType
-        : rules.provider.iterableType;
-    var loopVariable = node.identifier != null
-        ? node.identifier
-        : node.loopVariable?.identifier;
-    if (loopVariable != null) {
-      var iteratorType = loopVariable.staticType;
-      var checkedType = iterableType.substitute4([iteratorType]);
-      checkAssignment(expr, checkedType);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitForStatement(ForStatement node) {
-    if (node.condition != null) {
-      checkBoolean(node.condition);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitIfStatement(IfStatement node) {
-    checkBoolean(node.condition);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitDoStatement(DoStatement node) {
-    checkBoolean(node.condition);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitWhileStatement(WhileStatement node) {
-    checkBoolean(node.condition);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitSwitchStatement(SwitchStatement node) {
-    // SwitchStatement defines a boolean conversion to check the result of the
-    // case value == the switch value, but in dev_compiler we require a boolean
-    // return type from an overridden == operator (because Object.==), so
-    // checking in SwitchStatement shouldn't be necessary.
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitListLiteral(ListLiteral node) {
-    var type = rules.provider.dynamicType;
-    if (node.typeArguments != null) {
-      var targs = node.typeArguments.arguments;
-      if (targs.length > 0) type = targs[0].type;
-    }
-    var elements = node.elements;
-    for (int i = 0; i < elements.length; i++) {
-      checkArgument(elements[i], type);
-    }
-    super.visitListLiteral(node);
-  }
-
-  @override
-  void visitMapLiteral(MapLiteral node) {
-    var ktype = rules.provider.dynamicType;
-    var vtype = rules.provider.dynamicType;
-    if (node.typeArguments != null) {
-      var targs = node.typeArguments.arguments;
-      if (targs.length > 0) ktype = targs[0].type;
-      if (targs.length > 1) vtype = targs[1].type;
-    }
-    var entries = node.entries;
-    for (int i = 0; i < entries.length; i++) {
-      var entry = entries[i];
-      checkArgument(entry.key, ktype);
-      checkArgument(entry.value, vtype);
-    }
-    super.visitMapLiteral(node);
-  }
-
-  // Check invocations
-  void checkArgumentList(ArgumentList node, FunctionType type) {
-    NodeList<Expression> list = node.arguments;
-    int len = list.length;
-    for (int i = 0; i < len; ++i) {
-      Expression arg = list[i];
-      ParameterElement element = arg.staticParameterElement;
-      if (element == null) {
-        if (type.parameters.length < len) {
-          // We found an argument mismatch, the analyzer will report this too,
-          // so no need to insert an error for this here.
-          continue;
-        }
-        element = type.parameters[i];
-        // TODO(vsm): When can this happen?
-        assert(element != null);
-      }
-      DartType expectedType = rules.elementType(element);
-      if (expectedType == null) expectedType = rules.provider.dynamicType;
-      checkArgument(arg, expectedType);
-    }
-  }
-
-  void checkArgument(Expression arg, DartType expectedType) {
-    // Preserve named argument structure, so their immediate parent is the
-    // method invocation.
-    if (arg is NamedExpression) {
-      arg = (arg as NamedExpression).expression;
-    }
-    checkAssignment(arg, expectedType);
-  }
-
-  void checkFunctionApplication(
-      Expression node, Expression f, ArgumentList list) {
-    if (rules.isDynamicCall(f)) {
-      // If f is Function and this is a method invocation, we should have
-      // gotten an analyzer error, so no need to issue another error.
-      _recordDynamicInvoke(node, f);
-    } else {
-      checkArgumentList(list, rules.getTypeAsCaller(f));
-    }
-  }
-
-  @override
-  visitMethodInvocation(MethodInvocation node) {
-    var target = node.realTarget;
-    if (rules.isDynamicTarget(target) &&
-        !_isObjectMethod(node, node.methodName)) {
-      _recordDynamicInvoke(node, target);
-
-      // Mark the tear-off as being dynamic, too. This lets us distinguish
-      // cases like:
-      //
-      //     dynamic d;
-      //     d.someMethod(...); // the whole method call must be a dynamic send.
-      //
-      // ... from case like:
-      //
-      //     SomeType s;
-      //     s.someDynamicField(...); // static get, followed by dynamic call.
-      //
-      // The first case is handled here, the second case is handled below when
-      // we call [checkFunctionApplication].
-      DynamicInvoke.set(node.methodName, true);
-    } else {
-      checkFunctionApplication(node, node.methodName, node.argumentList);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    checkFunctionApplication(node, node.function, node.argumentList);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitRedirectingConstructorInvocation(
-      RedirectingConstructorInvocation node) {
-    var type = node.staticElement.type;
-    checkArgumentList(node.argumentList, type);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitSuperConstructorInvocation(SuperConstructorInvocation node) {
-    var element = node.staticElement;
-    if (element != null) {
-      var type = node.staticElement.type;
-      checkArgumentList(node.argumentList, type);
-    }
-    node.visitChildren(this);
-  }
-
-  void _checkReturnOrYield(Expression expression, AstNode node,
-      {bool yieldStar: false}) {
-    var body = node.getAncestor((n) => n is FunctionBody);
-    var type = rules.getExpectedReturnType(body, yieldStar: yieldStar);
-    if (type == null) {
-      // We have a type mismatch: the async/async*/sync* modifier does
-      // not match the return or yield type.  We should have already gotten an
-      // analyzer error in this case.
-      return;
-    }
-    // TODO(vsm): Enforce void or dynamic (to void?) when expression is null.
-    if (expression != null) checkAssignment(expression, type);
-  }
-
-  @override
-  void visitExpressionFunctionBody(ExpressionFunctionBody node) {
-    _checkReturnOrYield(node.expression, node);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitReturnStatement(ReturnStatement node) {
-    _checkReturnOrYield(node.expression, node);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitYieldStatement(YieldStatement node) {
-    _checkReturnOrYield(node.expression, node, yieldStar: node.star != null);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitPropertyAccess(PropertyAccess node) {
-    var target = node.realTarget;
-    if (rules.isDynamicTarget(target) &&
-        !_isObjectProperty(target, node.propertyName)) {
-      _recordDynamicInvoke(node, target);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitPrefixedIdentifier(PrefixedIdentifier node) {
-    final target = node.prefix;
-    if (rules.isDynamicTarget(target) &&
-        !_isObjectProperty(target, node.identifier)) {
-      _recordDynamicInvoke(node, target);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitDefaultFormalParameter(DefaultFormalParameter node) {
-    // Check that defaults have the proper subtype.
-    var parameter = node.parameter;
-    var parameterType = rules.elementType(parameter.element);
-    assert(parameterType != null);
-    var defaultValue = node.defaultValue;
-    if (defaultValue != null) {
-      checkAssignment(defaultValue, parameterType);
-    }
-
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitFieldFormalParameter(FieldFormalParameter node) {
-    var element = node.element;
-    var typeName = node.type;
-    if (typeName != null) {
-      var type = rules.elementType(element);
-      var fieldElement =
-          node.identifier.staticElement as FieldFormalParameterElement;
-      var fieldType = rules.elementType(fieldElement.field);
-      if (!rules.isSubTypeOf(type, fieldType)) {
-        var staticInfo =
-            new InvalidParameterDeclaration(rules, node, fieldType);
-        _recordMessage(staticInfo);
+    FunctionType concreteSubType = subType;
+    FunctionType concreteBaseType = baseType;
+    if (concreteSubType.typeFormals.isNotEmpty) {
+      if (concreteBaseType.typeFormals.isEmpty) {
+        concreteSubType = rules.instantiateToBounds(concreteSubType);
       }
     }
-    node.visitChildren(this);
-  }
 
-  @override
-  void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    var arguments = node.argumentList;
-    var element = node.staticElement;
-    if (element != null) {
-      var type = rules.elementType(node.staticElement);
-      checkArgumentList(arguments, type);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitVariableDeclarationList(VariableDeclarationList node) {
-    TypeName type = node.type;
-    if (type == null) {
-      // No checks are needed when the type is var. Although internally the
-      // typing rules may have inferred a more precise type for the variable
-      // based on the initializer.
-    } else {
-      var dartType = getType(type);
-      for (VariableDeclaration variable in node.variables) {
-        var initializer = variable.initializer;
-        if (initializer != null) {
-          checkAssignment(initializer, dartType);
-        }
-      }
-    }
-    node.visitChildren(this);
-  }
-
-  void _checkRuntimeTypeCheck(AstNode node, TypeName typeName) {
-    var type = getType(typeName);
-    if (!rules.isGroundType(type)) {
-      _recordMessage(new NonGroundTypeCheckInfo(node, type));
-    }
-  }
-
-  @override
-  void visitAsExpression(AsExpression node) {
-    // We could do the same check as the IsExpression below, but that is
-    // potentially too conservative.  Instead, at runtime, we must fail hard
-    // if the Dart as and the DDC as would return different values.
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitIsExpression(IsExpression node) {
-    _checkRuntimeTypeCheck(node, node.type);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitPrefixExpression(PrefixExpression node) {
-    if (node.operator.type == TokenType.BANG) {
-      checkBoolean(node.operand);
-    } else {
-      _checkUnary(node);
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitPostfixExpression(PostfixExpression node) {
-    _checkUnary(node);
-    node.visitChildren(this);
-  }
-
-  void _checkUnary(/*PrefixExpression|PostfixExpression*/ node) {
-    var op = node.operator;
-    if (op.isUserDefinableOperator ||
-        op.type == TokenType.PLUS_PLUS ||
-        op.type == TokenType.MINUS_MINUS) {
-      if (rules.isDynamicTarget(node.operand)) {
-        _recordDynamicInvoke(node, node.operand);
-      }
-      // For ++ and --, even if it is not dynamic, we still need to check
-      // that the user defined method accepts an `int` as the RHS.
-      // We assume Analyzer has done this already.
-    }
-  }
-
-  @override
-  void visitBinaryExpression(BinaryExpression node) {
-    var op = node.operator;
-    if (op.isUserDefinableOperator) {
-      if (rules.isDynamicTarget(node.leftOperand)) {
-        // Dynamic invocation
-        // TODO(vsm): Move this logic to the resolver?
-        if (op.type != TokenType.EQ_EQ && op.type != TokenType.BANG_EQ) {
-          _recordDynamicInvoke(node, node.leftOperand);
-        }
+    if (!rules.isOverrideSubtypeOf(concreteSubType, concreteBaseType)) {
+      ErrorCode errorCode;
+      if (errorLocation is ExtendsClause) {
+        errorCode = StrongModeCode.INVALID_METHOD_OVERRIDE_FROM_BASE;
+      } else if (errorLocation.parent is WithClause) {
+        errorCode = StrongModeCode.INVALID_METHOD_OVERRIDE_FROM_MIXIN;
       } else {
-        var element = node.staticElement;
-        // Method invocation.
-        if (element is MethodElement) {
-          var type = element.type;
-          // Analyzer should enforce number of parameter types, but check in
-          // case we have erroneous input.
-          if (type.normalParameterTypes.isNotEmpty) {
-            checkArgument(node.rightOperand, type.normalParameterTypes[0]);
-          }
-        } else {
-          // TODO(vsm): Assert that the analyzer found an error here?
-        }
-      }
-    } else {
-      // Non-method operator.
-      switch (op.type) {
-        case TokenType.AMPERSAND_AMPERSAND:
-        case TokenType.BAR_BAR:
-          checkBoolean(node.leftOperand);
-          checkBoolean(node.rightOperand);
-          break;
-        case TokenType.BANG_EQ:
-          break;
-        case TokenType.QUESTION_QUESTION:
-          break;
-        default:
-          assert(false);
-      }
-    }
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitConditionalExpression(ConditionalExpression node) {
-    checkBoolean(node.condition);
-    node.visitChildren(this);
-  }
-
-  @override
-  void visitIndexExpression(IndexExpression node) {
-    var target = node.realTarget;
-    if (rules.isDynamicTarget(target)) {
-      _recordDynamicInvoke(node, target);
-    } else {
-      var element = node.staticElement;
-      if (element is MethodElement) {
-        var type = element.type;
-        // Analyzer should enforce number of parameter types, but check in
-        // case we have erroneous input.
-        if (type.normalParameterTypes.isNotEmpty) {
-          checkArgument(node.index, type.normalParameterTypes[0]);
-        }
-      } else {
-        // TODO(vsm): Assert that the analyzer found an error here?
-      }
-    }
-    node.visitChildren(this);
-  }
-
-  DartType getType(TypeName name) {
-    return (name == null) ? rules.provider.dynamicType : name.type;
-  }
-
-  /// Analyzer checks boolean conversions, but we need to check too, because
-  /// it uses the default assignability rules that allow `dynamic` and `Object`
-  /// to be assigned to bool with no message.
-  void checkBoolean(Expression expr) =>
-      checkAssignment(expr, rules.provider.boolType);
-
-  void checkAssignment(Expression expr, DartType type) {
-    if (expr is ParenthesizedExpression) {
-      checkAssignment(expr.expression, type);
-    } else {
-      _recordMessage(rules.checkAssignment(expr, type));
-    }
-  }
-
-  DartType _specializedBinaryReturnType(
-      TokenType op, DartType t1, DartType t2, DartType normalReturnType) {
-    // This special cases binary return types as per 16.26 and 16.27 of the
-    // Dart language spec.
-    switch (op) {
-      case TokenType.PLUS:
-      case TokenType.MINUS:
-      case TokenType.STAR:
-      case TokenType.TILDE_SLASH:
-      case TokenType.PERCENT:
-      case TokenType.PLUS_EQ:
-      case TokenType.MINUS_EQ:
-      case TokenType.STAR_EQ:
-      case TokenType.TILDE_SLASH_EQ:
-      case TokenType.PERCENT_EQ:
-        if (t1 == rules.provider.intType &&
-            t2 == rules.provider.intType) return t1;
-        if (t1 == rules.provider.doubleType &&
-            t2 == rules.provider.doubleType) return t1;
-        // This particular combo is not spelled out in the spec, but all
-        // implementations and analyzer seem to follow this.
-        if (t1 == rules.provider.doubleType &&
-            t2 == rules.provider.intType) return t1;
-    }
-    return normalReturnType;
-  }
-
-  void _checkCompoundAssignment(AssignmentExpression expr) {
-    var op = expr.operator.type;
-    assert(op.isAssignmentOperator && op != TokenType.EQ);
-    var methodElement = expr.staticElement;
-    if (methodElement == null) {
-      // Dynamic invocation
-      _recordDynamicInvoke(expr, expr.leftHandSide);
-    } else {
-      // Sanity check the operator
-      assert(methodElement.isOperator);
-      var functionType = methodElement.type;
-      var paramTypes = functionType.normalParameterTypes;
-      assert(paramTypes.length == 1);
-      assert(functionType.namedParameterTypes.isEmpty);
-      assert(functionType.optionalParameterTypes.isEmpty);
-
-      // Check the lhs type
-      var staticInfo;
-      var rhsType = _getStaticType(expr.rightHandSide);
-      var lhsType = _getStaticType(expr.leftHandSide);
-      var returnType = _specializedBinaryReturnType(
-          op, lhsType, rhsType, functionType.returnType);
-
-      if (!rules.isSubTypeOf(returnType, lhsType)) {
-        final numType = rules.provider.numType;
-        // Try to fix up the numerical case if possible.
-        if (rules.isSubTypeOf(lhsType, numType) &&
-            rules.isSubTypeOf(lhsType, rhsType)) {
-          // This is also slightly different from spec, but allows us to keep
-          // compound operators in the int += num and num += dynamic cases.
-          staticInfo = DownCast.create(
-              rules, expr.rightHandSide, Coercion.cast(rhsType, lhsType));
-          rhsType = lhsType;
-        } else {
-          // Static type error
-          staticInfo = new StaticTypeError(rules, expr, lhsType);
-        }
-        _recordMessage(staticInfo);
+        errorCode = StrongModeCode.INVALID_METHOD_OVERRIDE;
       }
 
-      // Check the rhs type
-      if (staticInfo is! CoercionInfo) {
-        var paramType = paramTypes.first;
-        staticInfo = rules.checkAssignment(expr.rightHandSide, paramType);
-        _recordMessage(staticInfo);
-      }
-    }
-  }
-
-  bool _isObjectGetter(Expression target, SimpleIdentifier id) {
-    PropertyAccessorElement element =
-        rules.provider.objectType.element.getGetter(id.name);
-    return (element != null && !element.isStatic);
-  }
-
-  bool _isObjectMethod(Expression target, SimpleIdentifier id) {
-    MethodElement element =
-        rules.provider.objectType.element.getMethod(id.name);
-    return (element != null && !element.isStatic);
-  }
-
-  bool _isObjectProperty(Expression target, SimpleIdentifier id) {
-    return _isObjectGetter(target, id) || _isObjectMethod(target, id);
-  }
-
-  DartType _getStaticType(Expression expr) {
-    return expr.staticType ?? rules.provider.dynamicType;
-  }
-
-  void _recordDynamicInvoke(AstNode node, AstNode target) {
-    if (_hints) {
-      reporter.onError(new DynamicInvoke(rules, node).toAnalysisError());
-    }
-    // TODO(jmesserly): we may eventually want to record if the whole operation
-    // (node) was dynamic, rather than the target, but this is an easier fit
-    // with what we used to do.
-    DynamicInvoke.set(target, true);
-  }
-
-  void _recordMessage(StaticInfo info) {
-    if (info == null) return;
-    var error = info.toAnalysisError();
-
-    var severity = error.errorCode.errorSeverity;
-    if (severity == ErrorSeverity.ERROR) _failure = true;
-    if (severity != ErrorSeverity.INFO || _hints) {
-      reporter.onError(error);
+      _checker._recordMessage(errorLocation, errorCode, [
+        element.enclosingElement.name,
+        element.name,
+        subType,
+        type,
+        baseType
+      ]);
     }
 
-    if (info is CoercionInfo) {
-      // TODO(jmesserly): if we're run again on the same AST, we'll produce the
-      // same annotations. This should be harmless. This might go away once
-      // CodeChecker is integrated better with analyzer, as it will know that
-      // checking has already been performed.
-      // assert(CoercionInfo.get(info.node) == null);
-      CoercionInfo.set(info.node, info);
-    }
+    // If we have any covariant parameters and we're comparing against a
+    // superclass, we check all superclasses instead of stopping the search.
+    bool hasCovariant = element.parameters.any((p) => p.isCovariant);
+    bool keepSearching = hasCovariant && isSubclass;
+    return !keepSearching;
   }
-}
 
-/// Looks up the declaration that matches [member] in [type] and returns it's
-/// declared type.
-FunctionType _getMemberType(InterfaceType type, ExecutableElement member) =>
-    _memberTypeGetter(member)(type);
-
-typedef FunctionType _MemberTypeGetter(InterfaceType type);
-
-_MemberTypeGetter _memberTypeGetter(ExecutableElement member) {
-  String memberName = member.name;
-  final isGetter = member is PropertyAccessorElement && member.isGetter;
-  final isSetter = member is PropertyAccessorElement && member.isSetter;
-
-  FunctionType f(InterfaceType type) {
-    ExecutableElement baseMethod;
-    try {
-      if (isGetter) {
-        assert(!isSetter);
-        // Look for getter or field.
-        baseMethod = type.getGetter(memberName);
-      } else if (isSetter) {
-        baseMethod = type.getSetter(memberName);
-      } else {
-        baseMethod = type.getMethod(memberName);
-      }
-    } catch (e) {
-      // TODO(sigmund): remove this try-catch block (see issue #48).
-    }
-    if (baseMethod == null || baseMethod.isStatic) return null;
-    return baseMethod.type;
+  /// Check overrides between a class and its superclasses and mixins. For
+  /// example, in:
+  ///
+  ///      A extends B with E, F
+  ///
+  /// we check A against B, B super classes, E, and F.
+  ///
+  /// Internally we avoid reporting errors twice and we visit classes bottom up
+  /// to ensure we report the most immediate invalid override first. For
+  /// example, in the following code we'll report that `Test` has an invalid
+  /// override with respect to `Parent` (as opposed to an invalid override with
+  /// respect to `Grandparent`):
+  ///
+  ///     class Grandparent {
+  ///         m(A a) {}
+  ///     }
+  ///     class Parent extends Grandparent {
+  ///         m(A a) {}
+  ///     }
+  ///     class Test extends Parent {
+  ///         m(B a) {} // invalid override
+  ///     }
+  void _checkSuperOverrides(ClassDeclaration node) {
+    var seen = new Set<String>();
+    var current = node.element.type;
+    var visited = new Set<InterfaceType>();
+    do {
+      visited.add(current);
+      current.mixins.reversed.forEach(
+          (m) => _checkIndividualOverridesFromClass(node, m, seen, true));
+      _checkIndividualOverridesFromClass(node, current.superclass, seen, true);
+      current = current.superclass;
+    } while (!current.isObject && !visited.contains(current));
   }
-  ;
-  return f;
 }

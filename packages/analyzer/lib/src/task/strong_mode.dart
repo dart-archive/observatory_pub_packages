@@ -6,61 +6,26 @@ library analyzer.src.task.strong_mode;
 
 import 'dart:collection';
 
-import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
-import 'package:analyzer/src/generated/resolver.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/src/dart/element/element.dart';
+import 'package:analyzer/src/dart/element/type.dart';
+import 'package:analyzer/src/dart/resolver/inheritance_manager.dart';
+import 'package:analyzer/src/generated/resolver.dart'
+    show TypeProvider, InheritanceManager;
+import 'package:analyzer/src/generated/type_system.dart';
 import 'package:analyzer/src/generated/utilities_dart.dart';
 
 /**
- * Set the type of the sole parameter of the given [element] to the given [type].
+ * Sets the type of the field. This is stored in the field itself, and the
+ * synthetic getter/setter types.
  */
-void setParameterType(PropertyAccessorElement element, DartType type) {
-  if (element is PropertyAccessorElementImpl) {
-    ParameterElement parameter = _getParameter(element);
-    if (parameter is ParameterElementImpl) {
-      //
-      // Update the type of the parameter.
-      //
-      parameter.type = type;
-      //
-      // Update the type of the setter to reflect the new parameter type.
-      //
-      FunctionType functionType = element.type;
-      if (functionType is FunctionTypeImpl) {
-        element.type =
-            new FunctionTypeImpl(element, functionType.prunedTypedefs)
-              ..typeArguments = functionType.typeArguments;
-      } else {
-        assert(false);
-      }
-    } else {
-      assert(false);
-    }
-  } else {
-    throw new StateError('element is an instance of ${element.runtimeType}');
-    assert(false);
-  }
-}
-
-/**
- * Set the return type of the given [element] to the given [type].
- */
-void setReturnType(ExecutableElement element, DartType type) {
-  if (element is ExecutableElementImpl) {
-    //
-    // Update the return type of the element, which is stored in two places:
-    // directly in the element and indirectly in the type of the element.
-    //
-    element.returnType = type;
-    FunctionType functionType = element.type;
-    if (functionType is FunctionTypeImpl) {
-      element.type = new FunctionTypeImpl(element, functionType.prunedTypedefs)
-        ..typeArguments = functionType.typeArguments;
-    } else {
-      assert(false);
-    }
-  } else {
-    assert(false);
+void setFieldType(VariableElement field, DartType newType) {
+  (field as VariableElementImpl).type = newType;
+  if (field.initializer != null) {
+    (field.initializer as ExecutableElementImpl).returnType = newType;
   }
 }
 
@@ -80,7 +45,7 @@ ParameterElement _getParameter(ExecutableElement setter) {
 }
 
 /**
- * A function that returns `true` if the given [variable] passes the filter.
+ * A function that returns `true` if the given [element] passes the filter.
  */
 typedef bool VariableFilter(VariableElement element);
 
@@ -102,7 +67,7 @@ class InstanceMemberInferrer {
   /**
    * The inheritance manager used to find overridden method.
    */
-  InheritanceManager inheritanceManager;
+  final InheritanceManager inheritanceManager;
 
   /**
    * The classes that have been visited while attempting to infer the types of
@@ -114,7 +79,8 @@ class InstanceMemberInferrer {
   /**
    * Initialize a newly create inferrer.
    */
-  InstanceMemberInferrer(this.typeProvider, {TypeSystem typeSystem})
+  InstanceMemberInferrer(this.typeProvider, this.inheritanceManager,
+      {TypeSystem typeSystem})
       : typeSystem = (typeSystem != null) ? typeSystem : new TypeSystemImpl();
 
   /**
@@ -122,7 +88,6 @@ class InstanceMemberInferrer {
    * compilation [unit].
    */
   void inferCompilationUnit(CompilationUnitElement unit) {
-    inheritanceManager = new InheritanceManager(unit.library);
     unit.types.forEach((ClassElement classElement) {
       try {
         _inferClass(classElement);
@@ -131,6 +96,14 @@ class InstanceMemberInferrer {
         // types containing a circular reference from being inferred.
       }
     });
+  }
+
+  /**
+   * Return `true` if the list of [elements] contains only methods.
+   */
+  bool _allSameElementKind(
+      ExecutableElement element, List<ExecutableElement> elements) {
+    return elements.every((e) => e.kind == element.kind);
   }
 
   /**
@@ -144,92 +117,78 @@ class InstanceMemberInferrer {
    * the parameter types.
    */
   DartType _computeParameterType(ParameterElement parameter, int index,
-      List<ExecutableElement> overriddenMethods) {
+      List<FunctionType> overriddenTypes) {
     DartType parameterType = null;
-    int length = overriddenMethods.length;
+    int length = overriddenTypes.length;
     for (int i = 0; i < length; i++) {
-      DartType type = _getTypeOfCorrespondingParameter(
-          parameter, index, overriddenMethods[i]);
+      ParameterElement matchingParam = _getCorrespondingParameter(
+          parameter, index, overriddenTypes[i].parameters);
+      var type = matchingParam?.type ?? typeProvider.dynamicType;
       if (parameterType == null) {
         parameterType = type;
       } else if (parameterType != type) {
         return typeProvider.dynamicType;
       }
     }
-    return parameterType == null ? typeProvider.dynamicType : parameterType;
+    return parameterType ?? typeProvider.dynamicType;
   }
 
   /**
    * Compute the best return type for a method that must be compatible with the
-   * return types of each of the given [overriddenMethods].
+   * return types of each of the given [overriddenReturnTypes].
    *
    * At the moment, this method will only return a type other than 'dynamic' if
    * the return types of all of the methods are the same. In the future we might
    * want to be smarter about it.
    */
-  DartType _computeReturnType(List<ExecutableElement> overriddenMethods) {
+  DartType _computeReturnType(Iterable<DartType> overriddenReturnTypes) {
     DartType returnType = null;
-    int length = overriddenMethods.length;
-    for (int i = 0; i < length; i++) {
-      DartType type = _getReturnType(overriddenMethods[i]);
+    for (DartType type in overriddenReturnTypes) {
+      if (type == null) {
+        type = typeProvider.dynamicType;
+      }
       if (returnType == null) {
         returnType = type;
       } else if (returnType != type) {
         return typeProvider.dynamicType;
       }
     }
-    return returnType == null ? typeProvider.dynamicType : returnType;
-  }
-
-  DartType _getReturnType(ExecutableElement element) {
-    DartType returnType = element.returnType;
-    if (returnType == null) {
-      return typeProvider.dynamicType;
-    }
-    return returnType;
+    return returnType ?? typeProvider.dynamicType;
   }
 
   /**
-   * Given a [method], return the type of the parameter in the method that
-   * corresponds to the given [parameter]. If the parameter is positional, then
+   * Given a method, return the parameter in the method that corresponds to the
+   * given [parameter]. If the parameter is positional, then
    * it appears at the given [index] in its enclosing element's list of
    * parameters.
    */
-  DartType _getTypeOfCorrespondingParameter(
-      ParameterElement parameter, int index, ExecutableElement method) {
+  ParameterElement _getCorrespondingParameter(ParameterElement parameter,
+      int index, List<ParameterElement> methodParameters) {
     //
     // Find the corresponding parameter.
     //
-    List<ParameterElement> methodParameters = method.parameters;
-    ParameterElement matchingParameter = null;
     if (parameter.parameterKind == ParameterKind.NAMED) {
       //
       // If we're looking for a named parameter, only a named parameter with
       // the same name will be matched.
       //
-      matchingParameter = methodParameters.lastWhere(
+      return methodParameters.lastWhere(
           (ParameterElement methodParameter) =>
               methodParameter.parameterKind == ParameterKind.NAMED &&
-                  methodParameter.name == parameter.name,
+              methodParameter.name == parameter.name,
           orElse: () => null);
-    } else {
-      //
-      // If we're looking for a positional parameter we ignore the difference
-      // between required and optional parameters.
-      //
-      if (index < methodParameters.length) {
-        matchingParameter = methodParameters[index];
-        if (matchingParameter.parameterKind == ParameterKind.NAMED) {
-          matchingParameter = null;
-        }
-      }
     }
     //
-    // Then return the type of the parameter.
+    // If we're looking for a positional parameter we ignore the difference
+    // between required and optional parameters.
     //
-    return matchingParameter == null
-        ? typeProvider.dynamicType
-        : matchingParameter.type;
+    if (index < methodParameters.length) {
+      var matchingParameter = methodParameters[index];
+      if (matchingParameter.parameterKind != ParameterKind.NAMED) {
+        return matchingParameter;
+      }
+    }
+    return null;
   }
 
   /**
@@ -275,14 +234,108 @@ class InstanceMemberInferrer {
     }
   }
 
+  void _inferConstructorFieldFormals(ConstructorElement element) {
+    for (ParameterElement p in element.parameters) {
+      if (p is FieldFormalParameterElement) {
+        _inferFieldFormalParameter(p);
+      }
+    }
+  }
+
+  /**
+   * If the given [element] represents a non-synthetic instance method,
+   * getter or setter, infer the return type and any parameter type(s) where
+   * they were not provided.
+   */
+  void _inferExecutable(ExecutableElement element) {
+    if (element.isSynthetic || element.isStatic) {
+      return;
+    }
+    List<ExecutableElement> overriddenMethods = inheritanceManager
+        .lookupOverrides(element.enclosingElement, element.name);
+    if (overriddenMethods.isEmpty ||
+        !_allSameElementKind(element, overriddenMethods)) {
+      return;
+    }
+
+    //
+    // Overridden methods must have the same number of generic type parameters
+    // as this method, or none.
+    //
+    // If we do have generic type parameters on the element we're inferring,
+    // we must express its parameter and return types in terms of its own
+    // parameters. For example, given `m<T>(t)` overriding `m<S>(S s)` we
+    // should infer this as `m<T>(T t)`.
+    //
+    List<DartType> typeFormals =
+        TypeParameterTypeImpl.getTypes(element.type.typeFormals);
+
+    List<FunctionType> overriddenTypes = new List<FunctionType>();
+    for (ExecutableElement overriddenMethod in overriddenMethods) {
+      FunctionType overriddenType = overriddenMethod.type;
+      if (overriddenType == null) {
+        // TODO(brianwilkerson) I think the overridden method should always have
+        // a type, but there appears to be a bug that causes it to sometimes be
+        // null, we guard against that case by not performing inference.
+        return;
+      }
+      if (overriddenType.typeFormals.isNotEmpty) {
+        if (overriddenType.typeFormals.length != typeFormals.length) {
+          return;
+        }
+        overriddenType = overriddenType.instantiate(typeFormals);
+      }
+      overriddenTypes.add(overriddenType);
+    }
+
+    //
+    // Infer the return type.
+    //
+    if (element.hasImplicitReturnType) {
+      (element as ExecutableElementImpl).returnType =
+          _computeReturnType(overriddenTypes.map((t) => t.returnType));
+      if (element is PropertyAccessorElement) {
+        _updateSyntheticVariableType(element);
+      }
+    }
+    //
+    // Infer the parameter types.
+    //
+    List<ParameterElement> parameters = element.parameters;
+    int length = parameters.length;
+    for (int i = 0; i < length; ++i) {
+      ParameterElement parameter = parameters[i];
+      if (parameter is ParameterElementImpl) {
+        _inferParameterCovariance(parameter, i, overriddenTypes);
+
+        if (parameter.hasImplicitType) {
+          parameter.type = _computeParameterType(parameter, i, overriddenTypes);
+          if (element is PropertyAccessorElement) {
+            _updateSyntheticVariableType(element);
+          }
+        }
+      }
+    }
+  }
+
   /**
    * If the given [fieldElement] represents a non-synthetic instance field for
    * which no type was provided, infer the type of the field.
    */
   void _inferField(FieldElement fieldElement) {
-    if (!fieldElement.isSynthetic &&
-        !fieldElement.isStatic &&
-        fieldElement.hasImplicitType) {
+    if (fieldElement.isSynthetic || fieldElement.isStatic) {
+      return;
+    }
+    List<ExecutableElement> overriddenSetters =
+        inheritanceManager.lookupOverrides(
+            fieldElement.enclosingElement, fieldElement.name + '=');
+    var setter = fieldElement.setter;
+    if (setter != null && overriddenSetters.isNotEmpty) {
+      _inferParameterCovariance(
+          setter.parameters[0], 0, overriddenSetters.map((s) => s.type));
+    }
+
+    if (fieldElement.hasImplicitType) {
       //
       // First look for overridden getters with the same name as the field.
       //
@@ -290,10 +343,9 @@ class InstanceMemberInferrer {
           .lookupOverrides(fieldElement.enclosingElement, fieldElement.name);
       DartType newType = null;
       if (overriddenGetters.isNotEmpty && _onlyGetters(overriddenGetters)) {
-        newType = _computeReturnType(overriddenGetters);
-        List<ExecutableElement> overriddenSetters = inheritanceManager
-            .lookupOverrides(
-                fieldElement.enclosingElement, fieldElement.name + '=');
+        newType =
+            _computeReturnType(overriddenGetters.map((e) => e.returnType));
+
         if (!_isCompatible(newType, overriddenSetters)) {
           newType = null;
         }
@@ -316,88 +368,26 @@ class InstanceMemberInferrer {
       if (newType == null || newType.isBottom) {
         newType = typeProvider.dynamicType;
       }
-      (fieldElement as FieldElementImpl).type = newType;
-      setReturnType(fieldElement.getter, newType);
-      if (!fieldElement.isFinal && !fieldElement.isConst) {
-        setParameterType(fieldElement.setter, newType);
-      }
+      setFieldType(fieldElement, newType);
+    }
+  }
+
+  void _inferFieldFormalParameter(FieldFormalParameterElement element) {
+    FieldElement field = element.field;
+    if (field != null && element.hasImplicitType) {
+      (element as FieldFormalParameterElementImpl).type = field.type;
     }
   }
 
   /**
-   * If the given [element] represents a non-synthetic instance method,
-   * getter or setter, infer the return type and any parameter type(s) where
-   * they were not provided.
+   * If a parameter is covariant, any parameters that override it are too.
    */
-  void _inferExecutable(ExecutableElement element) {
-    if (element.isSynthetic || element.isStatic) {
-      return;
-    }
-    List<ExecutableElement> overriddenMethods = null;
-    //
-    // Infer the return type.
-    //
-    if (element.hasImplicitReturnType) {
-      overriddenMethods = inheritanceManager.lookupOverrides(
-          element.enclosingElement, element.name);
-      if (overriddenMethods.isEmpty ||
-          !_allSameElementKind(element, overriddenMethods)) {
-        return;
-      }
-      setReturnType(element, _computeReturnType(overriddenMethods));
-      if (element is PropertyAccessorElement) {
-        _updateSyntheticVariableType(element);
-      }
-    }
-    //
-    // Infer the parameter types.
-    //
-    List<ParameterElement> parameters = element.parameters;
-    int length = parameters.length;
-    for (int i = 0; i < length; ++i) {
-      ParameterElement parameter = parameters[i];
-      if (parameter is ParameterElementImpl && parameter.hasImplicitType) {
-        if (overriddenMethods == null) {
-          overriddenMethods = inheritanceManager.lookupOverrides(
-              element.enclosingElement, element.name);
-        }
-        if (overriddenMethods.isEmpty ||
-            !_allSameElementKind(element, overriddenMethods)) {
-          return;
-        }
-        parameter.type = _computeParameterType(parameter, i, overriddenMethods);
-        if (element is PropertyAccessorElement) {
-          _updateSyntheticVariableType(element);
-        }
-      }
-    }
-  }
-
-  /**
-   * If the given [element] is a non-synthetic getter or setter, update its
-   * synthetic variable's type to match the getter's return type, or if no
-   * corresponding getter exists, use the setter's parameter type.
-   *
-   * In general, the type of the synthetic variable should not be used, because
-   * getters and setters are independent methods. But this logic matches what
-   * `TypeResolverVisitor.visitMethodDeclaration` would fill in there.
-   */
-  void _updateSyntheticVariableType(PropertyAccessorElement element) {
-    assert(!element.isSynthetic);
-    PropertyAccessorElement getter = element;
-    if (element.isSetter) {
-      // See if we can find any getter.
-      getter = element.correspondingGetter;
-    }
-    DartType newType;
-    if (getter != null) {
-      newType = getter.returnType;
-    } else if (element.isSetter && element.parameters.isNotEmpty) {
-      newType = element.parameters[0].type;
-    }
-    if (newType != null) {
-      (element.variable as VariableElementImpl).type = newType;
-    }
+  void _inferParameterCovariance(ParameterElementImpl parameter, int index,
+      Iterable<FunctionType> overriddenTypes) {
+    parameter.inheritsCovariant = overriddenTypes.any((f) {
+      var param = _getCorrespondingParameter(parameter, index, f.parameters);
+      return param != null && param.isCovariant;
+    });
   }
 
   /**
@@ -440,25 +430,29 @@ class InstanceMemberInferrer {
   }
 
   /**
-   * Return `true` if the list of [elements] contains only methods.
+   * If the given [element] is a non-synthetic getter or setter, update its
+   * synthetic variable's type to match the getter's return type, or if no
+   * corresponding getter exists, use the setter's parameter type.
+   *
+   * In general, the type of the synthetic variable should not be used, because
+   * getters and setters are independent methods. But this logic matches what
+   * `TypeResolverVisitor.visitMethodDeclaration` would fill in there.
    */
-  bool _allSameElementKind(
-      ExecutableElement element, List<ExecutableElement> elements) {
-    return elements.every((e) => e.kind == element.kind);
-  }
-
-  void _inferConstructorFieldFormals(ConstructorElement element) {
-    for (ParameterElement p in element.parameters) {
-      if (p is FieldFormalParameterElement) {
-        _inferFieldFormalParameter(p);
-      }
+  void _updateSyntheticVariableType(PropertyAccessorElement element) {
+    assert(!element.isSynthetic);
+    PropertyAccessorElement getter = element;
+    if (element.isSetter) {
+      // See if we can find any getter.
+      getter = element.correspondingGetter;
     }
-  }
-
-  void _inferFieldFormalParameter(FieldFormalParameterElement element) {
-    FieldElement field = element.field;
-    if (field != null && element.hasImplicitType) {
-      (element as FieldFormalParameterElementImpl).type = field.type;
+    DartType newType;
+    if (getter != null) {
+      newType = getter.returnType;
+    } else if (element.isSetter && element.parameters.isNotEmpty) {
+      newType = element.parameters[0].type;
+    }
+    if (newType != null) {
+      (element.variable as VariableElementImpl).type = newType;
     }
   }
 }
@@ -489,10 +483,14 @@ class VariableGatherer extends RecursiveAstVisitor {
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
     if (!node.inDeclarationContext()) {
-      Element element = node.staticElement;
-      if (element is PropertyAccessorElement && element.isSynthetic) {
-        element = (element as PropertyAccessorElement).variable;
+      Element nonAccessor(Element element) {
+        if (element is PropertyAccessorElement && element.isSynthetic) {
+          return element.variable;
+        }
+        return element;
       }
+
+      Element element = nonAccessor(node.staticElement);
       if (element is VariableElement && (filter == null || filter(element))) {
         results.add(element);
       }

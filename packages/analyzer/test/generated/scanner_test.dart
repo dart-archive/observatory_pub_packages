@@ -2,23 +2,27 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.scanner_test;
+library analyzer.test.generated.scanner_test;
 
-import 'package:analyzer/src/generated/error.dart';
-import 'package:analyzer/src/generated/scanner.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/error/error.dart';
+import 'package:analyzer/error/listener.dart';
+import 'package:analyzer/src/dart/ast/token.dart';
+import 'package:analyzer/src/dart/scanner/reader.dart';
+import 'package:analyzer/src/dart/scanner/scanner.dart';
 import 'package:analyzer/src/generated/source.dart';
+import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 
-import '../reflective_tests.dart';
 import '../utils.dart';
 import 'test_support.dart';
 
 main() {
   initializeTestEnvironment();
-  runReflectiveTests(CharSequenceReaderTest);
-  runReflectiveTests(KeywordStateTest);
-  runReflectiveTests(ScannerTest);
-  runReflectiveTests(TokenTypeTest);
+  defineReflectiveTests(CharSequenceReaderTest);
+  defineReflectiveTests(KeywordStateTest);
+  defineReflectiveTests(ScannerTest);
+  defineReflectiveTests(TokenTypeTest);
 }
 
 class CharacterRangeReaderTest extends EngineTestCase {
@@ -189,6 +193,11 @@ class ScannerTest {
     _assertToken(TokenType.AMPERSAND_AMPERSAND, "&&");
   }
 
+  void test_ampersand_ampersand_eq() {
+    _assertToken(TokenType.AMPERSAND_AMPERSAND_EQ, "&&=",
+        lazyAssignmentOperators: true);
+  }
+
   void test_ampersand_eq() {
     _assertToken(TokenType.AMPERSAND_EQ, "&=");
   }
@@ -219,6 +228,10 @@ class ScannerTest {
 
   void test_bar_bar() {
     _assertToken(TokenType.BAR_BAR, "||");
+  }
+
+  void test_bar_bar_eq() {
+    _assertToken(TokenType.BAR_BAR_EQ, "||=", lazyAssignmentOperators: true);
   }
 
   void test_bar_eq() {
@@ -262,6 +275,18 @@ class ScannerTest {
     Token token = scanner.tokenize();
     expect(token, isNotNull);
     expect(token.precedingComments, isNull);
+  }
+
+  void test_comment_generic_method_type_assign() {
+    _assertComment(TokenType.MULTI_LINE_COMMENT, "/*=comment*/");
+    _assertComment(TokenType.GENERIC_METHOD_TYPE_ASSIGN, "/*=comment*/",
+        genericMethodComments: true);
+  }
+
+  void test_comment_generic_method_type_list() {
+    _assertComment(TokenType.MULTI_LINE_COMMENT, "/*<comment>*/");
+    _assertComment(TokenType.GENERIC_METHOD_TYPE_LIST, "/*<comment>*/",
+        genericMethodComments: true);
   }
 
   void test_comment_multi() {
@@ -1048,11 +1073,12 @@ class ScannerTest {
     _scanWithListener("'\${(}'", listener);
   }
 
-  void _assertComment(TokenType commentType, String source) {
+  void _assertComment(TokenType commentType, String source,
+      {bool genericMethodComments: false}) {
     //
     // Test without a trailing end-of-line marker
     //
-    Token token = _scan(source);
+    Token token = _scan(source, genericMethodComments: genericMethodComments);
     expect(token, isNotNull);
     expect(token.type, TokenType.EOF);
     Token comment = token.precedingComments;
@@ -1064,7 +1090,7 @@ class ScannerTest {
     //
     // Test with a trailing end-of-line marker
     //
-    token = _scan("$source\n");
+    token = _scan("$source\n", genericMethodComments: genericMethodComments);
     expect(token, isNotNull);
     expect(token.type, TokenType.EOF);
     comment = token.precedingComments;
@@ -1161,8 +1187,10 @@ class ScannerTest {
    * Assert that the token scanned from the given [source] has the
    * [expectedType].
    */
-  Token _assertToken(TokenType expectedType, String source) {
-    Token originalToken = _scan(source);
+  Token _assertToken(TokenType expectedType, String source,
+      {bool lazyAssignmentOperators: false}) {
+    Token originalToken =
+        _scan(source, lazyAssignmentOperators: lazyAssignmentOperators);
     expect(originalToken, isNotNull);
     expect(originalToken.type, expectedType);
     expect(originalToken.offset, 0);
@@ -1174,7 +1202,8 @@ class ScannerTest {
       return originalToken;
     } else if (expectedType == TokenType.SINGLE_LINE_COMMENT) {
       // Adding space to an end-of-line comment changes the comment.
-      Token tokenWithSpaces = _scan(" $source");
+      Token tokenWithSpaces =
+          _scan(" $source", lazyAssignmentOperators: lazyAssignmentOperators);
       expect(tokenWithSpaces, isNotNull);
       expect(tokenWithSpaces.type, expectedType);
       expect(tokenWithSpaces.offset, 1);
@@ -1183,20 +1212,23 @@ class ScannerTest {
       return originalToken;
     } else if (expectedType == TokenType.INT ||
         expectedType == TokenType.DOUBLE) {
-      Token tokenWithLowerD = _scan("${source}d");
+      Token tokenWithLowerD =
+          _scan("${source}d", lazyAssignmentOperators: lazyAssignmentOperators);
       expect(tokenWithLowerD, isNotNull);
       expect(tokenWithLowerD.type, expectedType);
       expect(tokenWithLowerD.offset, 0);
       expect(tokenWithLowerD.length, source.length);
       expect(tokenWithLowerD.lexeme, source);
-      Token tokenWithUpperD = _scan("${source}D");
+      Token tokenWithUpperD =
+          _scan("${source}D", lazyAssignmentOperators: lazyAssignmentOperators);
       expect(tokenWithUpperD, isNotNull);
       expect(tokenWithUpperD.type, expectedType);
       expect(tokenWithUpperD.offset, 0);
       expect(tokenWithUpperD.length, source.length);
       expect(tokenWithUpperD.lexeme, source);
     }
-    Token tokenWithSpaces = _scan(" $source ");
+    Token tokenWithSpaces =
+        _scan(" $source ", lazyAssignmentOperators: lazyAssignmentOperators);
     expect(tokenWithSpaces, isNotNull);
     expect(tokenWithSpaces.type, expectedType);
     expect(tokenWithSpaces.offset, 1);
@@ -1233,16 +1265,24 @@ class ScannerTest {
     expect(token.type, TokenType.EOF);
   }
 
-  Token _scan(String source) {
+  Token _scan(String source,
+      {bool genericMethodComments: false,
+      bool lazyAssignmentOperators: false}) {
     GatheringErrorListener listener = new GatheringErrorListener();
-    Token token = _scanWithListener(source, listener);
+    Token token = _scanWithListener(source, listener,
+        genericMethodComments: genericMethodComments,
+        lazyAssignmentOperators: lazyAssignmentOperators);
     listener.assertNoErrors();
     return token;
   }
 
-  Token _scanWithListener(String source, GatheringErrorListener listener) {
+  Token _scanWithListener(String source, GatheringErrorListener listener,
+      {bool genericMethodComments: false,
+      bool lazyAssignmentOperators: false}) {
     Scanner scanner =
         new Scanner(null, new CharSequenceReader(source), listener);
+    scanner.scanGenericMethodComments = genericMethodComments;
+    scanner.scanLazyAssignmentOperators = lazyAssignmentOperators;
     Token result = scanner.tokenize();
     listener.setLineInfo(new TestSource(), scanner.lineStarts);
     return result;

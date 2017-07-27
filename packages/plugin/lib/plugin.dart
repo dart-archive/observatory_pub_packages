@@ -4,6 +4,8 @@
 
 library plugin;
 
+import 'package:plugin/src/plugin_impl.dart';
+
 /**
  * A function used to register the given [extension] to the extension point with
  * the given unique [identifier].
@@ -15,16 +17,13 @@ library plugin;
 typedef void RegisterExtension(String identifier, Object extension);
 
 /**
- * A function used to register an extension point with the given simple
- * [identifier]. If given, the [validator] will be used to validate extensions
- * to the extension point.
+ * A function used to register the given [extensionPoint].
  *
  * An [ExtensionError] will be thrown if the extension point cannot be
  * registered, such as when a plugin attempts to define two extension points
- * with the same simple identifier.
+ * with the same identifier.
  */
-typedef ExtensionPoint RegisterExtensionPoint(String identifier,
-    [ValidateExtension validateExtension]);
+typedef void RegisterExtensionPoint(ExtensionPoint extensionPoint);
 
 /**
  * A function used by a plugin to validate an [extension] to a extension point.
@@ -39,7 +38,7 @@ typedef void ValidateExtension(Object extension);
  * An exception indicating that an error occurred while attempting to register
  * either an extension or an extension point.
  *
- * Clients are not expected to subtype this class.
+ * Clients may not extend, implement or mix-in this class.
  */
 class ExtensionError implements Exception {
   /**
@@ -56,14 +55,22 @@ class ExtensionError implements Exception {
 /**
  * A representation of an extension point.
  *
- * Clients are not expected to subtype this class.
+ * Clients may not extend, implement or mix-in this class.
  */
-abstract class ExtensionPoint {
+abstract class ExtensionPoint<E> {
+  /**
+   * Initialize a newly created extension point to be defined by the given
+   * [plugin] with the given [simpleIdentifier]. The [validateExtension]
+   * function will be used to validate extensions for this extension point.
+   */
+  factory ExtensionPoint(Plugin plugin, String simpleIdentifier,
+      ValidateExtension validateExtension) = ExtensionPointImpl<E>;
+
   /**
    * Return an immutable list containing all of the extensions that were
    * registered for this extension point.
    */
-  List<Object> get extensions;
+  List<E> get extensions;
 
   /**
    * Return the plugin that defined this extension point.
@@ -88,7 +95,7 @@ abstract class ExtensionPoint {
  * A contribution to the host application that can extend the behavior of the
  * application while also allowing other plugins to extend it's behavior.
  *
- * Clients are expected to subtype this class when implementing plugins.
+ * Clients may implement this class when implementing plugins.
  */
 abstract class Plugin {
   /**

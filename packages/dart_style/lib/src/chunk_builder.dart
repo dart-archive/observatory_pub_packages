@@ -14,6 +14,9 @@ import 'rule/rule.dart';
 import 'source_code.dart';
 import 'whitespace.dart';
 
+/// Matches if the last character of a string is an identifier character.
+final _trailingIdentifierChar = new RegExp(r"[a-zA-Z0-9_]$");
+
 /// Takes the incremental serialized output of [SourceVisitor]--the source text
 /// along with any comments and preserved whitespace--and produces a coherent
 /// tree of [Chunk]s which can then be split into physical lines.
@@ -98,7 +101,6 @@ class ChunkBuilder {
   /// token pair.
   bool get needsToPreserveNewlines =>
       _pendingWhitespace == Whitespace.oneOrTwoNewlines ||
-      _pendingWhitespace == Whitespace.spaceOrNewline ||
       _pendingWhitespace == Whitespace.splitOrNewline;
 
   /// The number of characters of code that can fit in a single line.
@@ -171,7 +173,7 @@ class ChunkBuilder {
   /// previous token if there are no comments) and the next token.
   void writeComments(
       List<SourceComment> comments, int linesBeforeToken, String token) {
-    // Corner case: if we require a blank line, but there exists one between
+    // Edge case: if we require a blank line, but there exists one between
     // some of the comments, or after the last one, then we don't need to
     // enforce one before the first comment. Example:
     //
@@ -197,8 +199,8 @@ class ChunkBuilder {
       }
     }
 
-    // Corner case: if the comments are completely inline (i.e. just a series
-    // of block comments with no newlines before, after, or between them), then
+    // Edge case: if the comments are completely inline (i.e. just a series of
+    // block comments with no newlines before, after, or between them), then
     // they will eat any pending newlines. Make sure that doesn't happen by
     // putting the pending whitespace before the first comment and moving them
     // to their own line. Turns this:
@@ -241,9 +243,7 @@ class ChunkBuilder {
 
         // The comment follows other text, so we need to decide if it gets a
         // space before it or not.
-        if (_needsSpaceBeforeComment(isLineComment: comment.isLineComment)) {
-          _writeText(" ");
-        }
+        if (_needsSpaceBeforeComment(comment)) _writeText(" ");
       } else {
         // The comment starts a line, so make sure it stays on its own line.
         _writeHardSplit(
@@ -300,14 +300,6 @@ class ChunkBuilder {
     // If we didn't know how many newlines the user authored between the last
     // token and this one, now we do.
     switch (_pendingWhitespace) {
-      case Whitespace.spaceOrNewline:
-        if (numLines > 0) {
-          _pendingWhitespace = Whitespace.nestedNewline;
-        } else {
-          _pendingWhitespace = Whitespace.space;
-        }
-        break;
-
       case Whitespace.splitOrNewline:
         if (numLines > 0) {
           _pendingWhitespace = Whitespace.nestedNewline;
@@ -369,15 +361,18 @@ class ChunkBuilder {
     if (rule == null) rule = new Rule();
 
     // See if any of the rules that contain this one care if it splits.
-    _rules.forEach((outer) => outer.contain(rule));
+    _rules.forEach((outer) {
+      if (!outer.splitsOnInnerRules) return;
+      rule.imply(outer);
+    });
     _rules.add(rule);
   }
 
   /// Starts a new [Rule] that comes into play *after* the next whitespace
   /// (including comments) is written.
   ///
-  /// This is used for binary operators who want to start a rule before the
-  /// first operand but not get forced to split if a comment appears before the
+  /// This is used for operators who want to start a rule before the first
+  /// operand but not get forced to split if a comment appears before the
   /// entire expression.
   ///
   /// If [rule] is omitted, defaults to a new [Rule].
@@ -389,7 +384,11 @@ class ChunkBuilder {
 
   /// Ends the innermost rule.
   void endRule() {
-    _rules.removeLast();
+    if (_lazyRules.isNotEmpty) {
+      _lazyRules.removeLast();
+    } else {
+      _rules.removeLast();
+    }
   }
 
   /// Pre-emptively forces all of the current rules to become hard splits.
@@ -595,7 +594,6 @@ class ChunkBuilder {
         _writeHardSplit(isDouble: true);
         break;
 
-      case Whitespace.spaceOrNewline:
       case Whitespace.splitOrNewline:
       case Whitespace.oneOrTwoNewlines:
         // We should have pinned these down before getting here.
@@ -615,10 +613,23 @@ class ChunkBuilder {
     // Multi-line comments are always pushed to the next line.
     if (comment.contains("\n")) return false;
 
-    // If the text before the split is an open grouping character, we don't
-    // want to adhere the comment to that.
     var text = _chunks.last.text;
+
+    // A block comment following a comma probably refers to the following item.
+    if (text.endsWith(",") && comment.startsWith("/*")) return false;
+
+    // If the text before the split is an open grouping character, it looks
+    // better to keep it with the elements than with the bracket itself.
     return !text.endsWith("(") && !text.endsWith("[") && !text.endsWith("{");
+  }
+
+  /// Returns `true` if [comment] appears to be a magic generic method comment.
+  ///
+  /// Those get spaced a little differently to look more like real syntax:
+  ///
+  ///     int f/*<S, T>*/(int x) => 3;
+  bool _isGenericMethodComment(SourceComment comment) {
+    return comment.text.startsWith("/*<") || comment.text.startsWith("/*=");
   }
 
   /// Returns `true` if a space should be output between the end of the current
@@ -633,7 +644,7 @@ class ChunkBuilder {
   /// *   The comment is a block comment immediately following a grouping
   ///     character (`(`, `[`, or `{`). This is to allow `foo(/* comment */)`,
   ///     et. al.
-  bool _needsSpaceBeforeComment({bool isLineComment}) {
+  bool _needsSpaceBeforeComment(SourceComment comment) {
     // Not at the start of the file.
     if (_chunks.isEmpty) return false;
 
@@ -644,7 +655,13 @@ class ChunkBuilder {
     if (text.endsWith("\n")) return false;
 
     // Always put a space before line comments.
-    if (isLineComment) return true;
+    if (comment.isLineComment) return true;
+
+    // Magic generic method comments like "Foo/*<T>*/" don't get spaces.
+    if (_isGenericMethodComment(comment) &&
+        _trailingIdentifierChar.hasMatch(text)) {
+      return false;
+    }
 
     // Block comments do not get a space if following a grouping character.
     return !text.endsWith("(") && !text.endsWith("[") && !text.endsWith("{");
@@ -658,6 +675,11 @@ class ChunkBuilder {
 
     // Not at the beginning of a line.
     if (!_chunks.last.canAddText) return false;
+
+    // Magic generic method comments like "Foo/*<T>*/" don't get spaces.
+    if (_isGenericMethodComment(comments.last) && token == "(") {
+      return false;
+    }
 
     // Otherwise, it gets a space if the following token is not a delimiter or
     // the empty string, for EOF.

@@ -9,20 +9,22 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:usage/src/usage_impl.dart';
 
-AnalyticsImplMock createMock({Map<String, dynamic> props}) =>
-    new AnalyticsImplMock('UA-0', props: props);
+AnalyticsImplMock createMock({bool setOptIn: true}) =>
+    new AnalyticsImplMock('UA-0', setOptIn: setOptIn);
 
-was(Map m, String type) => expect(m['t'], type);
-has(Map m, String key) => expect(m[key], isNotNull);
-hasnt(Map m, String key) => expect(m[key], isNull);
+void was(Map m, String type) => expect(m['t'], type);
+void has(Map m, String key) => expect(m[key], isNotNull);
+void hasnt(Map m, String key) => expect(m[key], isNull);
 
 class AnalyticsImplMock extends AnalyticsImpl {
   MockProperties get mockProperties => properties;
   MockPostHandler get mockPostHandler => postHandler;
 
-  AnalyticsImplMock(String trackingId, {Map<String, dynamic> props})
-      : super(trackingId, new MockProperties(props), new MockPostHandler(),
-            applicationName: 'Test App', applicationVersion: '0.1');
+  AnalyticsImplMock(String trackingId, {bool setOptIn: true}) :
+      super(trackingId, new MockProperties(), new MockPostHandler(),
+      applicationName: 'Test App', applicationVersion: '0.1') {
+    if (setOptIn) optIn = true;
+  }
 
   Map<String, dynamic> get last => mockPostHandler.last;
 }
@@ -30,26 +32,18 @@ class AnalyticsImplMock extends AnalyticsImpl {
 class MockProperties extends PersistentProperties {
   Map<String, dynamic> props = {};
 
-  MockProperties([Map<String, dynamic> props]) : super('mock') {
-    if (props != null) this.props.addAll(props);
-  }
+  MockProperties() : super('mock');
 
-  @override
-  dynamic operator [](String key) => props[key];
+  dynamic operator[](String key) => props[key];
 
-  @override
-  void operator []=(String key, dynamic value) {
+  void operator[]=(String key, dynamic value) {
     props[key] = value;
   }
-
-  @override
-  void syncSettings() {}
 }
 
 class MockPostHandler extends PostHandler {
   List<Map<String, dynamic>> sentValues = [];
 
-  @override
   Future sendPost(String url, Map<String, dynamic> parameters) {
     sentValues.add(parameters);
 
@@ -57,7 +51,4 @@ class MockPostHandler extends PostHandler {
   }
 
   Map<String, dynamic> get last => sentValues.last;
-
-  @override
-  void close() {}
 }

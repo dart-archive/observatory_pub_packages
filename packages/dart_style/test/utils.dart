@@ -21,16 +21,21 @@ ScheduledProcess runFormatter([List<String> args]) {
 
   // Locate the "test" directory. Use mirrors so that this works with the test
   // package, which loads this suite into an isolate.
-  var testDir = p.dirname(
-      currentMirrorSystem().findLibrary(#dart_style.test.utils).uri.path);
+  var testDir = p.dirname(currentMirrorSystem()
+      .findLibrary(#dart_style.test.utils)
+      .uri
+      .toFilePath());
 
   var formatterPath = p.normalize(p.join(testDir, "../bin/format.dart"));
 
   args.insert(0, formatterPath);
 
   // Use the same package root, if there is one.
-  if (Platform.packageRoot.isNotEmpty) {
+  if (Platform.packageRoot != null && Platform.packageRoot.isNotEmpty) {
     args.insert(0, "--package-root=${Platform.packageRoot}");
+  } else if (Platform.packageConfig != null &&
+      Platform.packageConfig.isNotEmpty) {
+    args.insert(0, "--packages=${Platform.packageConfig}");
   }
 
   return new ScheduledProcess.start(Platform.executable, args);

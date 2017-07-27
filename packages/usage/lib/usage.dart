@@ -29,13 +29,10 @@ import 'dart:async';
 // Matches file:/, non-ws, /, non-ws, .dart
 final RegExp _pathRegex = new RegExp(r'file:/\S+/(\S+\.dart)');
 
-// Match multiple tabs or spaces.
-final RegExp _tabOrSpaceRegex = new RegExp(r'[\t ]+');
-
 /**
  * An interface to a Google Analytics session. [AnalyticsHtml] and [AnalyticsIO]
  * are concrete implementations of this interface. [AnalyticsMock] can be used
- * for testing or for some variants of an opt-in workflow.
+ * for testing or for some varients of an opt-in workflow.
  *
  * The analytics information is sent on a best-effort basis. So, failures to
  * send the GA information will not result in errors from the asynchronous
@@ -47,57 +44,29 @@ abstract class Analytics {
    */
   String get trackingId;
 
-  /// The application name.
-  String get applicationName;
+  /**
+   * Whether the user has opt-ed in to additional analytics.
+   */
+  bool get optIn;
 
-  /// The application version.
-  String get applicationVersion;
+  set optIn(bool value);
 
   /**
-   * Is this the first time the tool has run?
+   * Whether the [optIn] value has been explicitly set (either `true` or
+   * `false`).
    */
-  bool get firstRun;
-
-  /**
-   * Whether the [Analytics] instance is configured in an opt-in or opt-out manner.
-   */
-  AnalyticsOpt analyticsOpt = AnalyticsOpt.optOut;
-
-  /**
-   * Will analytics data be sent.
-   */
-  bool get enabled;
-
-  /**
-   * Enable or disable sending of analytics data.
-   */
-  set enabled(bool value);
-
-  /**
-   * Anonymous client ID in UUID v4 format.
-   *
-   * The value is randomly-generated and should be reasonably stable for the
-   * computer sending analytics data.
-   */
-  String get clientId;
+  bool get hasSetOptIn;
 
   /**
    * Sends a screen view hit to Google Analytics.
-   *
-   * [parameters] can be any analytics key/value pair. Useful
-   * for custom dimensions, etc.
    */
-  Future sendScreenView(String viewName, {Map<String, String> parameters});
+  Future sendScreenView(String viewName);
 
   /**
    * Sends an Event hit to Google Analytics. [label] specifies the event label.
    * [value] specifies the event value. Values must be non-negative.
-   *
-   * [parameters] can be any analytics key/value pair. Useful
-   * for custom dimensions, etc.
    */
-  Future sendEvent(String category, String action,
-      {String label, int value, Map<String, String> parameters});
+  Future sendEvent(String category, String action, {String label, int value});
 
   /**
    * Sends a Social hit to Google Analytics. [network] specifies the social
@@ -114,8 +83,8 @@ abstract class Analytics {
    * milliseconds). [category] specifies the category of the timing. [label]
    * specifies the label of the timing.
    */
-  Future sendTiming(String variableName, int time,
-      {String category, String label});
+  Future sendTiming(String variableName, int time, {String category,
+      String label});
 
   /**
    * Start a timer. The time won't be calculated, and the analytics information
@@ -132,27 +101,12 @@ abstract class Analytics {
   Future sendException(String description, {bool fatal});
 
   /**
-   * Gets a session variable value.
-   */
-  dynamic getSessionValue(String param);
-
-  /**
    * Sets a session variable value. The value is persistent for the life of the
    * [Analytics] instance. This variable will be sent in with every analytics
    * hit. A list of valid variable names can be found here:
    * https://developers.google.com/analytics/devguides/collection/protocol/v1/parameters.
    */
   void setSessionValue(String param, dynamic value);
-
-  /**
-   * Fires events when the usage library sends any data over the network. This
-   * will not fire if analytics has been disabled or if the throttling algorithm
-   * has been engaged.
-   *
-   * This method is public to allow library clients to more easily test their
-   * analytics implementations.
-   */
-  Stream<Map<String, dynamic>> get onSend;
 
   /**
    * Wait for all of the outstanding analytics pings to complete. The returned
@@ -164,27 +118,9 @@ abstract class Analytics {
    * users won't want their CLI app to pause at the end of the process waiting
    * for Google analytics requests to complete. This method allows CLI apps to
    * delay for a short time waiting for GA requests to complete, and then do
-   * something like call `dart:io`'s `exit()` explicitly themselves (or the
-   * [close] method below).
+   * something like call `exit()` explicitly themselves.
    */
   Future waitForLastPing({Duration timeout});
-
-  /// Free any used resources.
-  ///
-  /// The [Analytics] instance should not be used after this call.
-  void close();
-}
-
-enum AnalyticsOpt {
-  /**
-   * Users must opt-in before any analytics data is sent.
-   */
-  optIn,
-
-  /**
-   * Users must opt-out for analytics data to not be sent.
-   */
-  optOut
 }
 
 /**
@@ -221,8 +157,8 @@ class AnalyticsTimer {
     if (_endMillis != null) return new Future.value();
 
     _endMillis = new DateTime.now().millisecondsSinceEpoch;
-    return analytics.sendTiming(variableName, currentElapsedMillis,
-        category: category, label: label);
+    return analytics.sendTiming(
+        variableName, currentElapsedMillis, category: category, label: label);
   }
 }
 
@@ -231,20 +167,11 @@ class AnalyticsTimer {
  * stand-in for that will never ping the GA server, or as a mock in test code.
  */
 class AnalyticsMock implements Analytics {
-  @override
   String get trackingId => 'UA-0';
-  @override
-  String get applicationName => 'mock-app';
-  @override
-  String get applicationVersion => '1.0.0';
-
   final bool logCalls;
 
-  /**
-   * Events are never added to this controller for the mock implementation.
-   */
-  StreamController<Map<String, dynamic>> _sendController =
-      new StreamController.broadcast();
+  bool optIn = false;
+  bool hasSetOptIn = true;
 
   /**
    * Create a new [AnalyticsMock]. If [logCalls] is true, all calls will be
@@ -252,75 +179,35 @@ class AnalyticsMock implements Analytics {
    */
   AnalyticsMock([this.logCalls = false]);
 
-  @override
-  bool get firstRun => false;
+  Future sendScreenView(String viewName) =>
+      _log('screenView', {'viewName': viewName});
 
-  @override
-  AnalyticsOpt analyticsOpt = AnalyticsOpt.optOut;
-
-  @override
-  bool enabled = true;
-
-  @override
-  String get clientId => '00000000-0000-4000-0000-000000000000';
-
-  @override
-  Future sendScreenView(String viewName, {Map<String, String> parameters}) {
-    parameters ??= <String, String>{};
-    parameters['viewName'] = viewName;
-    return _log('screenView', parameters);
+  Future sendEvent(String category, String action, {String label, int value}) {
+    return _log('event', {'category': category, 'action': action,
+      'label': label, 'value': value});
   }
 
-  @override
-  Future sendEvent(String category, String action,
-      {String label, int value, Map<String, String> parameters}) {
-    parameters ??= <String, String>{};
-    return _log(
-        'event',
-        {'category': category, 'action': action, 'label': label, 'value': value}
-          ..addAll(parameters));
-  }
-
-  @override
   Future sendSocial(String network, String action, String target) =>
       _log('social', {'network': network, 'action': action, 'target': target});
 
-  @override
-  Future sendTiming(String variableName, int time,
-      {String category, String label}) {
-    return _log('timing', {
-      'variableName': variableName,
-      'time': time,
-      'category': category,
-      'label': label
-    });
+  Future sendTiming(String variableName, int time, {String category,
+      String label}) {
+    return _log('timing', {'variableName': variableName, 'time': time,
+      'category': category, 'label': label});
   }
 
-  @override
   AnalyticsTimer startTimer(String variableName,
       {String category, String label}) {
-    return new AnalyticsTimer(this, variableName,
-        category: category, label: label);
+    return new AnalyticsTimer(this,
+        variableName, category: category, label: label);
   }
 
-  @override
   Future sendException(String description, {bool fatal}) =>
       _log('exception', {'description': description, 'fatal': fatal});
 
-  @override
-  dynamic getSessionValue(String param) => null;
+  void setSessionValue(String param, dynamic value) { }
 
-  @override
-  void setSessionValue(String param, dynamic value) {}
-
-  @override
-  Stream<Map<String, dynamic>> get onSend => _sendController.stream;
-
-  @override
   Future waitForLastPing({Duration timeout}) => new Future.value();
-
-  @override
-  void close() {}
 
   Future _log(String hitType, Map m) {
     if (logCalls) {
@@ -349,13 +236,16 @@ String sanitizeStacktrace(dynamic st, {bool shorten: true}) {
 
   for (Match match in iter) {
     String replacement = match.group(1);
-    str =
-        str.substring(0, match.start) + replacement + str.substring(match.end);
+    str = str.substring(0, match.start)
+        + replacement + str.substring(match.end);
   }
 
   if (shorten) {
     // Shorten the stacktrace up a bit.
-    str = str.replaceAll(_tabOrSpaceRegex, ' ');
+    str = str
+        .replaceAll('(package:', '(')
+        .replaceAll('(dart:', '(')
+        .replaceAll(new RegExp(r'\s+'), ' ');
   }
 
   return str;

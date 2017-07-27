@@ -2,17 +2,17 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library source.pub_package_map_provider;
+library analyzer.source.pub_package_map_provider;
 
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:core' hide Resource;
+import 'dart:core';
 import 'dart:io' as io;
 
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/source/package_map_provider.dart';
+import 'package:analyzer/src/dart/sdk/sdk.dart';
 import 'package:analyzer/src/generated/engine.dart';
-import 'package:analyzer/src/generated/sdk_io.dart';
 
 /**
  * The function used to run pub list.
@@ -40,7 +40,7 @@ class PubPackageMapProvider implements PackageMapProvider {
   /**
    * Sdk that we use to find the pub executable.
    */
-  final DirectoryBasedDartSdk sdk;
+  final FolderBasedDartSdk sdk;
 
   /**
    * The function used to run pub list.
@@ -59,6 +59,13 @@ class PubPackageMapProvider implements PackageMapProvider {
 
   @override
   PackageMapInfo computePackageMap(Folder folder) {
+    // If the pubspec.lock file does not exist, no need to run anything.
+    {
+      String lockPath = getPubspecLockPath(folder);
+      if (!resourceProvider.getFile(lockPath).exists) {
+        return computePackageMapError(folder);
+      }
+    }
     // TODO(paulberry) make this asynchronous so that we can (a) do other
     // analysis while it's in progress, and (b) time out if it takes too long
     // to respond.
@@ -96,11 +103,16 @@ class PubPackageMapProvider implements PackageMapProvider {
     // we'll know when to try running "pub list-package-dirs" again.
     // Unfortunately, "pub list-package-dirs" doesn't tell us dependencies when
     // an error occurs, so just assume there is one dependency, "pubspec.lock".
-    List<String> dependencies = <String>[
-      resourceProvider.pathContext.join(folder.path, PUBSPEC_LOCK_NAME)
-    ];
+    String lockPath = getPubspecLockPath(folder);
+    List<String> dependencies = <String>[lockPath];
     return new PackageMapInfo(null, dependencies.toSet());
   }
+
+  /**
+   * Return the path to the `pubspec.lock` file in the given [folder].
+   */
+  String getPubspecLockPath(Folder folder) =>
+      resourceProvider.pathContext.join(folder.path, PUBSPEC_LOCK_NAME);
 
   /**
    * Decode the JSON output from pub into a package map.  Paths in the
@@ -134,6 +146,7 @@ class PubPackageMapProvider implements PackageMapProvider {
         packageMap[packageName] = folders;
       }
     }
+
     packages.forEach((key, value) {
       if (value is String) {
         processPaths(key, [value]);
@@ -157,7 +170,7 @@ class PubPackageMapProvider implements PackageMapProvider {
    * Run pub list to determine the packages and input files.
    */
   io.ProcessResult _runPubListDefault(Folder folder) {
-    String executablePath = sdk.pubExecutable.getAbsolutePath();
+    String executablePath = sdk.pubExecutable.path;
     List<String> arguments = [PUB_LIST_COMMAND];
     String workingDirectory = folder.path;
     int subprocessId = AnalysisEngine.instance.instrumentationService

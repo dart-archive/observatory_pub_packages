@@ -2,31 +2,62 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.src.task.abstract_context_test;
+library analyzer.test.src.context.abstract_context;
 
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/visitor.dart';
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/memory_file_system.dart';
 import 'package:analyzer/src/context/cache.dart';
 import 'package:analyzer/src/context/context.dart';
-import 'package:analyzer/src/generated/element.dart';
-import 'package:analyzer/src/generated/engine.dart'
-    hide AnalysisCache, AnalysisContextImpl, AnalysisTask;
+import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/sdk.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/task/driver.dart';
 import 'package:analyzer/task/model.dart';
+import 'package:plugin/manager.dart';
+import 'package:plugin/plugin.dart';
 import 'package:unittest/unittest.dart';
 
 import 'mock_sdk.dart';
 
+/**
+ * Finds an [Element] with the given [name].
+ */
+Element findChildElement(Element root, String name, [ElementKind kind]) {
+  Element result = null;
+  root.accept(new _ElementVisitorFunctionWrapper((Element element) {
+    if (element.name != name) {
+      return;
+    }
+    if (kind != null && element.kind != kind) {
+      return;
+    }
+    result = element;
+  }));
+  return result;
+}
+
+/**
+ * A function to be called for every [Element].
+ */
+typedef void _ElementVisitorFunction(Element element);
+
 class AbstractContextTest {
+  static final MockSdk SHARED_MOCK_SDK = new MockSdk();
+  static final MockSdk SHARED_STRONG_MOCK_SDK = new MockSdk();
+
   MemoryResourceProvider resourceProvider = new MemoryResourceProvider();
 
-  DartSdk sdk = new MockSdk();
+  DartSdk sdk;
   SourceFactory sourceFactory;
   AnalysisContextImpl context;
   AnalysisCache analysisCache;
   AnalysisDriver analysisDriver;
+
+  UriResolver sdkResolver;
+  UriResolver resourceResolver;
 
   AnalysisTask task;
   Map<ResultDescriptor<dynamic>, dynamic> oldOutputs;
@@ -92,6 +123,8 @@ class AbstractContextTest {
     return new AnalysisContextImpl();
   }
 
+  DartSdk createDartSdk() => new MockSdk(resourceProvider: resourceProvider);
+
   Source newSource(String path, [String content = '']) {
     File file = resourceProvider.newFile(path, content);
     return file.createSource();
@@ -107,10 +140,11 @@ class AbstractContextTest {
   }
 
   void prepareAnalysisContext([AnalysisOptions options]) {
-    sourceFactory = new SourceFactory(<UriResolver>[
-      new DartUriResolver(sdk),
-      new ResourceUriResolver(resourceProvider)
-    ]);
+    sdk = createDartSdk();
+    sdkResolver = new DartUriResolver(sdk);
+    resourceResolver = new ResourceUriResolver(resourceProvider);
+    sourceFactory = new SourceFactory(
+        <UriResolver>[sdkResolver, resourceResolver], null, resourceProvider);
     context = createAnalysisContext();
     if (options != null) {
       context.analysisOptions = options;
@@ -120,9 +154,36 @@ class AbstractContextTest {
     analysisDriver = context.driver;
   }
 
+  CompilationUnit resolveLibraryUnit(Source source) {
+    return context.resolveCompilationUnit2(source, source);
+  }
+
   void setUp() {
+    List<Plugin> plugins = <Plugin>[];
+    plugins.addAll(AnalysisEngine.instance.requiredPlugins);
+    plugins.add(AnalysisEngine.instance.commandLinePlugin);
+    plugins.add(AnalysisEngine.instance.optionsPlugin);
+
+    ExtensionManager manager = new ExtensionManager();
+    manager.processPlugins(plugins);
+
     prepareAnalysisContext();
   }
 
   void tearDown() {}
+}
+
+/**
+ * Wraps the given [_ElementVisitorFunction] into an instance of
+ * [GeneralizingElementVisitor].
+ */
+class _ElementVisitorFunctionWrapper extends GeneralizingElementVisitor {
+  final _ElementVisitorFunction function;
+
+  _ElementVisitorFunctionWrapper(this.function);
+
+  visitElement(Element element) {
+    function(element);
+    super.visitElement(element);
+  }
 }

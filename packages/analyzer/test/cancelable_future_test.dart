@@ -2,21 +2,21 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.cancelable_future;
+library analyzer.test.cancelable_future_test;
 
 import 'dart:async';
 
 import 'package:analyzer/src/cancelable_future.dart';
+import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 import 'package:watcher/src/utils.dart';
 
-import 'reflective_tests.dart';
 import 'utils.dart';
 
 void main() {
   initializeTestEnvironment();
-  runReflectiveTests(CancelableCompleterTests);
-  runReflectiveTests(CancelableFutureTests);
+  defineReflectiveTests(CancelableCompleterTests);
+  defineReflectiveTests(CancelableFutureTests);
 }
 
 @reflectiveTest
@@ -39,15 +39,18 @@ class CancelableCompleterTests {
     completer.future.cancel();
     expect(cancelCount, 1);
     // Make sure the future still completes with error.
-    return completer.future.then((_) {
-      fail('Expected error completion');
-    }, onError: (error) {
-      expect(error, new isInstanceOf<FutureCanceledError>());
-      // And make sure nothing else happens.
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(completer.isCompleted, isFalse);
-      expect(cancelCount, 1);
-    });
+    return completer.future
+        .then((_) {
+          fail('Expected error completion');
+        }, onError: (error) {
+          expect(error, new isInstanceOf<FutureCanceledError>());
+          // And make sure nothing else happens.
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(completer.isCompleted, isFalse);
+          expect(cancelCount, 1);
+        });
   }
 
   Future test_cancel_after_chaining() {
@@ -82,13 +85,16 @@ class CancelableCompleterTests {
     // late to cancel.
     expect(cancelCount, 0);
     // Make sure the future still completes with the object.
-    return completer.future.then((result) {
-      expect(result, same(obj));
-      // And make sure nothing else happens.
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(completer.isCompleted, isTrue);
-      expect(cancelCount, 0);
-    });
+    return completer.future
+        .then((result) {
+          expect(result, same(obj));
+          // And make sure nothing else happens.
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(completer.isCompleted, isTrue);
+          expect(cancelCount, 0);
+        });
   }
 
   Future test_cancel_before_chaining() {
@@ -126,15 +132,18 @@ class CancelableCompleterTests {
     completer.complete(obj);
     expect(completer.isCompleted, isTrue);
     // Make sure the future still completer with error.
-    return completer.future.then((_) {
-      fail('Expected error completion');
-    }, onError: (error) {
-      expect(error, new isInstanceOf<FutureCanceledError>());
-      // And make sure nothing else happens.
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(completer.isCompleted, isTrue);
-      expect(cancelCount, 1);
-    });
+    return completer.future
+        .then((_) {
+          fail('Expected error completion');
+        }, onError: (error) {
+          expect(error, new isInstanceOf<FutureCanceledError>());
+          // And make sure nothing else happens.
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(completer.isCompleted, isTrue);
+          expect(cancelCount, 1);
+        });
   }
 
   Future test_complete_after_chaining() {
@@ -150,16 +159,19 @@ class CancelableCompleterTests {
     expect(completer.isCompleted, isFalse);
     // Running the event loop should have no effect since the completer hasn't
     // been completed yet.
-    return pumpEventQueue().then((_) {
-      completer.complete(obj);
-      expect(completer.isCompleted, isTrue);
-      // The callback should be deferred to a microtask.
-      expect(callbackInvoked, isFalse);
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(callbackInvoked, isTrue);
-      expect(completer.isCompleted, isTrue);
-      expect(cancelCount, 0);
-    });
+    return pumpEventQueue()
+        .then((_) {
+          completer.complete(obj);
+          expect(completer.isCompleted, isTrue);
+          // The callback should be deferred to a microtask.
+          expect(callbackInvoked, isFalse);
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(callbackInvoked, isTrue);
+          expect(completer.isCompleted, isTrue);
+          expect(cancelCount, 0);
+        });
   }
 
   void test_complete_after_complete() {
@@ -221,15 +233,18 @@ class CancelableCompleterTests {
     completer.completeError(obj);
     expect(completer.isCompleted, isTrue);
     // Make sure the future still completes with error.
-    return completer.future.then((_) {
-      fail('Expected error completion');
-    }, onError: (error) {
-      expect(error, new isInstanceOf<FutureCanceledError>());
-      // And make sure nothing else happens.
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(completer.isCompleted, isTrue);
-      expect(cancelCount, 1);
-    });
+    return completer.future
+        .then((_) {
+          fail('Expected error completion');
+        }, onError: (error) {
+          expect(error, new isInstanceOf<FutureCanceledError>());
+          // And make sure nothing else happens.
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(completer.isCompleted, isTrue);
+          expect(cancelCount, 1);
+        });
   }
 
   Future test_completeError_after_chaining() {
@@ -245,16 +260,19 @@ class CancelableCompleterTests {
     expect(completer.isCompleted, isFalse);
     // Running the event loop should have no effect since the completer hasn't
     // been completed yet.
-    return pumpEventQueue().then((_) {
-      completer.completeError(obj);
-      expect(completer.isCompleted, isTrue);
-      // The callback should be deferred to a microtask.
-      expect(callbackInvoked, isFalse);
-    }).then((_) => pumpEventQueue()).then((_) {
-      expect(callbackInvoked, isTrue);
-      expect(completer.isCompleted, isTrue);
-      expect(cancelCount, 0);
-    });
+    return pumpEventQueue()
+        .then((_) {
+          completer.completeError(obj);
+          expect(completer.isCompleted, isTrue);
+          // The callback should be deferred to a microtask.
+          expect(callbackInvoked, isFalse);
+        })
+        .then((_) => pumpEventQueue())
+        .then((_) {
+          expect(callbackInvoked, isTrue);
+          expect(completer.isCompleted, isTrue);
+          expect(cancelCount, 0);
+        });
   }
 
   Future test_completeError_before_chaining() {

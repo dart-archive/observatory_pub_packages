@@ -2,17 +2,18 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.instrumentation;
+library analyzer.test.instrumentation.instrumentation_test;
+
+import 'dart:async';
 
 import 'package:analyzer/instrumentation/instrumentation.dart';
+import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
-
-import '../reflective_tests.dart';
 
 main() {
   group('instrumentation', () {
-    runReflectiveTests(InstrumentationServiceTest);
-    runReflectiveTests(MulticastInstrumentationServerTest);
+    defineReflectiveTests(InstrumentationServiceTest);
+    defineReflectiveTests(MulticastInstrumentationServerTest);
   });
 }
 
@@ -164,6 +165,9 @@ class TestInstrumentationServer implements InstrumentationServer {
   StringBuffer priorityChannel = new StringBuffer();
 
   @override
+  String get sessionId => '';
+
+  @override
   void log(String message) {
     normalChannel.writeln(message);
   }
@@ -174,7 +178,7 @@ class TestInstrumentationServer implements InstrumentationServer {
   }
 
   @override
-  void shutdown() {
+  Future shutdown() async {
     // Ignored
   }
 }

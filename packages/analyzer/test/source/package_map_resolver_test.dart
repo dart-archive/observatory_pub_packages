@@ -2,26 +2,27 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.source.package_map_resolver;
+library analyzer.test.source.package_map_resolver_test;
 
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/memory_file_system.dart';
 import 'package:analyzer/source/package_map_resolver.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:path/path.dart';
+import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 
-import '../reflective_tests.dart';
 import '../utils.dart';
 
 main() {
   initializeTestEnvironment();
-  runReflectiveTests(_PackageMapUriResolverTest);
+  defineReflectiveTests(_PackageMapUriResolverTest);
 }
 
 @reflectiveTest
 class _PackageMapUriResolverTest {
-  static const Map EMPTY_MAP = const <String, List<Folder>>{};
+  static const Map<String, List<Folder>> EMPTY_MAP =
+      const <String, List<Folder>>{};
   MemoryResourceProvider provider = new MemoryResourceProvider();
 
   void test_isPackageUri() {
@@ -61,7 +62,7 @@ class _PackageMapUriResolverTest {
     provider.newFile(pkgFileB, 'library lib_b');
     PackageMapUriResolver resolver =
         new PackageMapUriResolver(provider, <String, List<Folder>>{
-      'pkg': [
+      'pkg': <Folder>[
         provider.getResource('/part1/lib/'),
         provider.getResource('/part2/lib/')
       ]
@@ -98,8 +99,8 @@ class _PackageMapUriResolverTest {
     provider.newFile(pkgFileB, 'library lib_b;');
     PackageMapUriResolver resolver =
         new PackageMapUriResolver(provider, <String, List<Folder>>{
-      'pkgA': [provider.getResource('/pkgA/lib/')],
-      'pkgB': [provider.getResource('/pkgB/lib/')]
+      'pkgA': <Folder>[provider.getResource('/pkgA/lib/')],
+      'pkgB': <Folder>[provider.getResource('/pkgB/lib/')]
     });
     {
       Uri uri = Uri.parse('package:pkgA/libA.dart');
@@ -157,8 +158,8 @@ class _PackageMapUriResolverTest {
     provider.newFile(pkgFileB, 'library lib_b;');
     PackageMapUriResolver resolver =
         new PackageMapUriResolver(provider, <String, List<Folder>>{
-      'pkgA': [provider.getResource('/pkgA/lib/')],
-      'pkgB': [provider.getResource('/pkgB/lib/')]
+      'pkgA': <Folder>[provider.getResource('/pkgA/lib/')],
+      'pkgB': <Folder>[provider.getResource('/pkgB/lib/')]
     });
     {
       Source source = _createFileSource('/pkgA/lib/libA.dart');
@@ -186,7 +187,7 @@ class _PackageMapUriResolverTest {
     provider.newFile(file2, 'library bar');
     PackageMapUriResolver resolver =
         new PackageMapUriResolver(provider, <String, List<Folder>>{
-      'foo': [
+      'foo': <Folder>[
         provider.getResource('/foo1/lib'),
         provider.getResource('/foo2/lib')
       ]
@@ -210,11 +211,11 @@ class _PackageMapUriResolverTest {
     provider.newFile(file2, 'library lib');
     PackageMapUriResolver resolver =
         new PackageMapUriResolver(provider, <String, List<Folder>>{
-      'pkg1': [
+      'pkg1': <Folder>[
         provider.getResource('/foo1'),
         provider.getResource('/foo2/bar2')
       ],
-      'pkg2': [
+      'pkg2': <Folder>[
         provider.getResource('/foo1/bar1'),
         provider.getResource('/foo2')
       ]

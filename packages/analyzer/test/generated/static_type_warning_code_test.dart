@@ -2,41 +2,128 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.static_type_warning_code_test;
+library analyzer.test.generated.static_type_warning_code_test;
 
+import 'package:analyzer/error/error.dart';
+import 'package:analyzer/src/error/codes.dart';
 import 'package:analyzer/src/generated/engine.dart';
-import 'package:analyzer/src/generated/error.dart';
+import 'package:analyzer/src/generated/java_core.dart' show formatList;
 import 'package:analyzer/src/generated/source_io.dart';
+import 'package:test_reflective_loader/test_reflective_loader.dart';
+import 'package:unittest/unittest.dart';
 
-import '../reflective_tests.dart';
 import '../utils.dart';
-import 'resolver_test.dart';
+import 'resolver_test_case.dart';
 
 main() {
   initializeTestEnvironment();
-  runReflectiveTests(StaticTypeWarningCodeTest);
+  defineReflectiveTests(StaticTypeWarningCodeTest);
+  defineReflectiveTests(StrongModeStaticTypeWarningCodeTest);
 }
 
 @reflectiveTest
 class StaticTypeWarningCodeTest extends ResolverTestCase {
   void fail_inaccessibleSetter() {
-    Source source = addSource(r'''
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INACCESSIBLE_SETTER]);
-    verify([source]);
+    // TODO(rnystrom): This doesn't look right.
+    assertErrorsInCode(
+        r'''
+''',
+        [StaticTypeWarningCode.INACCESSIBLE_SETTER]);
+  }
+
+  void fail_method_lookup_mixin_of_extends() {
+    // See dartbug.com/25605
+    resetWithOptions(new AnalysisOptionsImpl()..enableSuperMixins = true);
+    assertErrorsInUnverifiedCode(
+        '''
+class A { a() => null; }
+class B {}
+abstract class M extends A {}
+class T = B with M; // Warning: B does not extend A
+main() {
+  new T().a(); // Warning: The method 'a' is not defined for the class 'T'
+}
+''',
+        [
+          // TODO(paulberry): when dartbug.com/25614 is fixed, add static warning
+          // code for "B does not extend A".
+          StaticTypeWarningCode.UNDEFINED_METHOD
+        ]);
+  }
+
+  void fail_method_lookup_mixin_of_implements() {
+    // See dartbug.com/25605
+    resetWithOptions(new AnalysisOptionsImpl()..enableSuperMixins = true);
+    assertErrorsInUnverifiedCode(
+        '''
+class A { a() => null; }
+class B {}
+abstract class M implements A {}
+class T = B with M; // Warning: Missing concrete implementation of 'A.a'
+main() {
+  new T().a(); // Warning: The method 'a' is not defined for the class 'T'
+}
+''',
+        [
+          StaticWarningCode.NON_ABSTRACT_CLASS_INHERITS_ABSTRACT_MEMBER_ONE,
+          StaticTypeWarningCode.UNDEFINED_METHOD
+        ]);
+  }
+
+  void fail_method_lookup_mixin_of_mixin() {
+    // See dartbug.com/25605
+    resetWithOptions(new AnalysisOptionsImpl()..enableSuperMixins = true);
+    assertErrorsInUnverifiedCode(
+        '''
+class A {}
+class B { b() => null; }
+class C {}
+class M extends A with B {}
+class T = C with M;
+main() {
+  new T().b();
+}
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
+  }
+
+  void fail_method_lookup_mixin_of_mixin_application() {
+    // See dartbug.com/25605
+    resetWithOptions(new AnalysisOptionsImpl()..enableSuperMixins = true);
+    assertErrorsInUnverifiedCode(
+        '''
+class A { a() => null; }
+class B {}
+class C {}
+class M = A with B;
+class T = C with M;
+main() {
+  new T().a();
+}
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
+  }
+
+  void fail_typeArgumentNotMatchingBounds_ofFunctionTypeAlias() {
+    assertErrorsInCode(
+        r'''
+class A {}
+class B {}
+typedef F<T extends A>();
+F<B> fff;
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void fail_undefinedEnumConstant() {
     // We need a way to set the parseEnum flag in the parser to true.
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 enum E { ONE }
 E e() {
   return E.TWO;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_ENUM_CONSTANT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_ENUM_CONSTANT]);
   }
 
   void test_ambiguousImport_function() {
@@ -58,34 +145,162 @@ f() {}''');
     assertErrors(source, [StaticWarningCode.AMBIGUOUS_IMPORT]);
   }
 
+  void test_assert_message_suppresses_type_promotion() {
+    // If a variable is assigned to inside the expression for an assert
+    // message, type promotion should be suppressed, just as it would be if the
+    // assignment occurred outside an assert statement.  (Note that it is a
+    // dubious practice for the computation of an assert message to have side
+    // effects, since it is only evaluated if the assert fails).
+    resetWithOptions(new AnalysisOptionsImpl()..enableAssertMessage = true);
+    assertErrorsInCode(
+        '''
+class C {
+  void foo() {}
+}
+
+f(Object x) {
+  if (x is C) {
+    x.foo();
+    assert(true, () { x = new C(); return 'msg'; }());
+  }
+}
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
+    // Do not verify since `x.foo()` fails to resolve.
+  }
+
   void test_await_flattened() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Future<Future<int>> ffi() => null;
 f() async {
   Future<int> b = await ffi(); // Warning: int not assignable to Future<int>
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_await_simple() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Future<int> fi() => null;
 f() async {
   String a = await fi(); // Warning: int not assignable to String
 }
+''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
+  }
+
+  void test_awaitForIn_declaredVariableRightType() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream<int> stream;
+  await for (int i in stream) {}
+}
 ''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+  }
+
+  void test_awaitForIn_declaredVariableWrongType() {
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+f() async {
+  Stream<String> stream;
+  await for (int i in stream) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_ELEMENT_TYPE]);
+  }
+
+  void test_awaitForIn_downcast() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream<num> stream;
+  await for (int i in stream) {}
+}
+''');
+  }
+
+  void test_awaitForIn_dynamicStream() {
+    assertNoErrorsInCode('''
+f() async {
+  dynamic stream;
+  await for (int i in stream) {}
+}
+''');
+  }
+
+  void test_awaitForIn_dynamicVariable() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream<int> stream;
+  await for (var i in stream) {}
+}
+''');
+  }
+
+  void test_awaitForIn_existingVariableRightType() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream<int> stream;
+  int i;
+  await for (i in stream) {}
+}
+''');
+  }
+
+  void test_awaitForIn_existingVariableWrongType() {
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+f() async {
+  Stream<String> stream;
+  int i;
+  await for (i in stream) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_ELEMENT_TYPE]);
+  }
+
+  void test_awaitForIn_notStream() {
+    assertErrorsInCode(
+        '''
+f() async {
+  await for (var i in true) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_TYPE]);
+  }
+
+  void test_awaitForIn_streamOfDynamic() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream stream;
+  await for (int i in stream) {}
+}
+''');
+  }
+
+  void test_awaitForIn_upcast() {
+    assertNoErrorsInCode('''
+import 'dart:async';
+f() async {
+  Stream<int> stream;
+  await for (num i in stream) {}
+}
+''');
   }
 
   void test_bug21912() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 class A {}
 class B extends A {}
 
@@ -104,120 +319,306 @@ void main() {
     left = t2;
   }
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.INVALID_ASSIGNMENT,
-      StaticTypeWarningCode.INVALID_ASSIGNMENT
-    ]);
-    verify([source]);
+''',
+        [
+          StaticTypeWarningCode.INVALID_ASSIGNMENT,
+          StaticTypeWarningCode.INVALID_ASSIGNMENT
+        ]);
   }
 
   void test_expectedOneListTypeArgument() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 main() {
   <int, int> [];
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.EXPECTED_ONE_LIST_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.EXPECTED_ONE_LIST_TYPE_ARGUMENTS]);
   }
 
   void test_expectedTwoMapTypeArguments_one() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 main() {
   <int> {};
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.EXPECTED_TWO_MAP_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.EXPECTED_TWO_MAP_TYPE_ARGUMENTS]);
   }
 
   void test_expectedTwoMapTypeArguments_three() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 main() {
   <int, int, int> {};
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.EXPECTED_TWO_MAP_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.EXPECTED_TWO_MAP_TYPE_ARGUMENTS]);
   }
 
-  void test_illegal_return_type_async_function() {
-    Source source = addSource('''
-int f() async {}
+  void test_forIn_declaredVariableRightType() {
+    assertNoErrorsInCode('''
+f() {
+  for (int i in <int>[]) {}
+}
 ''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE,
-      HintCode.MISSING_RETURN
-    ]);
-    verify([source]);
   }
 
-  void test_illegal_return_type_async_generator_function() {
-    Source source = addSource('''
+  void test_forIn_declaredVariableWrongType() {
+    assertErrorsInCode(
+        '''
+f() {
+  for (int i in <String>[]) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_ELEMENT_TYPE]);
+  }
+
+  void test_forIn_downcast() {
+    assertNoErrorsInCode('''
+f() {
+  for (int i in <num>[]) {}
+}
+''');
+  }
+
+  void test_forIn_dynamic() {
+    assertNoErrorsInCode('''
+f() {
+  dynamic d; // Could be [].
+  for (var i in d) {}
+}
+''');
+  }
+
+  void test_forIn_dynamicIterable() {
+    assertNoErrorsInCode('''
+f() {
+  dynamic iterable;
+  for (int i in iterable) {}
+}
+''');
+  }
+
+  void test_forIn_dynamicVariable() {
+    assertNoErrorsInCode('''
+f() {
+  for (var i in <int>[]) {}
+}
+''');
+  }
+
+  void test_forIn_existingVariableRightType() {
+    assertNoErrorsInCode('''
+f() {
+  int i;
+  for (i in <int>[]) {}
+}
+''');
+  }
+
+  void test_forIn_existingVariableWrongType() {
+    assertErrorsInCode(
+        '''
+f() {
+  int i;
+  for (i in <String>[]) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_ELEMENT_TYPE]);
+  }
+
+  void test_forIn_iterableOfDynamic() {
+    assertNoErrorsInCode('''
+f() {
+  for (int i in []) {}
+}
+''');
+  }
+
+  void test_forIn_notIterable() {
+    assertErrorsInCode(
+        '''
+f() {
+  for (var i in true) {}
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_TYPE]);
+  }
+
+  void test_forIn_object() {
+    assertNoErrorsInCode('''
+f() {
+  Object o; // Could be [].
+  for (var i in o) {}
+}
+''');
+  }
+
+  void test_forIn_typeBoundBad() {
+    assertErrorsInCode(
+        '''
+class Foo<T extends Iterable<int>> {
+  void method(T iterable) {
+    for (String i in iterable) {}
+  }
+}
+''',
+        [StaticTypeWarningCode.FOR_IN_OF_INVALID_ELEMENT_TYPE]);
+  }
+
+  void test_forIn_typeBoundGood() {
+    assertNoErrorsInCode('''
+class Foo<T extends Iterable<int>> {
+  void method(T iterable) {
+    for (var i in iterable) {}
+  }
+}
+''');
+  }
+
+  void test_forIn_upcast() {
+    assertNoErrorsInCode('''
+f() {
+  for (num i in <int>[]) {}
+}
+''');
+  }
+
+  void test_illegalAsyncGeneratorReturnType_function_nonStream() {
+    assertErrorsInCode(
+        '''
 int f() async* {}
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
   }
 
-  void test_illegal_return_type_async_generator_method() {
-    Source source = addSource('''
+  void test_illegalAsyncGeneratorReturnType_function_subtypeOfStream() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+abstract class SubStream<T> implements Stream<T> {}
+SubStream<int> f() async* {}
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
+  }
+
+  void test_illegalAsyncGeneratorReturnType_method_nonStream() {
+    assertErrorsInCode(
+        '''
 class C {
   int f() async* {}
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
   }
 
-  void test_illegal_return_type_async_method() {
-    Source source = addSource('''
+  void test_illegalAsyncGeneratorReturnType_method_subtypeOfStream() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+abstract class SubStream<T> implements Stream<T> {}
 class C {
-  int f() async {}
+  SubStream<int> f() async* {}
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE,
-      HintCode.MISSING_RETURN
-    ]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE]);
   }
 
-  void test_illegal_return_type_sync_generator_function() {
-    Source source = addSource('''
+  void test_illegalAsyncReturnType_function_nonFuture() {
+    assertErrorsInCode(
+        '''
+int f() async {}
+''',
+        [
+          StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE,
+          HintCode.MISSING_RETURN
+        ]);
+  }
+
+  void test_illegalAsyncReturnType_function_subtypeOfFuture() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+abstract class SubFuture<T> implements Future<T> {}
+SubFuture<int> f() async {
+  return 0;
+}
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE]);
+  }
+
+  void test_illegalAsyncReturnType_method_nonFuture() {
+    assertErrorsInCode(
+        '''
+class C {
+  int m() async {}
+}
+''',
+        [
+          StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE,
+          HintCode.MISSING_RETURN
+        ]);
+  }
+
+  void test_illegalAsyncReturnType_method_subtypeOfFuture() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+abstract class SubFuture<T> implements Future<T> {}
+class C {
+  SubFuture<int> m() async {
+    return 0;
+  }
+}
+''',
+        [StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE]);
+  }
+
+  void test_illegalSyncGeneratorReturnType_function_nonIterator() {
+    assertErrorsInCode(
+        '''
 int f() sync* {}
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
   }
 
-  void test_illegal_return_type_sync_generator_method() {
-    Source source = addSource('''
+  void test_illegalSyncGeneratorReturnType_function_subclassOfIterator() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+abstract class SubIterator<T> implements Iterator<T> {}
+SubIterator<int> f() sync* {}
+''',
+        [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
+  }
+
+  void test_illegalSyncGeneratorReturnType_method_nonIterator() {
+    assertErrorsInCode(
+        '''
 class C {
   int f() sync* {}
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
+  }
+
+  void test_illegalSyncGeneratorReturnType_method_subclassOfIterator() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        '''
+abstract class SubIterator<T> implements Iterator<T> {}
+class C {
+  SubIterator<int> f() sync* {}
+}
+''',
+        [StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE]);
   }
 
   void test_inconsistentMethodInheritance_paramCount() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 abstract class A {
   int x();
 }
@@ -225,115 +626,101 @@ abstract class B {
   int x(int y);
 }
 class C implements A, B {
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
   }
 
   void test_inconsistentMethodInheritance_paramType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 abstract class A {
   x(int i);
 }
 abstract class B {
   x(String s);
 }
-abstract class C implements A, B {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
-    verify([source]);
+abstract class C implements A, B {}
+''',
+        [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
   }
 
   void test_inconsistentMethodInheritance_returnType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 abstract class A {
   int x();
 }
 abstract class B {
   String x();
 }
-abstract class C implements A, B {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
-    verify([source]);
+abstract class C implements A, B {}
+''',
+        [StaticTypeWarningCode.INCONSISTENT_METHOD_INHERITANCE]);
   }
 
   void test_instanceAccessToStaticMember_method_invocation() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static m() {}
 }
 main(A a) {
   a.m();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
   }
 
   void test_instanceAccessToStaticMember_method_reference() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static m() {}
 }
 main(A a) {
   a.m;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
   }
 
   void test_instanceAccessToStaticMember_propertyAccess_field() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static var f;
 }
 main(A a) {
   a.f;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
   }
 
   void test_instanceAccessToStaticMember_propertyAccess_getter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static get f => 42;
 }
 main(A a) {
   a.f;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
   }
 
   void test_instanceAccessToStaticMember_propertyAccess_setter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static set f(x) {}
 }
 main(A a) {
   a.f = 42;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INSTANCE_ACCESS_TO_STATIC_MEMBER]);
   }
 
   void test_invalidAssignment_compoundAssignment() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class byte {
   int _value;
   byte(this._value);
@@ -343,152 +730,137 @@ class byte {
 void main() {
   byte b = new byte(52);
   b += 3;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_defaultValue_named() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f({String x: 0}) {
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_defaultValue_optional() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f([String x = 0]) {
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_dynamic() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 main() {
   dynamic = 1;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_functionExpressionInvocation() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 main() {
   String x = (() => 5)();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_ifNullAssignment() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 void f(int i) {
   double d;
   d ??= i;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_instanceVariable() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   int x;
 }
 f() {
   A a;
   a.x = '0';
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_localVariable() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   int x;
   x = '0';
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_regressionInIssue18468Fix() {
     // https://code.google.com/p/dart/issues/detail?id=18628
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class C<T> {
   T t = int;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_staticVariable() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static int x;
 }
 f() {
   A.x = '0';
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_topLevelVariableDeclaration() {
-    Source source = addSource("int x = 'string';");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+    assertErrorsInCode(
+        "int x = 'string';", [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_typeParameter() {
     // 14221
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class B<T> {
   T value;
   void test(num n) {
     value = n;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invalidAssignment_variableDeclaration() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   int x = 'string';
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVALID_ASSIGNMENT]);
   }
 
   void test_invocationOfNonFunction_class() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   void m() {
     A();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
   }
 
   void test_invocationOfNonFunction_localGenericFunction() {
@@ -499,41 +871,39 @@ class A {
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f(Function f) {
   return f();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
   }
 
   void test_invocationOfNonFunction_localObject() {
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f(Object o) {
   return o();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
   }
 
   void test_invocationOfNonFunction_localVariable() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   int x;
   return x();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
   }
 
   void test_invocationOfNonFunction_ordinaryInvocation() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static int x;
 }
@@ -541,27 +911,27 @@ class B {
   m() {
     A.x();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
     // A call to verify(source) fails as A.x() cannot be resolved.
   }
 
   void test_invocationOfNonFunction_staticInvocation() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static int get g => 0;
   f() {
     A.g();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
     // A call to verify(source) fails as g() cannot be resolved.
   }
 
   void test_invocationOfNonFunction_superExpression() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   int get g => 0;
 }
@@ -569,576 +939,607 @@ class B extends A {
   m() {
     var v = super.g();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION]);
   }
 
   void test_invocationOfNonFunctionExpression_literal() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   3(5);
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION_EXPRESSION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.INVOCATION_OF_NON_FUNCTION_EXPRESSION]);
   }
 
   void test_nonBoolCondition_conditional() {
-    Source source = addSource("f() { return 3 ? 2 : 1; }");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_CONDITION]);
-    verify([source]);
+    assertErrorsInCode("f() { return 3 ? 2 : 1; }",
+        [StaticTypeWarningCode.NON_BOOL_CONDITION]);
   }
 
   void test_nonBoolCondition_do() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   do {} while (3);
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_CONDITION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_CONDITION]);
+  }
+
+  void test_nonBoolCondition_for() {
+    // https://github.com/dart-lang/sdk/issues/24713
+    assertErrorsInCode(
+        r'''
+f() {
+  for (;3;) {}
+}''',
+        [StaticTypeWarningCode.NON_BOOL_CONDITION]);
   }
 
   void test_nonBoolCondition_if() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   if (3) return 2; else return 1;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_CONDITION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_CONDITION]);
   }
 
   void test_nonBoolCondition_while() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   while (3) {}
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_CONDITION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_CONDITION]);
   }
 
   void test_nonBoolExpression_functionType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 int makeAssertion() => 1;
 f() {
   assert(makeAssertion);
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_EXPRESSION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_EXPRESSION]);
   }
 
   void test_nonBoolExpression_interfaceType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   assert(0);
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_EXPRESSION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_EXPRESSION]);
   }
 
   void test_nonBoolNegationExpression() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 f() {
   !42;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_NEGATION_EXPRESSION]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_NEGATION_EXPRESSION]);
   }
 
   void test_nonBoolOperand_and_left() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 bool f(int left, bool right) {
   return left && right;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_OPERAND]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_OPERAND]);
   }
 
   void test_nonBoolOperand_and_right() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 bool f(bool left, String right) {
   return left && right;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_OPERAND]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_OPERAND]);
   }
 
   void test_nonBoolOperand_or_left() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 bool f(List<int> left, bool right) {
   return left || right;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_OPERAND]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_OPERAND]);
   }
 
   void test_nonBoolOperand_or_right() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 bool f(bool left, double right) {
   return left || right;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_BOOL_OPERAND]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_BOOL_OPERAND]);
   }
 
   void test_nonTypeAsTypeArgument_notAType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 int A;
 class B<E> {}
-f(B<A> b) {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
-    verify([source]);
+f(B<A> b) {}''',
+        [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
   }
 
   void test_nonTypeAsTypeArgument_undefinedIdentifier() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class B<E> {}
-f(B<A> b) {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
-    verify([source]);
+f(B<A> b) {}''',
+        [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
   }
 
   void test_returnOfInvalidType_async_future_int_mismatches_future_null() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Future<Null> f() async {
   return 5;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_async_future_int_mismatches_future_string() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Future<String> f() async {
   return 5;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_async_future_int_mismatches_int() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 int f() async {
   return 5;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.RETURN_OF_INVALID_TYPE,
-      StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE
-    ]);
-    verify([source]);
+''',
+        [
+          StaticTypeWarningCode.RETURN_OF_INVALID_TYPE,
+          StaticTypeWarningCode.ILLEGAL_ASYNC_RETURN_TYPE
+        ]);
   }
 
   void test_returnOfInvalidType_expressionFunctionBody_function() {
-    Source source = addSource("int f() => '0';");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode(
+        "int f() => '0';", [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_expressionFunctionBody_getter() {
-    Source source = addSource("int get g => '0';");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode(
+        "int get g => '0';", [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_expressionFunctionBody_localFunction() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   String m() {
     int f() => '0';
     return '0';
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_expressionFunctionBody_method() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   int f() => '0';
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_expressionFunctionBody_void() {
-    Source source = addSource("void f() => 42;");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode(
+        "void f() => 42;", [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_function() {
-    Source source = addSource("int f() { return '0'; }");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode("int f() { return '0'; }",
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_getter() {
-    Source source = addSource("int get g { return '0'; }");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode("int get g { return '0'; }",
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_localFunction() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   String m() {
     int f() { return '0'; }
     return '0';
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_returnOfInvalidType_method() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   int f() { return '0'; }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
+  }
+
+  void test_returnOfInvalidType_not_issued_for_valid_generic_return() {
+    assertNoErrorsInCode(r'''
+abstract class F<T, U>  {
+  U get value;
+}
+
+abstract class G<T> {
+  T test(F<int, T> arg) => arg.value;
+}
+
+abstract class H<S> {
+  S test(F<int, S> arg) => arg.value;
+}
+
+void main() { }''');
   }
 
   void test_returnOfInvalidType_void() {
-    Source source = addSource("void f() { return 42; }");
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
-    verify([source]);
+    assertErrorsInCode("void f() { return 42; }",
+        [StaticTypeWarningCode.RETURN_OF_INVALID_TYPE]);
   }
 
   void test_typeArgumentNotMatchingBounds_classTypeAlias() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class C {}
 class G<E extends A> {}
-class D = G<B> with C;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class D = G<B> with C;
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_extends() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-class C extends G<B>{}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class C extends G<B>{}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_extends_regressionInIssue18468Fix() {
     // https://code.google.com/p/dart/issues/detail?id=18628
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class X<T extends Type> {}
-class Y<U> extends X<U> {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class Y<U> extends X<U> {}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_fieldFormalParameter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
 class C {
   var f;
   C(G<B> this.f) {}
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_functionReturnType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-G<B> f() { return null; }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+G<B> f() { return null; }
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_functionTypeAlias() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-typedef G<B> f();''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+typedef G<B> f();
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_functionTypedFormalParameter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-f(G<B> h()) {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+f(G<B> h()) {}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_implements() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-class C implements G<B>{}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class C implements G<B>{}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_is() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-var b = 1 is G<B>;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+var b = 1 is G<B>;
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
+  }
+
+  void test_typeArgumentNotMatchingBounds_methodInvocation_localFunction() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        r'''
+class Point<T extends num> {
+  Point(T x, T y);
+}
+
+main() {
+  Point/*<T>*/ f/*<T extends num>*/(num/*=T*/ x, num/*=T*/ y) {
+    return new Point/*<T>*/(x, y);
+  }
+  print(f/*<String>*/('hello', 'world'));
+}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
+  }
+
+  void test_typeArgumentNotMatchingBounds_methodInvocation_method() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        r'''
+class Point<T extends num> {
+  Point(T x, T y);
+}
+
+class PointFactory {
+  Point/*<T>*/ point/*<T extends num>*/(num/*=T*/ x, num/*=T*/ y) {
+    return new Point/*<T>*/(x, y);
+  }
+}
+
+f(PointFactory factory) {
+  print(factory.point/*<String>*/('hello', 'world'));
+}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
+  }
+
+  void test_typeArgumentNotMatchingBounds_methodInvocation_topLevelFunction() {
+    resetWithOptions(new AnalysisOptionsImpl()..strongMode = true);
+    assertErrorsInCode(
+        r'''
+class Point<T extends num> {
+  Point(T x, T y);
+}
+
+Point/*<T>*/ f/*<T extends num>*/(num/*=T*/ x, num/*=T*/ y) {
+  return new Point/*<T>*/(x, y);
+}
+
+main() {
+  print(f/*<String>*/('hello', 'world'));
+}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_methodReturnType() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
 class C {
   G<B> m() { return null; }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_new() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-f() { return new G<B>(); }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+f() { return new G<B>(); }
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_new_superTypeOfUpperBound() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B extends A {}
 class C extends B {}
 class G<E extends B> {}
-f() { return new G<A>(); }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+f() { return new G<A>(); }
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_parameter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-f(G<B> g) {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+f(G<B> g) {}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_redirectingConstructor() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class X<T extends A> {
   X(int x, int y) {}
   factory X.name(int x, int y) = X<B>;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS,
-      StaticWarningCode.REDIRECT_TO_INVALID_RETURN_TYPE
-    ]);
-    verify([source]);
+}''',
+        [
+          StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS,
+          StaticWarningCode.REDIRECT_TO_INVALID_RETURN_TYPE
+        ]);
   }
 
   void test_typeArgumentNotMatchingBounds_typeArgumentList() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class C<E> {}
 class D<E extends A> {}
-C<D<B>> Var;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+C<D<B>> Var;
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_typeParameter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class C {}
 class G<E extends A> {}
-class D<F extends G<B>> {}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class D<F extends G<B>> {}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_variableDeclaration() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-G<B> g;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+G<B> g;
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeArgumentNotMatchingBounds_with() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {}
 class G<E extends A> {}
-class C extends Object with G<B>{}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
-    verify([source]);
+class C extends Object with G<B>{}
+''',
+        [StaticTypeWarningCode.TYPE_ARGUMENT_NOT_MATCHING_BOUNDS]);
   }
 
   void test_typeParameterSupertypeOfItsBound() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<T extends T> {
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.TYPE_PARAMETER_SUPERTYPE_OF_ITS_BOUND]);
-    verify([source]);
+}
+''',
+        [StaticTypeWarningCode.TYPE_PARAMETER_SUPERTYPE_OF_ITS_BOUND]);
   }
 
-  void test_typePromotion_booleanAnd_useInRight_accessedInClosureRight_mutated() {
-    Source source = addSource(r'''
+  void
+      test_typePromotion_booleanAnd_useInRight_accessedInClosureRight_mutated() {
+    assertErrorsInUnverifiedCode(
+        r'''
 callMe(f()) { f(); }
 main(Object p) {
   (p is String) && callMe(() { p.length; });
   p = 0;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_booleanAnd_useInRight_mutatedInLeft() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   ((p is String) && ((p = 42) == 42)) && p.length != 0;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_booleanAnd_useInRight_mutatedInRight() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   (p is String) && (((p = 42) == 42) && p.length != 0);
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
-  void test_typePromotion_conditional_useInThen_accessedInClosure_hasAssignment_after() {
-    Source source = addSource(r'''
+  void
+      test_typePromotion_conditional_useInThen_accessedInClosure_hasAssignment_after() {
+    assertErrorsInUnverifiedCode(
+        r'''
 callMe(f()) { f(); }
 main(Object p) {
   p is String ? callMe(() { p.length; }) : 0;
   p = 42;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
-  void test_typePromotion_conditional_useInThen_accessedInClosure_hasAssignment_before() {
-    Source source = addSource(r'''
+  void
+      test_typePromotion_conditional_useInThen_accessedInClosure_hasAssignment_before() {
+    assertErrorsInUnverifiedCode(
+        r'''
 callMe(f()) { f(); }
 main(Object p) {
   p = 42;
   p is String ? callMe(() { p.length; }) : 0;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_conditional_useInThen_hasAssignment() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   p is String ? (p.length + (p = 42)) : 0;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_accessedInClosure_hasAssignment() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 callMe(f()) { f(); }
 main(Object p) {
   if (p is String) {
@@ -1147,24 +1548,24 @@ main(Object p) {
     });
   }
   p = 0;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_and_right_hasAssignment() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   if (p is String && (p = null) == null) {
     p.length;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_extends_notMoreSpecific_dynamic() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class V {}
 class A<T> {}
 class B<S> extends A<S> {
@@ -1175,13 +1576,13 @@ main(A<V> p) {
   if (p is B) {
     p.b;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_extends_notMoreSpecific_notMoreSpecificTypeArg() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class V {}
 class A<T> {}
 class B<S> extends A<S> {
@@ -1192,85 +1593,85 @@ main(A<V> p) {
   if (p is B<int>) {
     p.b;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_after() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   if (p is String) {
     p.length;
     p = 0;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_before() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   if (p is String) {
     p = 0;
     p.length;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_inClosure_anonymous_after() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   if (p is String) {
     p.length;
   }
   () {p = 0;};
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_inClosure_anonymous_before() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   () {p = 0;};
   if (p is String) {
     p.length;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_inClosure_function_after() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   if (p is String) {
     p.length;
   }
   f() {p = 0;};
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_hasAssignment_inClosure_function_before() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 main(Object p) {
   f() {p = 0;};
   if (p is String) {
     p.length;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_implements_notMoreSpecific_dynamic() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class V {}
 class A<T> {}
 class B<S> implements A<S> {
@@ -1281,13 +1682,13 @@ main(A<V> p) {
   if (p is B) {
     p.b;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_typePromotion_if_with_notMoreSpecific_dynamic() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class V {}
 class A<T> {}
 class B<S> extends Object with A<S> {
@@ -1298,30 +1699,29 @@ main(A<V> p) {
   if (p is B) {
     p.b;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedFunction() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 void f() {
   g();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_FUNCTION]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_FUNCTION]);
   }
 
   void test_undefinedFunction_inCatch() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 void f() {
   try {
   } on Object {
     g();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_FUNCTION]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_FUNCTION]);
   }
 
   void test_undefinedFunction_inImportedLib() {
@@ -1338,11 +1738,11 @@ h() {}''');
   }
 
   void test_undefinedGetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class T {}
-f(T e) { return e.m; }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+f(T e) { return e.m; }''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_generic_function_call() {
@@ -1352,30 +1752,31 @@ f(T e) { return e.m; }''');
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInUnverifiedCode(
+        '''
 f(Function f) {
   return f.call;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_object_call() {
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInUnverifiedCode(
+        '''
 f(Object o) {
   return o.call;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_proxy_annotation_fakeProxy() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 library L;
 class Fake {
   const Fake();
@@ -1384,103 +1785,109 @@ const proxy = const Fake();
 @proxy class PrefixProxy {}
 main() {
   new PrefixProxy().foo;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_static() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
-var a = A.B;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+var a = A.B;''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
+  }
+
+  void test_undefinedGetter_typeLiteral_cascadeTarget() {
+    assertErrorsInCode(
+        r'''
+class T {
+  static int get foo => 42;
+}
+main() {
+  T..foo;
+}''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_typeLiteral_conditionalAccess() {
     // When applied to a type literal, the conditional access operator '?.'
     // cannot be used to access instance getters of Type.
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 class A {}
 f() => A?.hashCode;
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_void() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class T {
   void m() {}
 }
-f(T e) { return e.m().f; }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_GETTER]);
+f(T e) { return e.m().f; }''',
+        [StaticTypeWarningCode.UNDEFINED_GETTER]);
   }
 
   void test_undefinedGetter_wrongNumberOfTypeArguments_tooLittle() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<K, V> {
   K element;
 }
 main(A<int> a) {
   a.element.anyGetterExistsInDynamic;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_undefinedGetter_wrongNumberOfTypeArguments_tooMany() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<E> {
   E element;
 }
 main(A<int,int> a) {
   a.element.anyGetterExistsInDynamic;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_undefinedGetter_wrongOfTypeArgument() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<E> {
   E element;
 }
 main(A<NoSuchType> a) {
   a.element.anyGetterExistsInDynamic;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.NON_TYPE_AS_TYPE_ARGUMENT]);
   }
 
   void test_undefinedMethod() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   void m() {
     n();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_assignmentExpression() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B {
   f(A a) {
     A a2 = new A();
     a += a2;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_generic_function_call() {
@@ -1490,17 +1897,18 @@ class B {
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f(Function f) {
   f.call();
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_ignoreTypePropagation() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B extends A {
   m() {}
@@ -1510,28 +1918,26 @@ class C {
     A a = new B();
     a.m();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_leastUpperBoundWithNull() {
-    Source source = addSource('f(bool b, int i) => (b ? null : i).foo();');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+    assertErrorsInCode('f(bool b, int i) => (b ? null : i).foo();',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_object_call() {
     AnalysisOptionsImpl options = new AnalysisOptionsImpl();
     options.enableStrictCallChecks = true;
     resetWithOptions(options);
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f(Object o) {
   o.call();
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_private() {
@@ -1542,19 +1948,20 @@ library lib;
 class A {
   _foo() {}
 }''');
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 import 'lib.dart';
 class B extends A {
   test() {
     _foo();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_proxy_annotation_fakeProxy() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 library L;
 class Fake {
   const Fake();
@@ -1563,192 +1970,229 @@ const proxy = const Fake();
 @proxy class PrefixProxy {}
 main() {
   new PrefixProxy().foo();
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
+  }
+
+  void test_undefinedMethod_typeLiteral_cascadeTarget() {
+    assertErrorsInCode(
+        '''
+class T {
+  static void foo() {}
+}
+main() {
+  T..foo();
+}
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
   }
 
   void test_undefinedMethod_typeLiteral_conditionalAccess() {
     // When applied to a type literal, the conditional access operator '?.'
     // cannot be used to access instance methods of Type.
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 class A {}
 f() => A?.toString();
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_METHOD]);
+''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD]);
+  }
+
+  void test_undefinedMethodWithConstructor() {
+    assertErrorsInCode(
+        r'''
+class C {
+  C.m();
+}
+f() {
+  C c = C.m();
+}''',
+        [StaticTypeWarningCode.UNDEFINED_METHOD_WITH_CONSTRUCTOR]);
   }
 
   void test_undefinedOperator_indexBoth() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 f(A a) {
   a[0]++;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedOperator_indexGetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 f(A a) {
   a[0];
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedOperator_indexSetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 f(A a) {
   a[0] = 1;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedOperator_plus() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 f(A a) {
   a + 1;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedOperator_postfixExpression() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 f(A a) {
   a++;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedOperator_prefixExpression() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 f(A a) {
   ++a;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_OPERATOR]);
   }
 
   void test_undefinedSetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class T {}
-f(T e1) { e1.m = 0; }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SETTER]);
+f(T e1) { e1.m = 0; }''',
+        [StaticTypeWarningCode.UNDEFINED_SETTER]);
   }
 
   void test_undefinedSetter_static() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
-f() { A.B = 0;}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SETTER]);
+f() { A.B = 0;}''',
+        [StaticTypeWarningCode.UNDEFINED_SETTER]);
+  }
+
+  void test_undefinedSetter_typeLiteral_cascadeTarget() {
+    assertErrorsInCode(
+        r'''
+class T {
+  static void set foo(_) {}
+}
+main() {
+  T..foo = 42;
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SETTER]);
   }
 
   void test_undefinedSetter_void() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class T {
   void m() {}
 }
-f(T e) { e.m().f = 0; }''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SETTER]);
+f(T e) { e.m().f = 0; }''',
+        [StaticTypeWarningCode.UNDEFINED_SETTER]);
   }
 
   void test_undefinedSuperGetter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B extends A {
   get g {
     return super.g;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_GETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_GETTER]);
   }
 
   void test_undefinedSuperMethod() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B extends A {
   m() { return super.m(); }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_METHOD]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_METHOD]);
   }
 
   void test_undefinedSuperOperator_binaryExpression() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 class B extends A {
   operator +(value) {
     return super + value;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
   }
 
   void test_undefinedSuperOperator_indexBoth() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 class B extends A {
   operator [](index) {
     return super[index]++;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
   }
 
   void test_undefinedSuperOperator_indexGetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 class B extends A {
   operator [](index) {
     return super[index + 1];
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
   }
 
   void test_undefinedSuperOperator_indexSetter() {
-    Source source = addSource(r'''
+    assertErrorsInUnverifiedCode(
+        r'''
 class A {}
 class B extends A {
   operator []=(index, value) {
     return super[index] = 0;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_OPERATOR]);
   }
 
   void test_undefinedSuperSetter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class B extends A {
   f() {
     super.m = 0;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.UNDEFINED_SUPER_SETTER]);
+}''',
+        [StaticTypeWarningCode.UNDEFINED_SUPER_SETTER]);
   }
 
   void test_unqualifiedReferenceToNonLocalStaticMember_getter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static int get a => 0;
 }
@@ -1756,16 +2200,33 @@ class B extends A {
   int b() {
     return a;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
-    ]);
-    verify([source]);
+}''',
+        [
+          StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
+        ]);
+  }
+
+  void test_unqualifiedReferenceToNonLocalStaticMember_getter_invokeTarget() {
+    assertErrorsInCode(
+        r'''
+class A {
+  static int foo;
+}
+
+class B extends A {
+  static bar() {
+    foo.abs();
+  }
+}
+''',
+        [
+          StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
+        ]);
   }
 
   void test_unqualifiedReferenceToNonLocalStaticMember_method() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static void a() {}
 }
@@ -1773,16 +2234,15 @@ class B extends A {
   void b() {
     a();
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
-    ]);
-    verify([source]);
+}''',
+        [
+          StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
+        ]);
   }
 
   void test_unqualifiedReferenceToNonLocalStaticMember_setter() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {
   static set a(x) {}
 }
@@ -1790,195 +2250,250 @@ class B extends A {
   b(y) {
     a = y;
   }
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
-    ]);
-    verify([source]);
+}''',
+        [
+          StaticTypeWarningCode.UNQUALIFIED_REFERENCE_TO_NON_LOCAL_STATIC_MEMBER
+        ]);
   }
 
   void test_wrongNumberOfTypeArguments_classAlias() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class M {}
-class B<F extends num> = A<F> with M;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+class B<F extends num> = A<F> with M;''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_wrongNumberOfTypeArguments_tooFew() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<E, F> {}
-A<A> a = null;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+A<A> a = null;''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_wrongNumberOfTypeArguments_tooMany() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A<E> {}
-A<A, A> a = null;''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+A<A, A> a = null;''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_wrongNumberOfTypeArguments_typeTest_tooFew() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class C<K, V> {}
 f(p) {
   return p is C<A>;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_wrongNumberOfTypeArguments_typeTest_tooMany() {
-    Source source = addSource(r'''
+    assertErrorsInCode(
+        r'''
 class A {}
 class C<E> {}
 f(p) {
   return p is C<A, A>;
-}''');
-    computeLibrarySourceErrors(source);
-    assertErrors(
-        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
-    verify([source]);
+}''',
+        [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
   }
 
   void test_yield_async_to_basic_type() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 int f() async* {
   yield 3;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
-      StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE
-    ]);
-    verify([source]);
+''',
+        [
+          StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
+          StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE
+        ]);
   }
 
   void test_yield_async_to_iterable() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 Iterable<int> f() async* {
   yield 3;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
-      StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE
-    ]);
-    verify([source]);
+''',
+        [
+          StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
+          StaticTypeWarningCode.ILLEGAL_ASYNC_GENERATOR_RETURN_TYPE
+        ]);
   }
 
   void test_yield_async_to_mistyped_stream() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Stream<int> f() async* {
   yield "foo";
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_each_async_non_stream() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f() async* {
   yield* 0;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_each_async_to_mistyped_stream() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Stream<int> f() async* {
   yield* g();
 }
 Stream<String> g() => null;
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_each_sync_non_iterable() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 f() sync* {
   yield* 0;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_each_sync_to_mistyped_iterable() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 Iterable<int> f() sync* {
   yield* g();
 }
 Iterable<String> g() => null;
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_sync_to_basic_type() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 int f() sync* {
   yield 3;
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
-      StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE
-    ]);
-    verify([source]);
+''',
+        [
+          StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
+          StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE
+        ]);
   }
 
   void test_yield_sync_to_mistyped_iterable() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 Iterable<int> f() sync* {
   yield "foo";
 }
-''');
-    computeLibrarySourceErrors(source);
-    assertErrors(source, [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
-    verify([source]);
+''',
+        [StaticTypeWarningCode.YIELD_OF_INVALID_TYPE]);
   }
 
   void test_yield_sync_to_stream() {
-    Source source = addSource('''
+    assertErrorsInCode(
+        '''
 import 'dart:async';
 Stream<int> f() sync* {
   yield 3;
 }
+''',
+        [
+          StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
+          StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE
+        ]);
+  }
+}
+
+@reflectiveTest
+class StrongModeStaticTypeWarningCodeTest extends ResolverTestCase {
+  void setUp() {
+    super.setUp();
+    AnalysisOptionsImpl options = new AnalysisOptionsImpl();
+    options.strongMode = true;
+    resetWithOptions(options);
+  }
+
+  void test_genericMethodWrongNumberOfTypeArguments() {
+    Source source = addSource('''
+f() {}
+main() {
+  f/*<int>*/();
+}
 ''');
     computeLibrarySourceErrors(source);
-    assertErrors(source, [
-      StaticTypeWarningCode.YIELD_OF_INVALID_TYPE,
-      StaticTypeWarningCode.ILLEGAL_SYNC_GENERATOR_RETURN_TYPE
-    ]);
+    assertErrors(
+        source, [StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS]);
+    for (AnalysisError error in analysisContext2.computeErrors(source)) {
+      if (error.errorCode ==
+          StaticTypeWarningCode.WRONG_NUMBER_OF_TYPE_ARGUMENTS) {
+        expect(error.message,
+            formatList(error.errorCode.message, ['() → dynamic', 0, 1]));
+      }
+    }
     verify([source]);
+  }
+
+  void test_legalAsyncGeneratorReturnType_function_supertypeOfStream() {
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+f() async* { yield 42; }
+dynamic f2() async* { yield 42; }
+Object f3() async* { yield 42; }
+Stream f4() async* { yield 42; }
+Stream<dynamic> f5() async* { yield 42; }
+Stream<Object> f6() async* { yield 42; }
+Stream<num> f7() async* { yield 42; }
+Stream<int> f8() async* { yield 42; }
+''',
+        []);
+  }
+
+  void test_legalAsyncReturnType_function_supertypeOfFuture() {
+    assertErrorsInCode(
+        '''
+import 'dart:async';
+f() async { return 42; }
+dynamic f2() async { return 42; }
+Object f3() async { return 42; }
+Future f4() async { return 42; }
+Future<dynamic> f5() async { return 42; }
+Future<Object> f6() async { return 42; }
+Future<num> f7() async { return 42; }
+Future<int> f8() async { return 42; }
+''',
+        []);
+  }
+
+  void test_legalSyncGeneratorReturnType_function_supertypeOfIterable() {
+    assertErrorsInCode(
+        '''
+f() sync* { yield 42; }
+dynamic f2() sync* { yield 42; }
+Object f3() sync* { yield 42; }
+Iterable f4() sync* { yield 42; }
+Iterable<dynamic> f5() sync* { yield 42; }
+Iterable<Object> f6() sync* { yield 42; }
+Iterable<num> f7() sync* { yield 42; }
+Iterable<int> f8() sync* { yield 42; }
+''',
+        []);
   }
 }

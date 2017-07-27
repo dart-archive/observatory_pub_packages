@@ -1,8 +1,8 @@
 # usage
 
-`usage` is a wrapper around Google Analytics for command-line, web, and Flutter apps.
+`usage` is a wrapper around Google Analytics for both command-line apps and web
+apps.
 
-[![pub package](https://img.shields.io/pub/v/usage.svg)](https://pub.dartlang.org/packages/usage)
 [![Build Status](https://travis-ci.org/dart-lang/usage.svg)](https://travis-ci.org/dart-lang/usage)
 [![Coverage Status](https://img.shields.io/coveralls/dart-lang/usage.svg)](https://coveralls.io/r/dart-lang/usage?branch=master)
 
@@ -12,26 +12,7 @@ To use this library as a web app, import the `usage_html.dart` library and
 instantiate the `AnalyticsHtml` class.
 
 When you are creating a new property at [google analytics](https://www.google.com/analytics/)
-make sure to select the **mobile app** option, not the website option.
-
-## For Flutter apps
-
-Flutter applications can use the `AnalyticsIO` version of this library. They will need
-to specify the documents directory in the constructor in order to tell the library where
-to save the analytics preferences:
-
-```dart
-import 'package:flutter/services.dart';
-import 'package:usage/usage_io.dart';
-
-void main() {
-  final String UA = ...;
-
-  Analytics ga = new AnalyticsIO(UA, 'ga_test', '3.0',
-    documentsDirectory: PathProvider.getApplicationDocumentsDirectory());
-  ...
-}
-```
+make sure to select not the website option, but the **mobile app** option.
 
 ## For command-line apps
 
@@ -52,15 +33,9 @@ have completed, or until the specified duration has elapsed. So, CLI apps can do
 something like:
 
 ```dart
-await analytics.waitForLastPing(timeout: new Duration(milliseconds: 200));
-analytics.close();
-```
-
-or:
-
-```dart
-await analytics.waitForLastPing(timeout: new Duration(milliseconds: 200));
-exit(0);
+analytics.waitForLastPing(timeout: new Duration(milliseconds: 500)).then((_) {
+  exit(0);
+});
 ```
 
 ## Using the API
@@ -76,7 +51,7 @@ And call some analytics code:
 ```dart
 final String UA = ...;
 
-Analytics ga = new AnalyticsIO(UA, 'ga_test', '3.0');
+Analytics ga = new AnalyticsIO(UA, 'ga_test', '1.0');
 ga.optIn = true;
 
 ga.sendScreenView('home');
@@ -89,17 +64,21 @@ ga.sendTiming('readTime', 20);
 
 ## When do we send analytics data?
 
-You can use this library in an opt-in manner or an opt-out one. It defaults to
-opt-out - data will be sent to Google Analytics unless the user explicitly
-opts-out. The mode can be adjusted by changing the value of the
-`Analytics.analyticsOpt` field.
+We use an opt-in method for sending analytics information. There are essentially
+three states for when we send information:
 
-*Opt-out* In opt-out mode, if the user does not explicitly opt-out of collecting
-analytics (`Analytics.enabled = false`), the usage library will send usage data.
+*Sending screen views* If the user has not opted in, the library will only send
+information about screen views. This allows tools to do things like version
+checks, but does not send any additional information.
 
-*Opt-in* In opt-in mode, no data will be sent until the user explicitly opt-in
-to collection (`Analytics.enabled = true`). This includes screen views, events,
-timing information, and exceptions.
+*Opt-in* If the user opts-in to analytics collection the library sends all
+requested analytics info. This includes screen views, events, timing
+information, and exceptions.
+
+*Opt-ing out* In order to not send analytics information, either do not call the
+analytics methods, or create and use the `AnalyticsMock` class. This provides
+an instance you can use in place of a real analytics object but each analytics
+method is a no-op.
 
 ## Other info
 
@@ -115,10 +94,6 @@ mobile app style tracking IDs (as opposed to the web site style tracking IDs).
 
 For more information, please see the Google Analytics Measurement Protocol
 [Policy](https://developers.google.com/analytics/devguides/collection/protocol/policy).
-
-## Contributing
-
-Tests can be run using `pub run test`.
 
 ## Issues and bugs
 

@@ -1,3 +1,93 @@
+# 0.2.16
+
+* Don't discard type arguments on method calls with closure arguments (#582).
+
+# 0.2.15
+
+* Support `covariant` modifier on methods.
+
+# 0.2.14
+
+* Update to analyzer 0.29.3. This should make dart_style a little more resilient
+  to breaking changes in analyzer that add support for new syntax that
+  dart_style can't format yet.
+
+# 0.2.13
+
+* Support generic method *parameters* as well as arguments.
+
+# 0.2.12
+
+* Add support for assert() in constructor initializers.
+* Correctly indent the right-hand side of `is` and `as` expressions.
+* Avoid splitting in index operators when possible.
+* Support generic methods (#556).
+
+# 0.2.11+1
+
+* Fix test to not depend on analyzer error message.
+
+# 0.2.11
+
+* Widen dependency on analyzer to allow 0.29.x.
+
+# 0.2.10
+
+* Handle metadata annotations before parameters with trailing commas (#520).
+* Always split enum declarations if they end in a trailing comma (#529).
+* Add `--set-exit-if-changed` to set the exit code on a change (#365).
+
+# 0.2.9
+
+* Require analyzer 0.27.4, which makes trailing commas on by default.
+
+# 0.2.8
+
+* Format parameter lists with trailing commas like argument lists (#447).
+
+# 0.2.7
+
+* Make it strong mode clean.
+* Put labels on their own line (#43).
+* Gracefully handle IO errors when failing to overwrite a file (#473).
+* Add a blank line after local functions, to match top level ones (#488).
+* Improve indentation in non-block-bodied control flow statements (#494).
+* Better indentation on very long return types (#503).
+* When calling from JS, guess at which error to show when the code cannot be
+  parsed (#504).
+* Force a conditional operator to split if the condition does (#506).
+* Preserve trailing commas in argument and parameter lists (#509).
+* Split arguments preceded by comments (#511).
+* Remove newlines after script tags (#513).
+* Split before a single named argument if the argument itself splits (#514).
+* Indent initializers in multiple variable declarations.
+* Avoid passing an invalid Windows file URI to analyzer.
+* Always split comma-separated sequences that contain a trailing comma.
+
+# 0.2.6
+
+* Support deploying an npm package exporting a formatCode method.
+
+# 0.2.4
+
+* Better handling for long collections with comments (#484).
+
+# 0.2.3
+
+* Support messages in assert() (#411).
+* Don't put spaces around magic generic method annotation comments (#477).
+* Always put member metadata annotations on their own line (#483).
+* Indent functions in named argument lists with non-functions (#478).
+* Force the parameter list to split if a split occurs inside a function-typed
+  parameter.
+* Don't force a split for before a single named argument if the argument itself
+  splits.
+
+# 0.2.2
+
+* Upgrade to analyzer 0.27.0.
+* Format configured imports and exports.
+
 # 0.2.1
 
 * `--version` command line argument (#240).

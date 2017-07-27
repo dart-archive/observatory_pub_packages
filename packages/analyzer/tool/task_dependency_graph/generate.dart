@@ -15,34 +15,48 @@
  *   of exactly one task.
  * - Convert this tool to use package_config to find the package map.
  */
-library task_dependency_graph.generate;
+library analyzer.tool.task_dependency_graph.generate;
 
 import 'dart:io' hide File;
 import 'dart:io' as io;
 
 import 'package:analyzer/analyzer.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/physical_file_system.dart';
+import 'package:analyzer/source/package_map_resolver.dart';
+import 'package:analyzer/src/codegen/tools.dart';
+import 'package:analyzer/src/context/builder.dart';
+import 'package:analyzer/src/dart/sdk/sdk.dart';
 import 'package:analyzer/src/generated/constant.dart';
-import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/engine.dart';
-import 'package:analyzer/src/generated/java_io.dart';
 import 'package:analyzer/src/generated/sdk.dart';
-import 'package:analyzer/src/generated/sdk_io.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/generated/source_io.dart';
 import 'package:path/path.dart' as path;
+import 'package:path/path.dart';
 
 /**
  * Generate the target .dot file.
  */
 main() {
-  new Driver().generateFile();
+  String script = Platform.script.toFilePath(windows: Platform.isWindows);
+  String pkgPath = normalize(join(dirname(script), '..', '..'));
+  GeneratedContent.generateAll(pkgPath, <GeneratedContent>[target, htmlTarget]);
 }
+
+final GeneratedFile htmlTarget = new GeneratedFile(
+    'doc/tasks.html', (String pkgPath) => new Driver(pkgPath).generateHtml());
+
+final GeneratedFile target = new GeneratedFile(
+    'tool/task_dependency_graph/tasks.dot',
+    (String pkgPath) => new Driver(pkgPath).generateFileContents());
 
 typedef void GetterFinderCallback(PropertyAccessorElement element);
 
 class Driver {
+  static bool hasInitializedPlugins = false;
   PhysicalResourceProvider resourceProvider;
   AnalysisContext context;
   InterfaceType resultDescriptorType;
@@ -50,11 +64,10 @@ class Driver {
   ClassElement enginePluginClass;
   CompilationUnitElement taskUnitElement;
   InterfaceType extensionPointIdType;
+
   final String rootDir;
 
-  Driver()
-      : rootDir =
-            findRoot(Platform.script.toFilePath(windows: Platform.isWindows));
+  Driver(String pkgPath) : rootDir = new Directory(pkgPath).absolute.path;
 
   /**
    * Get an [io.File] object corresponding to the file in which the generated
@@ -62,18 +75,6 @@ class Driver {
    */
   io.File get file => new io.File(
       path.join(rootDir, 'tool', 'task_dependency_graph', 'tasks.dot'));
-
-  /**
-   * Determine if the output [file] contains the expected contents.
-   */
-  bool checkFile() {
-    String expectedContents = generateFileContents();
-    String actualContents = file.readAsStringSync();
-    // Normalize Windows line endings to Unix line endings so that the
-    // comparison doesn't fail on Windows.
-    actualContents = actualContents.replaceAll('\r\n', '\n');
-    return expectedContents == actualContents;
-  }
 
   /**
    * Starting at [node], find all calls to registerExtension() which refer to
@@ -123,32 +124,52 @@ class Driver {
   }
 
   /**
-   * Generate the task dependency graph and write it to the output [file].
-   */
-  void generateFile() {
-    String fileContents = generateFileContents();
-    file.writeAsStringSync(fileContents);
-  }
-
-  /**
    * Generate the task dependency graph and return it as a [String].
    */
   String generateFileContents() {
+    return '''
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+//
+// This file has been automatically generated.  Please do not edit it manually.
+// To regenerate the file, use the script
+// "pkg/analyzer/tool/task_dependency_graph/generate.dart".
+//
+// To render this graph using Graphviz (www.graphviz.org) use the command:
+// "dot tasks.dot -Tpdf -O".
+digraph G {
+${generateGraphData()}
+}
+''';
+  }
+
+  String generateGraphData() {
+    if (!hasInitializedPlugins) {
+      AnalysisEngine.instance.processRequiredPlugins();
+      hasInitializedPlugins = true;
+    }
     List<String> lines = <String>[];
     resourceProvider = PhysicalResourceProvider.INSTANCE;
-    DartSdk sdk = DirectoryBasedDartSdk.defaultSdk;
+    DartSdk sdk = new FolderBasedDartSdk(resourceProvider,
+        FolderBasedDartSdk.defaultSdkDirectory(resourceProvider));
     context = AnalysisEngine.instance.createAnalysisContext();
-    String packageRootPath;
-    if (Platform.packageRoot.isNotEmpty) {
-      packageRootPath = Platform.packageRoot;
+    ContextBuilder builder = new ContextBuilder(resourceProvider, null, null);
+    if (Platform.packageRoot != null) {
+      builder.defaultPackagesDirectoryPath =
+        Uri.parse(Platform.packageRoot).toFilePath();
+    } else if (Platform.packageConfig != null) {
+      builder.defaultPackageFilePath =
+        Uri.parse(Platform.packageConfig).toFilePath();
     } else {
-      packageRootPath = path.join(rootDir, 'packages');
+      // Let the context builder use the default algorithm for package
+      // resolution.
     }
-    JavaFile packagesDir = new JavaFile(packageRootPath);
     List<UriResolver> uriResolvers = [
       new DartUriResolver(sdk),
-      new PackageUriResolver(<JavaFile>[packagesDir]),
-      new FileUriResolver()
+      new PackageMapUriResolver(resourceProvider,
+          builder.convertPackagesToMap(builder.createPackageMap(''))),
+      new ResourceUriResolver(PhysicalResourceProvider.INSTANCE)
     ];
     context.sourceFactory = new SourceFactory(uriResolvers);
     Source dartDartSource =
@@ -163,9 +184,9 @@ class Driver {
     resultDescriptorType = modelElement
         .getType('ResultDescriptor')
         .type
-        .substitute4([dynamicType]);
+        .instantiate([dynamicType]);
     listOfResultDescriptorType =
-        context.typeProvider.listType.substitute4([resultDescriptorType]);
+        context.typeProvider.listType.instantiate([resultDescriptorType]);
     CompilationUnitElement enginePluginUnitElement =
         getUnit(enginePluginSource).element;
     enginePluginClass = enginePluginUnitElement.getType('EnginePlugin');
@@ -189,7 +210,8 @@ class Driver {
           resultLists.add(input);
           lines.add('  $input -> $task');
         });
-        findResultDescriptors(cls.getField('DESCRIPTOR').computeNode(), (String out) {
+        findResultDescriptors(cls.getField('DESCRIPTOR').computeNode(),
+            (String out) {
           results.add(out);
           lines.add('  $task -> $out');
         });
@@ -208,20 +230,32 @@ class Driver {
       lines.add('  $result [shape=box]');
     }
     lines.sort();
+    return lines.join('\n');
+  }
+
+  String generateHtml() {
     return '''
-// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
-// for details. All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
-//
-// This file has been automatically generated.  Please do not edit it manually.
-// To regenerate the file, use the script
-// "pkg/analyzer/tool/task_dependency_graph/generate.dart".
-//
-// To render this graph using Graphviz (www.graphviz.org) use the command:
-// "dot tasks.dot -Tpdf -O".
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Analysis Task Dependency Graph</title>
+    <link rel="stylesheet" href="support/style.css">
+    <script src="support/viz.js"></script>
+    <script type="application/dart" src="support/web_app.dart.js"></script>
+    <script src="support/dart.js"></script>
+</head>
+<body>
+<button id="zoomBtn">Zoom</button>
+<script type="text/vnd.graphviz" id="dot">
 digraph G {
-${lines.join('\n')}
+  tooltip="Analysis Task Dependency Graph";
+  node [fontname=Helvetica];
+  edge [fontname=Helvetica, fontcolor=gray];
+${generateGraphData()}
 }
+</script>
+</body>
+</html>
 ''';
   }
 
@@ -266,21 +300,6 @@ ${lines.join('\n')}
     }
     throw new Exception(
         'Could not find extension ID corresponding to $resultListGetterName');
-  }
-
-  /**
-   * Find the root directory of the analyzer package by proceeding
-   * upward to the 'tool' dir, and then going up one more directory.
-   */
-  static String findRoot(String pathname) {
-    while (path.basename(pathname) != 'tool') {
-      String parent = path.dirname(pathname);
-      if (parent.length >= pathname.length) {
-        throw new Exception("Can't find root directory");
-      }
-      pathname = parent;
-    }
-    return path.dirname(pathname);
   }
 }
 

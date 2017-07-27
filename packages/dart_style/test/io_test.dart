@@ -25,14 +25,18 @@ void main() {
       new FormatterOptions(OutputReporter.overwrite, followLinks: true);
 
   test('handles directory ending in ".dart"', () {
-    d.dir('code.dart', [d.file('a.dart', unformattedSource),]).create();
+    d.dir('code.dart', [
+      d.file('a.dart', unformattedSource),
+    ]).create();
 
     schedule(() {
       var dir = new Directory(d.defaultRoot);
       processDirectory(overwriteOptions, dir);
     }, 'Run formatter.');
 
-    d.dir('code.dart', [d.file('a.dart', formattedSource)]).validate();
+    d.dir('code.dart', [
+      d.file('a.dart', formattedSource),
+    ]).validate();
   });
 
   test("doesn't touch unchanged files", () {
@@ -97,9 +101,13 @@ void main() {
   });
 
   test("doesn't follow directory symlinks by default", () {
-    d.dir('code', [d.file('a.dart', unformattedSource),]).create();
+    d.dir('code', [
+      d.file('a.dart', unformattedSource),
+    ]).create();
 
-    d.dir('target_dir', [d.file('b.dart', unformattedSource),]).create();
+    d.dir('target_dir', [
+      d.file('b.dart', unformattedSource),
+    ]).create();
 
     schedule(() {
       // Create a link to the target directory in the code directory.
@@ -114,14 +122,20 @@ void main() {
 
     d.dir('code', [
       d.file('a.dart', formattedSource),
-      d.dir('linked_dir', [d.file('b.dart', unformattedSource),])
+      d.dir('linked_dir', [
+        d.file('b.dart', unformattedSource),
+      ])
     ]).validate();
   });
 
   test("follows directory symlinks when 'followLinks' is true", () {
-    d.dir('code', [d.file('a.dart', unformattedSource),]).create();
+    d.dir('code', [
+      d.file('a.dart', unformattedSource),
+    ]).create();
 
-    d.dir('target_dir', [d.file('b.dart', unformattedSource),]).create();
+    d.dir('target_dir', [
+      d.file('b.dart', unformattedSource),
+    ]).create();
 
     schedule(() {
       // Create a link to the target directory in the code directory.
@@ -136,11 +150,31 @@ void main() {
 
     d.dir('code', [
       d.file('a.dart', formattedSource),
-      d.dir('linked_dir', [d.file('b.dart', formattedSource),])
+      d.dir('linked_dir', [
+        d.file('b.dart', formattedSource),
+      ])
     ]).validate();
   });
 
   if (!Platform.isWindows) {
+    // TODO(rnystrom): Figure out Windows equivalent of chmod and get this
+    // test running on Windows too.
+    test("reports error if file can not be written", () {
+      d.file('a.dart', unformattedSource).create();
+
+      schedule(() {
+        Process.runSync("chmod", ["-w", p.join(d.defaultRoot, 'a.dart')]);
+      }, 'Make file read-only.');
+
+      schedule(() {
+        var file = new File(p.join(d.defaultRoot, 'a.dart'));
+        processFile(overwriteOptions, file);
+      }, 'Run formatter.');
+
+      // Should not have been formatted.
+      d.file('a.dart', unformattedSource).validate();
+    });
+
     test("doesn't follow file symlinks by default", () {
       d.dir('code').create();
       d.file('target_file.dart', unformattedSource).create();
@@ -156,8 +190,9 @@ void main() {
         processDirectory(overwriteOptions, dir);
       }, 'Run formatter.');
 
-      d.dir(
-          'code', [d.file('linked_file.dart', unformattedSource),]).validate();
+      d.dir('code', [
+        d.file('linked_file.dart', unformattedSource),
+      ]).validate();
     });
 
     test("follows file symlinks when 'followLinks' is true", () {
@@ -175,7 +210,9 @@ void main() {
         processDirectory(followOptions, dir);
       }, 'running formatter');
 
-      d.dir('code', [d.file('linked_file.dart', formattedSource),]).validate();
+      d.dir('code', [
+        d.file('linked_file.dart', formattedSource),
+      ]).validate();
     });
   }
 }

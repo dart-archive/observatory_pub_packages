@@ -1,11 +1,11 @@
 // Copyright (c) 2013, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
-library error;
+library analyzer.src.error;
 
 import 'dart:collection';
 
-import 'generated/error.dart';
+import 'package:analyzer/error/error.dart';
 
 /// The maximum line length when printing extracted source code when converting
 /// an [AnalyzerError] to a string.
@@ -20,12 +20,15 @@ class AnalyzerError implements Exception {
 
   String get message => toString();
 
+  @override
   String toString() {
     var builder = new StringBuffer();
 
     // Print a less friendly string representation to ensure that
     // error.source.contents is not executed, as .contents it isn't async
-    builder.write("Error in ${error.source.shortName}: ${error.message}");
+    String sourceName = error.source.shortName;
+    sourceName ??= '<unknown source>';
+    builder.write("Error in $sourceName: ${error.message}");
 
 //    var content = error.source.contents.data;
 //    var beforeError = content.substring(0, error.offset);
@@ -89,5 +92,6 @@ class AnalyzerErrorGroup implements Exception {
       new UnmodifiableListView<AnalyzerError>(_errors);
 
   String get message => toString();
+  @override
   String toString() => errors.join("\n");
 }

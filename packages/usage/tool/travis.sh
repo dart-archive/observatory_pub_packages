@@ -9,13 +9,21 @@ set -e
 
 # Verify that the libraries are error free.
 dartanalyzer --fatal-warnings \
-  example/example.dart \
-  example/ga.dart \
   lib/usage.dart \
+  lib/usage_html.dart \
+  lib/usage_io.dart \
   test/all.dart
 
 # Run the tests.
 dart -c test/all.dart
+
+# Run the UI/web tests as well.
+#pub build test
+#pub run grinder:test build/test/web.html
+
+# Verify against DDC.
+pub global activate dev_compiler
+pub global run dev_compiler lib/usage_html.dart
 
 # Measure the size of the compiled JS, for the dart:html version of the library.
 dart tool/grind.dart build

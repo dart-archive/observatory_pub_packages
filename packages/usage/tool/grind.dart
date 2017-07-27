@@ -12,24 +12,31 @@ final Directory _buildExampleDir = new Directory('build/example');
 
 main(List<String> args) => grind(args);
 
-@Task()
-void init() => _buildExampleDir.createSync(recursive: true);
+@Task('Do any necessary build set up')
+void init() {
+  // Verify we're running in the project root.
+  if (!getDir('lib').existsSync() || !getFile('pubspec.yaml').existsSync()) {
+    context.fail('This script must be run from the project root.');
+  }
+
+  _buildExampleDir.createSync(recursive: true);
+}
 
 @Task()
 @Depends(init)
 void build() {
   // Compile `test/web_test.dart` to the `build/test` dir; measure its size.
   File srcFile = new File('example/example.dart');
-  Dart2js.compile(srcFile,
-      outDir: _buildExampleDir,
-      minify: true,
-      extraArgs: ['--conditional-directives']);
+  Dart2js.compile(srcFile, outDir: _buildExampleDir, minify: true);
   File outFile = joinFile(_buildExampleDir, ['example.dart.js']);
 
-  log('${outFile.path} compiled to ${_printSize(outFile)}');
+  context.log('${outFile.path} compiled to ${_printSize(outFile)}');
 }
 
-@Task()
-void clean() => delete(buildDir);
+@Task('Delete all generated artifacts')
+void clean() {
+  // Delete the build/ dir.
+  delete(buildDir);
+}
 
 String _printSize(File file) => '${(file.lengthSync() + 1023) ~/ 1024}k';

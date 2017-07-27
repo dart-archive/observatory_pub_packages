@@ -1,106 +1,18 @@
-library java.engine;
+// Copyright (c) 2014, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
 
-import 'interner.dart';
-import 'java_core.dart';
+library analyzer.src.generated.java_engine;
+
+import 'package:analyzer/src/generated/interner.dart';
+import 'package:analyzer/src/generated/java_core.dart';
+
+export 'package:analyzer/exception/exception.dart';
 
 /**
  * A predicate is a one-argument function that returns a boolean value.
  */
 typedef bool Predicate<E>(E argument);
-
-/**
- * Instances of the class `AnalysisException` represent an exception that
- * occurred during the analysis of one or more sources.
- */
-class AnalysisException implements Exception {
-  /**
-   * The message that explains why the exception occurred.
-   */
-  final String message;
-
-  /**
-   * The exception that caused this exception, or `null` if this exception was
-   * not caused by another exception.
-   */
-  final CaughtException cause;
-
-  /**
-   * Initialize a newly created exception to have the given [message] and
-   * [cause].
-   */
-  AnalysisException([this.message = 'Exception', this.cause = null]);
-
-  String toString() {
-    StringBuffer buffer = new StringBuffer();
-    buffer.write("AnalysisException: ");
-    buffer.writeln(message);
-    if (cause != null) {
-      buffer.write('Caused by ');
-      cause._writeOn(buffer);
-    }
-    return buffer.toString();
-  }
-}
-
-/**
- * Instances of the class `CaughtException` represent an exception that was
- * caught and has an associated stack trace.
- */
-class CaughtException implements Exception {
-  /**
-   * The exception that was caught.
-   */
-  final Object exception;
-
-  /**
-   * The stack trace associated with the exception.
-   */
-  StackTrace stackTrace;
-
-  /**
-   * Initialize a newly created caught exception to have the given [exception]
-   * and [stackTrace].
-   */
-  CaughtException(this.exception, stackTrace) {
-    if (stackTrace == null) {
-      try {
-        throw this;
-      } catch (_, st) {
-        stackTrace = st;
-      }
-    }
-    this.stackTrace = stackTrace;
-  }
-
-  @override
-  String toString() {
-    StringBuffer buffer = new StringBuffer();
-    _writeOn(buffer);
-    return buffer.toString();
-  }
-
-  /**
-   * Write a textual representation of the caught exception and its associated
-   * stack trace.
-   */
-  void _writeOn(StringBuffer buffer) {
-    if (exception is AnalysisException) {
-      AnalysisException analysisException = exception;
-      buffer.writeln(analysisException.message);
-      if (stackTrace != null) {
-        buffer.writeln(stackTrace.toString());
-      }
-      CaughtException cause = analysisException.cause;
-      if (cause != null) {
-        buffer.write('Caused by ');
-        cause._writeOn(buffer);
-      }
-    } else {
-      buffer.writeln(exception.toString());
-      buffer.writeln(stackTrace.toString());
-    }
-  }
-}
 
 class FileNameUtilities {
   static String getExtension(String fileName) {
@@ -120,6 +32,33 @@ class StringUtilities {
   static const List<String> EMPTY_ARRAY = const <String>[];
 
   static Interner INTERNER = new NullInterner();
+
+  /**
+   * Compute line starts for the given [content].
+   * Lines end with `\r`, `\n` or `\r\n`.
+   */
+  static List<int> computeLineStarts(String content) {
+    List<int> lineStarts = <int>[0];
+    int length = content.length;
+    int unit;
+    for (int index = 0; index < length; index++) {
+      unit = content.codeUnitAt(index);
+      // Special-case \r\n.
+      if (unit == 0x0D /* \r */) {
+        // Peek ahead to detect a following \n.
+        if ((index + 1 < length) && content.codeUnitAt(index + 1) == 0x0A) {
+          // Line start will get registered at next index at the \n.
+        } else {
+          lineStarts.add(index + 1);
+        }
+      }
+      // \n
+      if (unit == 0x0A) {
+        lineStarts.add(index + 1);
+      }
+    }
+    return lineStarts;
+  }
 
   static endsWith3(String str, int c1, int c2, int c3) {
     var length = str.length;
@@ -242,12 +181,11 @@ class StringUtilities {
    */
   static String printListOfQuotedNames(List<String> names) {
     if (names == null) {
-      throw new IllegalArgumentException("The list must not be null");
+      throw new ArgumentError("The list must not be null");
     }
     int count = names.length;
     if (count < 2) {
-      throw new IllegalArgumentException(
-          "The list must contain at least two names");
+      throw new ArgumentError("The list must contain at least two names");
     }
     StringBuffer buffer = new StringBuffer();
     buffer.write("'");

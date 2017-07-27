@@ -14,7 +14,7 @@ import 'package:dart_style/src/io.dart';
 import 'package:dart_style/src/source_code.dart';
 
 // Note: The following line of code is modified by tool/grind.dart.
-const version = "0.2.1";
+const version = "0.2.16";
 
 void main(List<String> args) {
   var parser = new ArgParser(allowTrailingOptions: true);
@@ -33,6 +33,9 @@ void main(List<String> args) {
       abbr: "n",
       negatable: false,
       help: "Show which files would be modified but make no changes.");
+  parser.addFlag("set-exit-if-changed",
+      negatable: false,
+      help: "Return exit code 1 if there are any formatting changes.");
   parser.addFlag("overwrite",
       abbr: "w",
       negatable: false,
@@ -52,7 +55,7 @@ void main(List<String> args) {
       negatable: false,
       help: "Unused flag for compability with the old formatter.");
 
-  var argResults;
+  ArgResults argResults;
   try {
     argResults = parser.parse(args);
   } on FormatException catch (err) {
@@ -70,7 +73,7 @@ void main(List<String> args) {
   }
 
   // Can only preserve a selection when parsing from stdin.
-  var selection;
+  List<int> selection;
 
   if (argResults["preserve"] != null && argResults.rest.isNotEmpty) {
     usageError(parser, "Can only use --preserve when reading from stdin.");
@@ -117,6 +120,10 @@ void main(List<String> args) {
 
   if (argResults["profile"]) {
     reporter = new ProfileReporter(reporter);
+  }
+
+  if (argResults["set-exit-if-changed"]) {
+    reporter = new SetExitReporter(reporter);
   }
 
   var pageWidth;
@@ -192,7 +199,7 @@ void formatStdin(FormatterOptions options, List<int> selection) {
       var output = formatter.formatSource(source);
       options.reporter
           .afterFile(null, "<stdin>", output, changed: source != output);
-      return true;
+      return;
     } on FormatterException catch (err) {
       stderr.writeln(err.message());
       exitCode = 65; // sysexits.h: EX_DATAERR

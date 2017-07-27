@@ -7,8 +7,10 @@ library dart_style.src.dart_formatter;
 import 'dart:math' as math;
 
 import 'package:analyzer/analyzer.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/src/dart/scanner/reader.dart';
+import 'package:analyzer/src/dart/scanner/scanner.dart';
 import 'package:analyzer/src/generated/parser.dart';
-import 'package:analyzer/src/generated/scanner.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/string_source.dart';
 
@@ -50,7 +52,7 @@ class DartFormatter {
   /// being formatted in error messages.
   String format(String source, {uri}) {
     if (uri == null) {
-      uri = "<unknown>";
+      // Do nothing.
     } else if (uri is Uri) {
       uri = uri.toString();
     } else if (uri is String) {
@@ -100,8 +102,9 @@ class DartFormatter {
 
     // Parse it.
     var parser = new Parser(stringSource, errorListener);
+    parser.parseGenericMethods = true;
 
-    var node;
+    AstNode node;
     if (source.isCompilationUnit) {
       node = parser.parseCompilationUnit(startToken);
     } else {

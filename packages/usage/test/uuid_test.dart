@@ -5,7 +5,7 @@
 library usage.uuid_test;
 
 import 'package:test/test.dart';
-import 'package:usage/uuid/uuid.dart';
+import 'package:usage/src/uuid.dart';
 
 main() => defineTests();
 
