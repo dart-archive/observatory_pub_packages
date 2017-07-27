@@ -2,12 +2,14 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library path.style.windows;
-
 import '../characters.dart' as chars;
 import '../internal_style.dart';
 import '../parsed_path.dart';
 import '../utils.dart';
+
+// `0b100000` can be bitwise-ORed with uppercase ASCII letters to get their
+// lowercase equivalents.
+const _asciiCaseBit = 0x20;
 
 /// The style for Windows paths.
 class WindowsStyle extends InternalStyle {
@@ -34,7 +36,7 @@ class WindowsStyle extends InternalStyle {
     return !isSeparator(path.codeUnitAt(path.length - 1));
   }
 
-  int rootLength(String path) {
+  int rootLength(String path, {bool withDrive: false}) {
     if (path.isEmpty) return 0;
     if (path.codeUnitAt(0) == chars.SLASH) return 1;
     if (path.codeUnitAt(0) == chars.BACKSLASH) {
@@ -76,8 +78,13 @@ class WindowsStyle extends InternalStyle {
     var path = uri.path;
     if (uri.host == '') {
       // Drive-letter paths look like "file:///C:/path/to/file". The
-      // replaceFirst removes the extra initial slash.
-      if (path.startsWith('/')) path = path.replaceFirst("/", "");
+      // replaceFirst removes the extra initial slash. Otherwise, leave the
+      // slash to match IE's interpretation of "/foo" as a root-relative path.
+      if (path.length >= 3 &&
+          path.startsWith('/') &&
+          isDriveLetter(path, 1)) {
+        path = path.replaceFirst("/", "");
+      }
     } else {
       // Network paths look like "file://hostname/path/to/file".
       path = '\\\\${uri.host}$path';
@@ -122,4 +129,40 @@ class WindowsStyle extends InternalStyle {
       return new Uri(scheme: 'file', pathSegments: parsed.parts);
     }
   }
+
+  bool codeUnitsEqual(int codeUnit1, int codeUnit2) {
+    if (codeUnit1 == codeUnit2) return true;
+
+    /// Forward slashes and backslashes are equivalent on Windows.
+    if (codeUnit1 == chars.SLASH) return codeUnit2 == chars.BACKSLASH;
+    if (codeUnit1 == chars.BACKSLASH) return codeUnit2 == chars.SLASH;
+
+    // If this check fails, the code units are definitely different. If it
+    // succeeds *and* either codeUnit is an ASCII letter, they're equivalent.
+    if (codeUnit1 ^ codeUnit2 != _asciiCaseBit) return false;
+
+    // Now we just need to verify that one of the code units is an ASCII letter.
+    var upperCase1 = codeUnit1 | _asciiCaseBit;
+    return upperCase1 >= chars.LOWER_A && upperCase1 <= chars.LOWER_Z;
+  }
+
+  bool pathsEqual(String path1, String path2) {
+    if (identical(path1, path2)) return true;
+    if (path1.length != path2.length) return false;
+    for (var i = 0; i < path1.length; i++) {
+      if (!codeUnitsEqual(path1.codeUnitAt(i), path2.codeUnitAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int canonicalizeCodeUnit(int codeUnit) {
+    if (codeUnit == chars.SLASH) return chars.BACKSLASH;
+    if (codeUnit < chars.UPPER_A) return codeUnit;
+    if (codeUnit > chars.UPPER_Z) return codeUnit;
+    return codeUnit | _asciiCaseBit;
+  }
+
+  String canonicalizePart(String part) => part.toLowerCase();
 }

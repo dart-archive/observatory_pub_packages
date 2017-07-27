@@ -14,12 +14,10 @@
 
 part of quiver.iterables;
 
-/**
- * Returns an [Iterable] of [IndexedValue]s where the nth value holds the nth
- * element of [iterable] and its index.
- */
-Iterable<IndexedValue> enumerate(Iterable iterable) =>
-    new EnumerateIterable(iterable);
+/// Returns an [Iterable] of [IndexedValue]s where the nth value holds the nth
+/// element of [iterable] and its index.
+Iterable<IndexedValue<E>>
+    enumerate<E>(Iterable<E> iterable) => new EnumerateIterable<E>(iterable);
 
 class IndexedValue<V> {
   final int index;
@@ -32,10 +30,8 @@ class IndexedValue<V> {
   String toString() => '($index, $value)';
 }
 
-/**
- * An [Iterable] of [IndexedValue]s where the nth value holds the nth
- * element of [iterable] and its index. See [enumerate].
- */
+/// An [Iterable] of [IndexedValue]s where the nth value holds the nth
+/// element of [iterable] and its index. See [enumerate].
 // This was inspired by MappedIterable internal to Dart collections.
 class EnumerateIterable<V> extends IterableBase<IndexedValue<V>> {
   final Iterable<V> _iterable;
@@ -57,7 +53,7 @@ class EnumerateIterable<V> extends IterableBase<IndexedValue<V>> {
       new IndexedValue<V>(index, _iterable.elementAt(index));
 }
 
-/** The [Iterator] returned by [EnumerateIterable.iterator]. */
+/// The [Iterator] returned by [EnumerateIterable.iterator].
 class EnumerateIterator<V> extends Iterator<IndexedValue<V>> {
   final Iterator<V> _iterator;
   int _index = 0;

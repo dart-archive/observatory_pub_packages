@@ -1,3 +1,92 @@
+## 0.5.1+3
+
+* Support the latest `cli_util` package.
+
+## 0.5.1+2
+
+* Support the latest `analyzer` package.
+
+## 0.5.1+1
+
+* Updated mock SDK sources to include FutureOr<T> (and fixed a syntax error)
+
+## 0.5.1
+
+* Resolver has a new method which can check whether an Asset is a Dart library
+  source
+
+## 0.5.0+2
+
+* Resolver no longer returns a partial LibraryElement for assets which are not
+  libraries
+
+## 0.5.0+1
+
+* Stop using deprecated analyzer apis.
+
+## 0.5.0
+
+* Always use a single `Resolver` instance. Fixes an issue where running with the
+  'build' package in file watching mode would treat some files as never
+  changing.
+* Breaking Change: remove the `useSharedSources` argument to Resolvers ctor
+  since sources are always shared.
+
+## 0.4.2+4
+
+* Update to work with analyzer 0.29.x and transform_test 0.2.x
+
+## 0.4.2+3
+
+* Update to work with analyzer 0.28.x.
+
+## 0.4.2+2
+
+* Update to work with analyzer 0.23.x.
+
+## 0.4.2+1
+
+* Contains a fix for the `useSharedSources` option that could result in null
+  library elements when running on multiple entry points.
+
+## 0.4.2
+
+* Use Strong Mode, fixes
+  [#38](https://github.com/dart-lang/code_transformers/issues/38).
+
+## 0.4.1
+
+* Added a fix for [#24890](https://github.com/dart-lang/sdk/issues/24890).
+  * All constants in all libraries will once again be resolved by default.
+  * Added a new `resolveAllLibraries` option to `Resolver#resolve` and
+    `Resolvers#get`. If `false` is passed then constants will not be resolved in
+    non entry points. This saves significant time if constants are not needed.
+* Added a `useSharedSources` option to `Resolvers`. This gives a significant
+  speed increase, but must be used carefully.
+  * If used, then all `Resolver` instances created from the same `Resolvers`
+    instance will share the same sources cache.
+  * This should be generally safe to use if the `Resolvers` instance is created
+    in the constructor of your `Transformer`.
+  * This option should probably not be used with a static or shared `Resolvers`
+    instance.
+
+## 0.4.0
+
+* Remove dependency on `test`, and move all test related apis to a new
+  `transformer_test` package which is now a dev dependency.
+
+## 0.3.1
+
+* Update to analyzer `>=0.27.0 <0.28.0`.
+
+## 0.3.0+1
+
+* Upgrade `test` to a real dependency.
+
+## 0.3.0
+
+* Re-release `0.2.10` release as `0.3.0`.
+
 ## 0.2.11
 
 * Revert `0.2.10` release, will be re-released as `0.3.0` since it is actually

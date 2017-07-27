@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library path.parsed_path;
-
 import 'internal_style.dart';
 import 'style.dart';
 
@@ -99,7 +97,7 @@ class ParsedPath {
     if (separators.length > 0) separators[separators.length - 1] = '';
   }
 
-  void normalize() {
+  void normalize({bool canonicalize: false}) {
     // Handle '.', '..', and empty parts.
     var leadingDoubles = 0;
     var newParts = <String>[];
@@ -115,7 +113,7 @@ class ParsedPath {
           leadingDoubles++;
         }
       } else {
-        newParts.add(part);
+        newParts.add(canonicalize ? style.canonicalizePart(part) : part);
       }
     }
 
@@ -141,6 +139,7 @@ class ParsedPath {
 
     // Normalize the Windows root if needed.
     if (root != null && style == Style.windows) {
+      if (canonicalize) root = root.toLowerCase();
       root = root.replaceAll('/', '\\');
     }
     removeTrailingSeparators();

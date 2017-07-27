@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library parse_test;
-
 import 'package:test/test.dart';
 import 'package:args/args.dart';
 import 'utils.dart';
@@ -119,7 +117,7 @@ void main() {
       });
 
       test('are invoked even if the flag is not present', () {
-        var a = 'not called';
+        var a = true;
         var parser = new ArgParser();
         parser.addFlag('a', callback: (value) => a = value);
 
@@ -163,6 +161,10 @@ void main() {
 
         parser.parse(['--a=v', '--a=x']);
         expect(a, equals(['v', 'x']));
+
+        // This reified type is important in strong mode so that people can
+        // safely write "as List<String>".
+        expect(a, new isInstanceOf<List<String>>());
       });
 
       test('for single present, allowMultiple, options are invoked with '

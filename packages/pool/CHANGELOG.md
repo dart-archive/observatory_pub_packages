@@ -1,3 +1,26 @@
+## 1.3.1
+
+* Fix the type annotation of `Pool.withResource()` to indicate that it takes
+  `() -> FutureOr<T>`.
+
+## 1.3.0
+
+* Add a `Pool.done` getter that returns the same future returned by
+  `Pool.close()`.
+
+## 1.2.4
+
+* Fix a strong-mode error.
+
+## 1.2.3
+
+* Fix a bug in which `Pool.withResource()` could throw a `StateError` when
+  called immediately before closing the pool.
+
+## 1.2.2
+
+* Fix strong mode warnings and add generic method annotations.
+
 ## 1.2.1
 
 * Internal changes only.

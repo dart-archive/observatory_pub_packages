@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library string_scanner.line_scanner;
-
 import 'package:charcode/ascii.dart';
 
 import 'string_scanner.dart';
@@ -28,6 +26,8 @@ class LineScanner extends StringScanner {
   /// This can be used to efficiently save and restore the state of the scanner
   /// when backtracking. A given [LineScannerState] is only valid for the
   /// [LineScanner] that created it.
+  ///
+  /// This does not include the scanner's match information.
   LineScannerState get state =>
       new LineScannerState._(this, position, line, column);
 
@@ -75,15 +75,26 @@ class LineScanner extends StringScanner {
   LineScanner(String string, {sourceUrl, int position})
       : super(string, sourceUrl: sourceUrl, position: position);
 
+  bool scanChar(int character) {
+    if (!super.scanChar(character)) return false;
+    _adjustLineAndColumn(character);
+    return true;
+  }
+
   int readChar() {
-    var char = super.readChar();
-    if (char == $lf || (char == $cr && peekChar() != $lf)) {
+    var character = super.readChar();
+    _adjustLineAndColumn(character);
+    return character;
+  }
+
+  /// Adjusts [_line] and [_column] after having consumed [character].
+  void _adjustLineAndColumn(int character) {
+    if (character == $lf || (character == $cr && peekChar() != $lf)) {
       _line += 1;
       _column = 0;
     } else {
       _column += 1;
     }
-    return char;
   }
 
   bool scan(Pattern pattern) {

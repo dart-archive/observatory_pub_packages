@@ -3,15 +3,13 @@
 // BSD-style license that can be found in the LICENSE file.
 library date_symbols;
 
-/**
- * This holds onto information about how a particular locale formats dates. It
- * contains mostly strings, e.g. what the names of months or weekdays are,
- * but also indicates things like the first day of the week. We expect the data
- * for instances of these to be generated out of ICU or a similar reference
- * source. This is used in conjunction with the date_time_patterns, which
- * defines for a particular locale the different named formats that will
- * make use of this data.
- */
+/// This holds onto information about how a particular locale formats dates. It
+/// contains mostly strings, e.g. what the names of months or weekdays are,
+/// but also indicates things like the first day of the week. We expect the data
+/// for instances of these to be generated out of ICU or a similar reference
+/// source. This is used in conjunction with the date_time_patterns, which
+/// defines for a particular locale the different named formats that will
+/// make use of this data.
 class DateSymbols {
   String NAME;
   List<String> ERAS,
@@ -56,31 +54,32 @@ class DateSymbols {
   // TODO(alanknight): Replace this with use of a more general serialization
   // facility once one is available. Issue 4926.
   DateSymbols.deserializeFromMap(Map map) {
+    List<String> _getStringList(String name) => new List<String>.from(map[name]);
     NAME = map["NAME"];
-    ERAS = map["ERAS"];
-    ERANAMES = map["ERANAMES"];
-    NARROWMONTHS = map["NARROWMONTHS"];
-    STANDALONENARROWMONTHS = map["STANDALONENARROWMONTHS"];
-    MONTHS = map["MONTHS"];
-    STANDALONEMONTHS = map["STANDALONEMONTHS"];
-    SHORTMONTHS = map["SHORTMONTHS"];
-    STANDALONESHORTMONTHS = map["STANDALONESHORTMONTHS"];
-    WEEKDAYS = map["WEEKDAYS"];
-    STANDALONEWEEKDAYS = map["STANDALONEWEEKDAYS"];
-    SHORTWEEKDAYS = map["SHORTWEEKDAYS"];
-    STANDALONESHORTWEEKDAYS = map["STANDALONESHORTWEEKDAYS"];
-    NARROWWEEKDAYS = map["NARROWWEEKDAYS"];
-    STANDALONENARROWWEEKDAYS = map["STANDALONENARROWWEEKDAYS"];
-    SHORTQUARTERS = map["SHORTQUARTERS"];
-    QUARTERS = map["QUARTERS"];
-    AMPMS = map["AMPMS"];
-    DATEFORMATS = map["DATEFORMATS"];
-    TIMEFORMATS = map["TIMEFORMATS"];
-    AVAILABLEFORMATS = map["AVAILABLEFORMATS"];
+    ERAS = _getStringList("ERAS");
+    ERANAMES = _getStringList("ERANAMES");
+    NARROWMONTHS = _getStringList("NARROWMONTHS");
+    STANDALONENARROWMONTHS = _getStringList("STANDALONENARROWMONTHS");
+    MONTHS = _getStringList("MONTHS");
+    STANDALONEMONTHS = _getStringList("STANDALONEMONTHS");
+    SHORTMONTHS = _getStringList("SHORTMONTHS");
+    STANDALONESHORTMONTHS = _getStringList("STANDALONESHORTMONTHS");
+    WEEKDAYS = _getStringList("WEEKDAYS");
+    STANDALONEWEEKDAYS = _getStringList("STANDALONEWEEKDAYS");
+    SHORTWEEKDAYS = _getStringList("SHORTWEEKDAYS");
+    STANDALONESHORTWEEKDAYS = _getStringList("STANDALONESHORTWEEKDAYS");
+    NARROWWEEKDAYS = _getStringList("NARROWWEEKDAYS");
+    STANDALONENARROWWEEKDAYS = _getStringList("STANDALONENARROWWEEKDAYS");
+    SHORTQUARTERS = _getStringList("SHORTQUARTERS");
+    QUARTERS = _getStringList("QUARTERS");
+    AMPMS = _getStringList("AMPMS");
+    DATEFORMATS = _getStringList("DATEFORMATS");
+    TIMEFORMATS = _getStringList("TIMEFORMATS");
+    AVAILABLEFORMATS = new Map<String, String>.from(map["AVAILABLEFORMATS"] ?? {});
     FIRSTDAYOFWEEK = map["FIRSTDAYOFWEEK"];
-    WEEKENDRANGE = map["WEEKENDRANGE"];
+    WEEKENDRANGE = new List<int>.from(map["WEEKENDRANGE"]);
     FIRSTWEEKCUTOFFDAY = map["FIRSTWEEKCUTOFFDAY"];
-    DATETIMEFORMATS = map["DATETIMEFORAMTS"];
+    DATETIMEFORMATS = _getStringList("DATETIMEFORMATS");
   }
 
   Map serializeToMap() => {
@@ -114,10 +113,8 @@ class DateSymbols {
   toString() => NAME;
 }
 
-/**
- * We hard-code the locale data for en_US here so that there's at least one
- * locale always available.
- */
+/// We hard-code the locale data for en_US here so that there's at least one
+/// locale always available.
 var en_USSymbols = new DateSymbols(
     NAME: "en_US",
     ERAS: const ['BC', 'AD'],

@@ -25,14 +25,50 @@ void main() {
     });
   });
 
+  group('Multimap.fromIterable', () {
+    test('should default to the identity for key and value', () {
+      var map = new Multimap<int, int>.fromIterable([1, 2, 1]);
+      expect(map.asMap(), {
+        1: [1, 1],
+        2: [2],
+      });
+    });
+
+    test('should allow setting value', () {
+      var i = 0;
+      var map = new Multimap<int, String>.fromIterable([1, 2, 1],
+          value: (x) => '$x:${i++}');
+      expect(map.asMap(), {
+        1: ['1:0', '1:2'],
+        2: ['2:1'],
+      });
+    });
+
+    test('should allow setting key', () {
+      var map =
+          new Multimap<String, int>.fromIterable([1, 2, 1], key: (x) => '($x)');
+      expect(map.asMap(), {
+        '(1)': [1, 1],
+        '(2)': [2],
+      });
+    });
+
+    test('should allow setting both key and value', () {
+      var i = 0;
+      var map = new Multimap<int, String>.fromIterable([1, 2, 1],
+          key: (x) => -x, value: (x) => '$x:${i++}');
+      expect(map.asMap(), {
+        -1: ['1:0', '1:2'],
+        -2: ['2:1'],
+      });
+    });
+  });
+
   group('Multimap asMap() view', () {
     var mmap;
     var map;
     setUp(() {
-      mmap = new Multimap()
-        ..add('k1', 'v1')
-        ..add('k1', 'v2')
-        ..add('k2', 'v3');
+      mmap = new Multimap()..add('k1', 'v1')..add('k1', 'v2')..add('k2', 'v3');
       map = mmap.asMap();
     });
 
@@ -59,10 +95,12 @@ void main() {
     test('forEach should iterate over all key-value pairs', () {
       var results = [];
       map.forEach((k, v) => results.add(new Pair(k, v)));
-      expect(results, unorderedEquals([
-          new Pair('k1', ['v1', 'v2']),
-          new Pair('k2', ['v3'])
-      ]));
+      expect(
+          results,
+          unorderedEquals([
+            new Pair('k1', ['v1', 'v2']),
+            new Pair('k2', ['v3'])
+          ]));
     });
 
     test('isEmpty should return whether the map contains key-value pairs', () {
@@ -78,7 +116,11 @@ void main() {
     });
 
     test('addAll(Map m) should throw UnsupportedError', () {
-      expect(() => map.addAll({'k1': [1, 2, 3]}), throwsUnsupportedError);
+      expect(
+          () => map.addAll({
+                'k1': [1, 2, 3]
+              }),
+          throwsUnsupportedError);
     });
 
     test('putIfAbsent() should throw UnsupportedError', () {
@@ -103,10 +145,7 @@ void main() {
     test('should return the number of keys as length', () {
       var map = new ListMultimap<String, String>();
       expect(map.length, 0);
-      map
-        ..add('k1', 'v1')
-        ..add('k1', 'v2')
-        ..add('k2', 'v3');
+      map..add('k1', 'v1')..add('k1', 'v2')..add('k2', 'v3');
       expect(map.length, 2);
     });
 
@@ -163,6 +202,14 @@ void main() {
       var map = new ListMultimap<String, String>()
         ..add('k', 'v1')
         ..add('k', 'v1');
+      expect(map['k'], ['v1', 'v1']);
+    });
+
+    test(
+        'should support adding duplicate values for a key when initialized '
+        'from an iterable', () {
+      var map = new ListMultimap<String, String>.fromIterable(['k', 'k'],
+          value: (x) => 'v1');
       expect(map['k'], ['v1', 'v1']);
     });
 
@@ -283,56 +330,64 @@ void main() {
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.remove', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].remove('v1');
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeAt', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].removeAt(0);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeAt', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].removeLast();
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeRange', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].removeRange(0, 1);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeWhere', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].removeWhere((_) => true);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.replaceRange', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].replaceRange(0, 1, []);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.retainWhere', () {
       var map = new ListMultimap<String, String>()..add('k1', 'v1');
       map['k1'].retainWhere((_) => false);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.clear', () {
       var map = new ListMultimap<String, String>()
         ..add('k1', 'v1')
@@ -466,8 +521,13 @@ void main() {
         ..add('k1', 'v2')
         ..add('k2', 'v3')
         ..forEach((k, v) => s.add(new Pair(k, v)));
-      expect(s, unorderedEquals(
-          [new Pair('k1', 'v1'), new Pair('k1', 'v2'), new Pair('k2', 'v3')]));
+      expect(
+          s,
+          unorderedEquals([
+            new Pair('k1', 'v1'),
+            new Pair('k1', 'v2'),
+            new Pair('k2', 'v3')
+          ]));
     });
 
     test('should support iteration over all {key, Iterable<value>} pairs', () {
@@ -519,10 +579,7 @@ void main() {
     test('should return the number of keys as length', () {
       var map = new SetMultimap<String, String>();
       expect(map.length, 0);
-      map
-        ..add('k1', 'v1')
-        ..add('k1', 'v2')
-        ..add('k2', 'v3');
+      map..add('k1', 'v1')..add('k1', 'v2')..add('k2', 'v3');
       expect(map.length, 2);
     });
 
@@ -563,6 +620,14 @@ void main() {
       var map = new SetMultimap<String, String>()
         ..add('k', 'v1')
         ..add('k', 'v1');
+      expect(map['k'], ['v1']);
+    });
+
+    test(
+        'should not support adding duplicate values for a key when '
+        'initialized from an iterable', () {
+      var map = new SetMultimap<String, String>.fromIterable(['k', 'k'],
+          value: (x) => 'v1');
       expect(map['k'], ['v1']);
     });
 
@@ -690,14 +755,16 @@ void main() {
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.remove', () {
       var map = new SetMultimap<String, String>()..add('k1', 'v1');
       map['k1'].remove('v1');
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeAll', () {
       var map = new SetMultimap<String, String>()
         ..add('k1', 'v1')
@@ -706,28 +773,32 @@ void main() {
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.removeWhere', () {
       var map = new SetMultimap<String, String>()..add('k1', 'v1');
       map['k1'].removeWhere((_) => true);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.retainAll', () {
       var map = new SetMultimap<String, String>()..add('k1', 'v1');
       map['k1'].retainAll([]);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.retainWhere', () {
       var map = new SetMultimap<String, String>()..add('k1', 'v1');
       map['k1'].retainWhere((_) => false);
       expect(map.containsKey('k1'), false);
     });
 
-    test('should remove a key when all associated values are removed '
+    test(
+        'should remove a key when all associated values are removed '
         'via the underlying iterable.clear', () {
       var map = new SetMultimap<String, String>()..add('k1', 'v1');
       map['k1'].clear();
@@ -865,8 +936,13 @@ void main() {
         ..add('k1', 'v2')
         ..add('k2', 'v3')
         ..forEach((k, v) => s.add(new Pair(k, v)));
-      expect(s, unorderedEquals(
-          [new Pair('k1', 'v1'), new Pair('k1', 'v2'), new Pair('k2', 'v3')]));
+      expect(
+          s,
+          unorderedEquals([
+            new Pair('k1', 'v1'),
+            new Pair('k1', 'v2'),
+            new Pair('k2', 'v3')
+          ]));
     });
 
     test('should support iteration over all {key, Iterable<value>} pairs', () {
@@ -881,8 +957,9 @@ void main() {
       expect(map['k2'], unorderedEquals(['v3']));
     });
 
-    test('should support operations on empty map views without breaking '
-         'delegate synchronization', () {
+    test(
+        'should support operations on empty map views without breaking '
+        'delegate synchronization', () {
       var mmap = new SetMultimap<String, String>();
       Set x = mmap['k1'];
       Set y = mmap['k1'];
@@ -898,9 +975,10 @@ class Pair {
   final x;
   final y;
   Pair(this.x, this.y);
-  bool operator ==(Pair other) {
+  bool operator ==(other) {
     if (x != other.x) return false;
     return equals(y).matches(other.y, {});
   }
+
   String toString() => "($x, $y)";
 }

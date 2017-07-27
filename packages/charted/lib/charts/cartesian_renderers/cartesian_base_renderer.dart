@@ -79,10 +79,9 @@ abstract class CartesianRendererBase implements CartesianRenderer {
   @override
   Extent get extent {
     assert(series != null && area != null);
-    var rows = area.data.rows,
-        measures = series.measures,
-        max = SMALL_INT_MIN,
-        min = SMALL_INT_MAX;
+    var rows = area.data.rows, measures = series.measures;
+    num max = SMALL_INT_MIN;
+    num min = SMALL_INT_MAX;
 
     for (int i = 0, len = rows.length; i < len; ++i) {
       var row = rows.elementAt(i);
@@ -96,6 +95,12 @@ abstract class CartesianRendererBase implements CartesianRenderer {
           }
         }
       }
+    }
+
+    // If all values are null or non finite, set the extent to be 0.
+    if (max == SMALL_INT_MIN && min == SMALL_INT_MAX) {
+      max = 0;
+      min = 0;
     }
     return new Extent(min, max);
   }

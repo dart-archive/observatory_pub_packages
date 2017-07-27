@@ -1,3 +1,74 @@
+## 0.13.7
+
+* Add explicit support for forwarding the value returned by `Command.run()` to
+  `CommandRunner.run()`. This worked unintentionally prior to 0.13.6+1.
+
+* Add type arguments to `CommandRunner` and `Command` to indicate the return
+  values of the `run()` functions.
+
+## 0.13.6+1
+
+* When a `CommandRunner` is passed `--help` before any commands, it now prints
+  the usage of the chosen command.
+
+## 0.13.6
+
+* `ArgParser.parse()` now throws an `ArgParserException`, which implements
+  `FormatException` and has a field that lists the commands that were parsed.
+
+* If `CommandRunner.run()` encounters a parse error for a subcommand, it now
+  prints the subcommand's usage rather than the global usage.
+
+## 0.13.5
+
+* Allow `CommandRunner.argParser` and `Command.argParser` to be overridden in
+  strong mode.
+
+## 0.13.4+2
+
+* Fix a minor documentation error.
+
+## 0.13.4+1
+
+* Ensure that multiple-value arguments produce reified `List<String>`s.
+
+## 0.13.4
+
+* By default, only the first line of a command's description is included in its
+  parent runner's usage string. This returns to the default behavior from
+  before 0.13.3+1.
+
+* A `Command.summary` getter has been added to explicitly control the summary
+  that appears in the parent runner's usage string. This getter defaults to the
+  first line of the description, but can be overridden if the user wants a
+  multi-line summary.
+
+## 0.13.3+6
+
+* README fixes.
+
+## 0.13.3+5
+
+* Make strong mode clean.
+
+## 0.13.3+4
+
+* Use the proper `usage` getter in the README.
+
+## 0.13.3+3
+
+* Add an explicit default value for the `allowTrailingOptions` parameter to `new
+  ArgParser()`. This doesn't change the behavior at all; the option already
+  defaulted to `false`, and passing in `null` still works.
+
+## 0.13.3+2
+
+* Documentation fixes.
+
+## 0.13.3+1
+
+* Print all lines of multi-line command descriptions.
+
 ## 0.13.2
 
 * Allow option values that look like options. This more closely matches the
@@ -69,13 +140,13 @@
 ## 0.12.0
 
 * Removed public constructors for `ArgResults` and `Option`.
- 
+
 * `ArgResults.wasParsed()` can be used to determine if an option was actually
   parsed or the default value is being returned.
 
 * Replaced `isFlag` and `allowMultiple` fields in the `Option` class with a
   three-value `OptionType` enum.
-  
+
 * Options may define `valueHelp` which will then be shown in the usage.
 
 ## 0.11.0

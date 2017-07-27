@@ -90,6 +90,57 @@ class _TreePrinter extends Visitor {
     output.depth--;
   }
 
+  void visitDocumentDirective(DocumentDirective node) {
+    heading('DocumentDirective', node);
+    output.depth++;
+    output.writeNodeList('functions', node.functions);
+    output.writeNodeList('group rule body', node.groupRuleBody);
+    output.depth--;
+  }
+
+  void visitSupportsDirective(SupportsDirective node) {
+    heading('SupportsDirective', node);
+    output.depth++;
+    output.writeNode('condition', node.condition);
+    output.writeNodeList('group rule body', node.groupRuleBody);
+    output.depth--;
+  }
+
+  void visitSupportsConditionInParens(SupportsConditionInParens node) {
+    heading('SupportsConditionInParens', node);
+    output.depth++;
+    output.writeNode('condition', node.condition);
+    output.depth--;
+  }
+
+  void visitSupportsNegation(SupportsNegation node) {
+    heading('SupportsNegation', node);
+    output.depth++;
+    output.writeNode('condition', node.condition);
+    output.depth--;
+  }
+
+  void visitSupportsConjunction(SupportsConjunction node) {
+    heading('SupportsConjunction', node);
+    output.depth++;
+    output.writeNodeList('conditions', node.conditions);
+    output.depth--;
+  }
+
+  void visitSupportsDisjunction(SupportsDisjunction node) {
+    heading('SupportsDisjunction', node);
+    output.depth++;
+    output.writeNodeList('conditions', node.conditions);
+    output.depth--;
+  }
+
+  void visitViewportDirective(ViewportDirective node) {
+    heading('ViewportDirective', node);
+    output.depth++;
+    super.visitViewportDirective(node);
+    output.depth--;
+  }
+
   void visitPageDirective(PageDirective node) {
     heading('PageDirective', node);
     output.depth++;
@@ -271,6 +322,10 @@ class _TreePrinter extends Visitor {
       output.writeValue('combinator', ">");
     } else if (node.isCombinatorTilde) {
       output.writeValue('combinator', "~");
+    } else if (node.isCombinatorShadowPiercingDescendant) {
+      output.writeValue('combinator', '>>>');
+    } else if (node.isCombinatorDeep) {
+      output.writeValue('combinator', '/deep/');
     } else {
       output.writeValue('combinator', "ERROR UNKNOWN");
     }
@@ -338,7 +393,7 @@ class _TreePrinter extends Visitor {
   void visitPseudoClassFunctionSelector(PseudoClassFunctionSelector node) {
     heading('Pseudo Class Function Selector', node);
     output.depth++;
-    visitSelectorExpression(node.expression);
+    node.argument.visit(this);
     super.visitPseudoClassFunctionSelector(node);
     output.depth--;
   }

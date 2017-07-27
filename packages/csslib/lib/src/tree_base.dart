@@ -16,7 +16,7 @@ abstract class TreeNode {
   TreeNode clone();
 
   /** Classic double-dispatch visitor for implementing passes. */
-  void visit(VisitorBase visitor);
+  visit(VisitorBase visitor);
 
   /** A multiline string showing the node and its children. */
   String toDebugString() {
@@ -59,16 +59,21 @@ class TreeOutput {
   }
 
   String toValue(value) {
-    if (value == null) return 'null';
-    else if (value is Identifier) return value.name;
-    else return value.toString();
+    if (value == null)
+      return 'null';
+    else if (value is Identifier)
+      return value.name;
+    else
+      return value.toString();
   }
 
   void writeNode(String label, TreeNode node) {
     write('${label}: ');
     depth += 1;
-    if (node != null) node.visit(printer);
-    else writeln('null');
+    if (node != null)
+      node.visit(printer);
+    else
+      writeln('null');
     depth -= 1;
   }
 

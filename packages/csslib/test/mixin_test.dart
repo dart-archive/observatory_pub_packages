@@ -4,12 +4,13 @@
 
 library mixin_test;
 
+import 'package:csslib/src/messages.dart';
 import 'package:test/test.dart';
 
 import 'testing.dart';
 
 compileAndValidate(String input, String generated) {
-  var errors = [];
+  var errors = <Message>[];
   var stylesheet = compileCss(input, errors: errors, opts: options);
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
@@ -17,7 +18,7 @@ compileAndValidate(String input, String generated) {
 }
 
 compilePolyfillAndValidate(String input, String generated) {
-  var errors = [];
+  var errors = <Message>[];
   var stylesheet = polyFillCompileCss(input, errors: errors, opts: options);
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
@@ -25,7 +26,8 @@ compilePolyfillAndValidate(String input, String generated) {
 }
 
 void topLevelMixin() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin silly-links {
   a {
     color: blue;
@@ -34,14 +36,17 @@ void topLevelMixin() {
 }
 
 @include silly-links;
-''', r'''a {
+''',
+      r'''
+a {
   color: #00f;
   background-color: #f00;
 }''');
 }
 
 void topLevelMixinTwoIncludes() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   a {
     color: blue;
@@ -56,7 +61,9 @@ void topLevelMixinTwoIncludes() {
 }
 @include a;
 @include b;
-''', r'''a {
+''',
+      r'''
+a {
   color: #00f;
   background-color: #f00;
 }
@@ -68,7 +75,8 @@ span {
 
 /** Tests top-level mixins that includes another mixin. */
 void topLevelMixinMultiRulesets() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   a {
     color: blue;
@@ -90,7 +98,9 @@ void topLevelMixinMultiRulesets() {
 }
 @include a;
 @include c;
-''', r'''a {
+''',
+      r'''
+a {
   color: #00f;
   background-color: #f00;
 }
@@ -105,7 +115,8 @@ span {
 }
 
 void topLevelMixinDeeplyNestedRulesets() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   a {
     color: blue;
@@ -145,7 +156,9 @@ void topLevelMixinDeeplyNestedRulesets() {
   @include d;
 }
 @include c;
-''', r'''a {
+''',
+      r'''
+a {
   color: #00f;
   background-color: #f00;
 }
@@ -170,7 +183,8 @@ a:hover {
 
 /** Tests selector groups and other combinators. */
 void topLevelMixinSelectors() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   a, b {
     color: blue;
@@ -183,7 +197,9 @@ void topLevelMixinSelectors() {
 }
 
 @include a;
-''', r'''a, b {
+''',
+      r'''
+a, b {
   color: #00f;
   background-color: #f00;
 }
@@ -194,20 +210,24 @@ div > span {
 }
 
 void declSimpleMixin() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin div-border {
   border: 2px dashed red;
 }
 div {
   @include div-border;
 }
-''', r'''div {
+''',
+      r'''
+div {
   border: 2px dashed #f00;
 }''');
 }
 
 void declMixinTwoIncludes() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin div-border {
   border: 2px dashed red;
 }
@@ -218,14 +238,17 @@ div {
   @include div-border;
   @include div-color;
 }
-''', r'''div {
+''',
+      r'''
+div {
   border: 2px dashed #f00;
   color: #00f;
 }''');
 }
 
 void declMixinNestedIncludes() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin div-border {
   border: 2px dashed red;
 }
@@ -244,7 +267,9 @@ div {
   @include div-border;
   @include div-color;
 }
-''', r'''div {
+''',
+      r'''
+div {
   border: 2px dashed #f00;
   padding: .5em;
   color: #00f;
@@ -253,7 +278,8 @@ div {
 }
 
 void declMixinDeeperNestedIncludes() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin div-border {
   border: 2px dashed red;
 }
@@ -271,7 +297,9 @@ div {
   @include div-border;
   @include div-color;
 }
-''', r'''div {
+''',
+      r'''
+div {
   border: 2px dashed #f00;
   padding: .5em;
   margin: 5px;
@@ -279,7 +307,8 @@ div {
 }
 
 void mixinArg() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin div-border-1 {
   border: 2px dashed red;
 }
@@ -308,7 +337,9 @@ div-3 {
 div-4 {
   @include div-border-2;
 }
-''', r'''div-1 {
+''',
+      r'''
+div-1 {
   margin-left: 10px;
   margin-right: 100px;
   border: 2px dashed #f00;
@@ -327,7 +358,8 @@ div-4 {
 }
 
 void mixinArgs() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin box-shadow(@shadows...) {
   -moz-box-shadow: @shadows;
   -webkit-box-shadow: @shadows;
@@ -336,7 +368,8 @@ void mixinArgs() {
 
 .shadows {
   @include box-shadow(0px 4px 5px #666, 2px 6px 10px #999);
-}''', r'''
+}''',
+      r'''
 .shadowed {
   -moz-box-shadow: 0px 4px 5px #666, 2px 6px 10px #999;
   -webkit-box-shadow: 0px 4px 5px #666, 2px 6px 10px #999;
@@ -346,7 +379,8 @@ void mixinArgs() {
 }
 
 void mixinManyArgs() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin border(@border-values) {
   border: @border-values
 }
@@ -354,12 +388,14 @@ void mixinManyArgs() {
 .primary {
   @include border(3px solid green);
 }
-''', r'''
+''',
+      r'''
 .primary {
   border: 3px solid #008000;
 }''');
 
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin setup(@border-color, @border-style, @border-size, @color) {
   border: @border-size @border-style @border-color;
   color: @color;
@@ -368,14 +404,16 @@ void mixinManyArgs() {
 .primary {
   @include setup(red, solid, 5px, blue);
 }
-''', r'''
+''',
+      r'''
 .primary {
   border: 5px solid #f00;
   color: #00f;
 }''');
 
   // Test passing a declaration that is multiple parameters.
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin colors(@text, @background, @border) {
   color: @text;
   background-color: @background;
@@ -386,7 +424,9 @@ void mixinManyArgs() {
 .primary {
   @include colors(@values);
 }
-''', r'''var-values: #f00, #0f0, #00f;
+''',
+      r'''
+var-values: #f00, #0f0, #00f;
 
 .primary {
   color: #f00;
@@ -394,7 +434,8 @@ void mixinManyArgs() {
   border-color: #00f;
 }''');
 
-  compilePolyfillAndValidate(r'''
+  compilePolyfillAndValidate(
+      r'''
 @mixin colors(@text, @background, @border) {
   color: @text;
   background-color: @background;
@@ -405,7 +446,9 @@ void mixinManyArgs() {
 .primary {
   @include colors(@values);
 }
-''', r'''.primary {
+''',
+      r'''
+.primary {
   color: #f00;
   background-color: #0f0;
   border-color: #00f;
@@ -413,7 +456,7 @@ void mixinManyArgs() {
 }
 
 void badDeclarationInclude() {
-  final errors = [];
+  final errors = <Message>[];
   final input = r'''
 @mixin a {
   #foo-id {
@@ -441,7 +484,7 @@ void badDeclarationInclude() {
 }
 
 void badTopInclude() {
-  final errors = [];
+  final errors = <Message>[];
   final input = r'''
 @mixin b {
   color: red;
@@ -467,7 +510,7 @@ void badTopInclude() {
 }
 
 void emptyMixin() {
-  final errors = [];
+  final errors = <Message>[];
   final input = r'''
 @mixin a {
 }
@@ -480,7 +523,8 @@ div {
 }
   ''';
 
-  var generated = r'''div {
+  var generated = r'''
+div {
   border: 2px dashed #f00;
 }''';
 
@@ -492,7 +536,7 @@ div {
 }
 
 void undefinedTopLevel() {
-  final errors = [];
+  final errors = <Message>[];
   final input = r'''
 @mixin a {
   @include b;
@@ -520,7 +564,7 @@ void undefinedTopLevel() {
 }
 
 void undefinedDeclaration() {
-  final errors = [];
+  final errors = <Message>[];
   final input = r'''
 @mixin a {
   @include b;
@@ -546,7 +590,8 @@ div {
 }
 
 void includeGrammar() {
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   foo { color: red }
 }
@@ -557,14 +602,17 @@ void includeGrammar() {
 }
 
 @include b;
-''', r'''foo {
+''',
+      r'''
+foo {
   color: #f00;
 }
 foo {
   color: #f00;
 }''');
 
-  compileAndValidate(r'''
+  compileAndValidate(
+      r'''
 @mixin a {
   color: red
 }
@@ -573,12 +621,14 @@ foo {
   @include a;
   @include a
 }
-''', r'''foo {
+''',
+      r'''
+foo {
   color: #f00;
   color: #f00;
 }''');
 
-  var errors = [];
+  var errors = <Message>[];
   var input = r'''
 @mixin a {
   foo { color: red }

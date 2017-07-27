@@ -16,7 +16,7 @@ const _default = const css.PreprocessorOptions(
  * tests (by default) will ensure that the CSS is really valid.
  */
 StyleSheet parseCss(String cssInput,
-    {List errors, css.PreprocessorOptions opts}) {
+    {List<css.Message> errors, css.PreprocessorOptions opts}) {
   return css.parse(cssInput,
       errors: errors, options: opts == null ? _default : opts);
 }
@@ -27,7 +27,7 @@ String prettyPrint(StyleSheet ss) =>
     (emitCss..visitTree(ss, pretty: true)).toString();
 
 main() {
-  var errors = [];
+  var errors = <css.Message>[];
 
   // Parse a simple stylesheet.
   print('1. Good CSS, parsed CSS emitted:');
@@ -40,7 +40,8 @@ main() {
       '}'
       '#div {'
       'color : #00F578; border-color: #878787;'
-      '}', errors: errors);
+      '}',
+      errors: errors);
 
   if (!errors.isEmpty) {
     print("Got ${errors.length} errors.\n");
@@ -54,9 +55,11 @@ main() {
   // Parse a stylesheet with errors
   print('2. Catch severe syntax errors:');
   print('   ===========================');
-  var stylesheetError = parseCss('.foo #%^&*asdf{ '
+  var stylesheetError = parseCss(
+      '.foo #%^&*asdf{ '
       'color: red; left: 20px; top: 20px; width: 100px; height:200px'
-      '}', errors: errors);
+      '}',
+      errors: errors);
 
   if (!errors.isEmpty) {
     print("Got ${errors.length} errors.\n");

@@ -1,22 +1,22 @@
 // Copyright (c) 2014, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
+@TestOn('vm')
 library code_transformers.test.benchmarks_test;
 
 import 'package:barback/barback.dart';
 import 'package:code_transformers/benchmarks.dart';
-import 'package:unittest/compact_vm_config.dart';
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 
 main() {
-  useCompactVMConfiguration();
-
   test('can benchmark transformers', () {
     var transformer = new TestTransformer();
-    var transformers = [[transformer]];
+    var transformers = [
+      [transformer]
+    ];
     var id = new AssetId('foo', 'lib/bar.dart');
     var files = {
-        id: 'library foo.bar;',
+      id: 'library foo.bar;',
     };
     var benchmark = new TransformerBenchmark(transformers, files);
     return benchmark.measure().then((result) {

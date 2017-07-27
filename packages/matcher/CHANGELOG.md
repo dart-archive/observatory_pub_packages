@@ -1,3 +1,15 @@
+## 0.12.1+1
+
+* Produce a better error message when a `CustomMatcher`'s feature throws.
+
+## 0.12.1
+
+* Add containsAllInOrder matcher for Iterables
+
+## 0.12.0+2
+
+* Fix all strong-mode warnings.
+
 ## 0.12.0+1
 
 * Fix test files to use `test` instead of `unittest` pkg.
@@ -18,6 +30,15 @@
 * Removed the `name` parameter for `isInstanceOf`. This was previously
   deprecated, and is no longer necessary since all language implementations now
   support converting the type parameter to a string directly.
+
+## 0.11.4+6
+
+* Fix a bug introduced in 0.11.4+5 in which operator matchers broke when taking
+  lists of matchers.
+
+## 0.11.4+5
+
+* Fix all strong-mode warnings.
 
 ## 0.11.4+4
 

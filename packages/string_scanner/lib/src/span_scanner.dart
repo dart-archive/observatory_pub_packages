@@ -2,13 +2,12 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library string_scanner.span_scanner;
-
 import 'package:source_span/source_span.dart';
 
 import 'eager_span_scanner.dart';
 import 'exception.dart';
 import 'line_scanner.dart';
+import 'relative_span_scanner.dart';
 import 'string_scanner.dart';
 import 'utils.dart';
 
@@ -39,7 +38,10 @@ class SpanScanner extends StringScanner implements LineScanner {
   ///
   /// This is the span for the entire match. There's no way to get spans for
   /// subgroups since [Match] exposes no information about their positions.
-  FileSpan get lastSpan => _lastSpan;
+  FileSpan get lastSpan {
+    if (lastMatch == null) _lastSpan = null;
+    return _lastSpan;
+  }
   FileSpan _lastSpan;
 
   /// The current location of the scanner.
@@ -54,7 +56,7 @@ class SpanScanner extends StringScanner implements LineScanner {
   /// [FileSpan]s as well as for error reporting. It can be a [String], a
   /// [Uri], or `null`.
   SpanScanner(String string, {sourceUrl, int position})
-      : _sourceFile = new SourceFile(string, url: sourceUrl),
+      : _sourceFile = new SourceFile.fromString(string, url: sourceUrl),
         super(string, sourceUrl: sourceUrl, position: position);
 
   /// Creates a new [SpanScanner] that eagerly computes line and column numbers.
@@ -70,6 +72,14 @@ class SpanScanner extends StringScanner implements LineScanner {
   /// their line and column numbers.
   factory SpanScanner.eager(String string, {sourceUrl, int position}) =
       EagerSpanScanner;
+
+  /// Creates a new [SpanScanner] that scans within [span].
+  ///
+  /// This scans through [span.text], but emits new spans from [span.file] in
+  /// their appropriate relative positions. The [string] field contains only
+  /// [span.text], and [position], [line], and [column] are all relative to the
+  /// span.
+  factory SpanScanner.within(FileSpan span) = RelativeSpanScanner;
 
   /// Creates a [FileSpan] representing the source range between [startState]
   /// and the current position.
@@ -95,7 +105,7 @@ class SpanScanner extends StringScanner implements LineScanner {
     if (position == null) {
       position = match == null ? this.position : match.start;
     }
-    if (length == null) length = match == null ? 1 : match.end - match.start;
+    if (length == null) length = match == null ? 0 : match.end - match.start;
 
     var span = _sourceFile.span(position, position + length);
     throw new StringScannerException(message, span, string);

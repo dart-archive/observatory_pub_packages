@@ -2,11 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/**
- * Test data for one particular date formatted for a small number of locales.
- * Provides at least a basic check on formatting, including formatting with
- * non-ASCII characters and some different orderings.
- */
+/// Test data for one particular date formatted for a small number of locales.
+/// Provides at least a basic check on formatting, including formatting with
+/// non-ASCII characters and some different orderings.
 
 // TODO(alanknight): Test more locales and a wider variety of test data,
 // possibly by generating test data out of ICU.
@@ -69,7 +67,7 @@ var English = const {
 
 var German = const {
   "DAY": "27",
-  "ABBR_WEEKDAY": "Fr.",
+  "ABBR_WEEKDAY": "Fr",
   "WEEKDAY": "Freitag",
   "ABBR_STANDALONE_MONTH": "Jan",
   "STANDALONE_MONTH": "Januar",
@@ -124,7 +122,7 @@ var German = const {
 
 var Austrian = const {
   "DAY": "27",
-  "ABBR_WEEKDAY": "Fr.",
+  "ABBR_WEEKDAY": "Fr",
   "WEEKDAY": "Freitag",
   "ABBR_STANDALONE_MONTH": "Jän",
   "STANDALONE_MONTH": "Jänner",
@@ -184,8 +182,8 @@ var French = const {
   "ABBR_STANDALONE_MONTH": "janv.",
   "STANDALONE_MONTH": "janvier",
   "NUM_MONTH": "1",
-  "NUM_MONTH_DAY": "27/1",
-  "NUM_MONTH_WEEKDAY_DAY": "ven. 27/1",
+  "NUM_MONTH_DAY": "27/01",
+  "NUM_MONTH_WEEKDAY_DAY": "ven. 27/01",
   "ABBR_MONTH": "janv.",
   "ABBR_MONTH_DAY": "27 janv.",
   "ABBR_MONTH_WEEKDAY_DAY": "ven. 27 janv.",
@@ -195,9 +193,9 @@ var French = const {
   "ABBR_QUARTER": "T1",
   "QUARTER": "1er trimestre",
   "YEAR": "2012",
-  "YEAR_NUM_MONTH": "1/2012",
-  "YEAR_NUM_MONTH_DAY": "27/1/2012",
-  "YEAR_NUM_MONTH_WEEKDAY_DAY": "ven. 27/1/2012",
+  "YEAR_NUM_MONTH": "01/2012",
+  "YEAR_NUM_MONTH_DAY": "27/01/2012",
+  "YEAR_NUM_MONTH_WEEKDAY_DAY": "ven. 27/01/2012",
   "YEAR_ABBR_MONTH": "janv. 2012",
   "YEAR_ABBR_MONTH_DAY": "27 janv. 2012",
   "YEAR_ABBR_MONTH_WEEKDAY_DAY": "ven. 27 janv. 2012",
@@ -290,14 +288,14 @@ var Greek = const {
   "ABBR_WEEKDAY": "Παρ",
   "WEEKDAY": "Παρασκευή",
   "ABBR_STANDALONE_MONTH": "Ιαν",
-  "STANDALONE_MONTH": "Ιανουάριος",
+  "STANDALONE_MONTH": "Ιανουαρίου",
   "NUM_MONTH": "1",
   "NUM_MONTH_DAY": "27/1",
   "NUM_MONTH_WEEKDAY_DAY": "Παρ, 27/1",
   "ABBR_MONTH": "Ιαν",
   "ABBR_MONTH_DAY": "27 Ιαν",
   "ABBR_MONTH_WEEKDAY_DAY": "Παρ, 27 Ιαν",
-  "MONTH": "Ιανουάριος",
+  "MONTH": "Ιανουαρίου",
   "MONTH_DAY": "27 Ιανουαρίου",
   "MONTH_WEEKDAY_DAY": "Παρασκευή, 27 Ιανουαρίου",
   "ABBR_QUARTER": "Τ1",

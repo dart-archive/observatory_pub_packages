@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library args.src.arg_parser;
-
 import 'dart:collection';
 
 import 'arg_results.dart';
@@ -37,12 +35,12 @@ class ArgParser {
   /// after it finds an argument that is neither an option nor a command.
   /// This allows options to be specified after regular arguments. Defaults to
   /// `false`.
-  factory ArgParser({bool allowTrailingOptions}) => new ArgParser._(
+  factory ArgParser({bool allowTrailingOptions: false}) => new ArgParser._(
       <String, Option>{}, <String, ArgParser>{},
       allowTrailingOptions: allowTrailingOptions);
 
   ArgParser._(Map<String, Option> options, Map<String, ArgParser> commands,
-      {bool allowTrailingOptions})
+      {bool allowTrailingOptions: false})
       : this._options = options,
         this.options = new UnmodifiableMapView(options),
         this._commands = commands,
@@ -132,7 +130,7 @@ class ArgParser {
   /// Parses [args], a list of command-line arguments, matches them against the
   /// flags and options defined by this parser, and returns the result.
   ArgResults parse(List<String> args) =>
-      new Parser(null, this, args.toList(), null, null).parse();
+      new Parser(null, this, args.toList()).parse();
 
   /// Generates a string displaying usage information for the defined options.
   ///

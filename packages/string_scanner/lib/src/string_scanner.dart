@@ -2,8 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library string_scanner.string_scanner;
-
+import 'package:charcode/charcode.dart';
 import 'package:source_span/source_span.dart';
 
 import 'exception.dart';
@@ -33,14 +32,21 @@ class StringScanner {
     }
 
     _position = position;
+    _lastMatch = null;
   }
   int _position = 0;
 
   /// The data about the previous match made by the scanner.
   ///
   /// If the last match failed, this will be `null`.
-  Match get lastMatch => _lastMatch;
+  Match get lastMatch {
+    // Lazily unset [_lastMatch] so that we avoid extra assignments in
+    // character-by-character methods that are used in core loops.
+    if (_position != _lastMatchPosition) _lastMatch = null;
+    return _lastMatch;
+  }
   Match _lastMatch;
+  int _lastMatchPosition;
 
   /// The portion of the string that hasn't yet been scanned.
   String get rest => string.substring(position);
@@ -81,13 +87,48 @@ class StringScanner {
     return string.codeUnitAt(index);
   }
 
+  /// If the next character in the string is [character], consumes it.
+  ///
+  /// Returns whether or not [character] was consumed.
+  bool scanChar(int character) {
+    if (isDone) return false;
+    if (string.codeUnitAt(_position) != character) return false;
+    _position++;
+    return true;
+  }
+
+  /// If the next character in the string is [character], consumes it.
+  ///
+  /// If [character] could not be consumed, throws a [FormatException]
+  /// describing the position of the failure. [name] is used in this error as
+  /// the expected name of the character being matched; if it's `null`, the
+  /// character itself is used instead.
+  void expectChar(int character, {String name}) {
+    if (scanChar(character)) return;
+
+    if (name == null) {
+      if (character == $backslash) {
+        name = r'"\"';
+      } else if (character == $double_quote) {
+        name = r'"\""';
+      } else {
+        name = '"${new String.fromCharCode(character)}"';
+      }
+    }
+
+    _fail(name);
+  }
+
   /// If [pattern] matches at the current position of the string, scans forward
   /// until the end of the match.
   ///
   /// Returns whether or not [pattern] matched.
   bool scan(Pattern pattern) {
     var success = matches(pattern);
-    if (success) _position = _lastMatch.end;
+    if (success) {
+      _position = _lastMatch.end;
+      _lastMatchPosition = _position;
+    }
     return success;
   }
 
@@ -128,6 +169,7 @@ class StringScanner {
   /// This doesn't move the scan pointer forward.
   bool matches(Pattern pattern) {
     _lastMatch = pattern.matchAsPrefix(string, position);
+    _lastMatchPosition = _position;
     return _lastMatch != null;
   }
 
@@ -150,7 +192,7 @@ class StringScanner {
   ///
   /// If [position] and/or [length] are passed, they are used as the error span
   /// instead. If only [length] is passed, [position] defaults to the current
-  /// position; if only [position] is passed, [length] defaults to 1.
+  /// position; if only [position] is passed, [length] defaults to 0.
   ///
   /// It's an error to pass [match] at the same time as [position] or [length].
   void error(String message, {Match match, int position, int length}) {
@@ -160,9 +202,9 @@ class StringScanner {
     if (position == null) {
       position = match == null ? this.position : match.start;
     }
-    if (length == null) length = match == null ? 1 : match.end - match.start;
+    if (length == null) length = match == null ? 0 : match.end - match.start;
 
-    var sourceFile = new SourceFile(string, url: sourceUrl);
+    var sourceFile = new SourceFile.fromString(string, url: sourceUrl);
     var span = sourceFile.span(position, position + length);
     throw new StringScannerException(message, span, string);
   }

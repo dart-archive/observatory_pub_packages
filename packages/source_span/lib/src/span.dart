@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library source_span.span;
-
 import 'location.dart';
 import 'span_mixin.dart';
 
@@ -55,6 +53,19 @@ abstract class SourceSpan implements Comparable<SourceSpan> {
   /// should be highlighted using the default color. If it's `false` or `null`,
   /// it indicates that the text shouldn't be highlighted.
   String message(String message, {color});
+
+  /// Prints the text associated with this span in a user-friendly way.
+  ///
+  /// This is identical to [message], except that it doesn't print the file
+  /// name, line number, column number, or message. If [length] is 0 and this
+  /// isn't a [SourceSpanWithContext], returns an empty string.
+  ///
+  /// [color] may either be a [String], a [bool], or `null`. If it's a string,
+  /// it indicates an ANSII terminal color escape that should be used to
+  /// highlight the span's text. If it's `true`, it indicates that the text
+  /// should be highlighted using the default color. If it's `false` or `null`,
+  /// it indicates that the text shouldn't be highlighted.
+  String highlight({color});
 }
 
 /// A base class for source spans with [start], [end], and [text] known at

@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library matcher.operator_matchers;
-
 import 'interfaces.dart';
 import 'util.dart';
 
@@ -91,7 +89,7 @@ class _AnyOf extends Matcher {
 }
 
 List<Matcher> _wrapArgs(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
-  Iterable<Matcher> matchers;
+  Iterable args;
   if (arg0 is List) {
     if (arg1 != null ||
         arg2 != null ||
@@ -103,11 +101,10 @@ List<Matcher> _wrapArgs(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
           ' null.');
     }
 
-    matchers = arg0;
+    args = arg0;
   } else {
-    matchers =
-        [arg0, arg1, arg2, arg3, arg4, arg5, arg6].where((e) => e != null);
+    args = [arg0, arg1, arg2, arg3, arg4, arg5, arg6].where((e) => e != null);
   }
 
-  return matchers.map((e) => wrapMatcher(e)).toList();
+  return args.map((e) => wrapMatcher(e)).toList();
 }

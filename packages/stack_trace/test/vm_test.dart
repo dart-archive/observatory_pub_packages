@@ -12,21 +12,11 @@ import 'package:path/path.dart' as path;
 import 'package:stack_trace/stack_trace.dart';
 import 'package:test/test.dart';
 
-String getStackTraceString() {
-  try {
-    throw '';
-  } catch (_, stackTrace) {
-    return stackTrace.toString();
-  }
-}
+// The name of this (trivial) function is verified as part of the test
+String getStackTraceString() => StackTrace.current.toString();
 
-StackTrace getStackTraceObject() {
-  try {
-    throw '';
-  } catch (_, stackTrace) {
-    return stackTrace;
-  }
-}
+// The name of this (trivial) function is verified as part of the test
+StackTrace getStackTraceObject() => StackTrace.current;
 
 Frame getCaller([int level]) {
   if (level == null) return new Frame.caller();

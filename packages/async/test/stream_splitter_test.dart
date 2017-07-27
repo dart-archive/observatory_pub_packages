@@ -8,7 +8,7 @@ import 'package:async/async.dart';
 import 'package:test/test.dart';
 
 main() {
-  var controller;
+  StreamController<int> controller;
   var splitter;
   setUp(() {
     controller = new StreamController<int>();
@@ -47,20 +47,22 @@ main() {
     controller.close();
 
     var count = 0;
-    branch.listen(expectAsync((value) {
-      expect(count, anyOf(0, 2));
-      expect(value, equals(count + 1));
-      count++;
-    }, count: 2), onError: expectAsync((error) {
+    branch.listen(
+        expectAsync1((value) {
+          expect(count, anyOf(0, 2));
+          expect(value, equals(count + 1));
+          count++;
+        }, count: 2), onError: expectAsync1((error) {
       expect(count, equals(1));
       expect(error, equals("error"));
       count++;
-    }), onDone: expectAsync(() {
+    }), onDone: expectAsync0(() {
       expect(count, equals(3));
     }));
   });
 
-  test("a branch that's created in the middle of a stream replays it", () async {
+  test("a branch that's created in the middle of a stream replays it",
+      () async {
     controller.add(1);
     controller.add(2);
     await flushMicrotasks();
@@ -104,12 +106,12 @@ main() {
     controller.add(1);
     controller.add(2);
     await flushMicrotasks();
-    
+
     var branch2 = splitter.split();
     controller.add(3);
     controller.close();
     await flushMicrotasks();
-    
+
     var branch3 = splitter.split();
     splitter.close();
 
@@ -207,7 +209,8 @@ main() {
     expect(controller.isPaused, isFalse);
   });
 
-  test("the source stream is canceled when it's closed after all branches have "
+  test(
+      "the source stream is canceled when it's closed after all branches have "
       "been canceled", () async {
     var branch1 = splitter.split();
     var branch2 = splitter.split();
@@ -233,7 +236,8 @@ main() {
     expect(controller.hasListener, isFalse);
   });
 
-  test("the source stream is canceled when all branches are canceled after it "
+  test(
+      "the source stream is canceled when all branches are canceled after it "
       "has been closed", () async {
     var branch1 = splitter.split();
     var branch2 = splitter.split();
@@ -257,7 +261,8 @@ main() {
     expect(controller.hasListener, isFalse);
   });
 
-  test("a splitter that's closed before any branches are added never listens "
+  test(
+      "a splitter that's closed before any branches are added never listens "
       "to the source stream", () {
     splitter.close();
 
@@ -265,7 +270,8 @@ main() {
     controller.stream.listen(null);
   });
 
-  test("splitFrom splits a source stream into the designated number of "
+  test(
+      "splitFrom splits a source stream into the designated number of "
       "branches", () {
     var branches = StreamSplitter.splitFrom(controller.stream, 5);
 

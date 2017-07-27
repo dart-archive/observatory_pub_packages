@@ -14,11 +14,9 @@
 
 part of quiver.testing.runtime;
 
-/**
- * Asserts that the current runtime has checked mode enabled.
- *
- * Otherwise, throws [StateError].
- */
+/// Asserts that the current runtime has checked mode enabled.
+///
+/// Otherwise, throws [StateError].
 void assertCheckedMode() {
   if (_isCheckedMode == null) _isCheckedMode = _checkForCheckedMode();
 
@@ -33,10 +31,12 @@ bool _checkForCheckedMode() {
   Object sentinal = new Object();
   try {
     var i = 1 as dynamic;
-    String string = i;
+    _takeString(i);
     throw sentinal;
   } catch (e) {
     if (e == sentinal) return false;
   }
   return true;
 }
+
+void _takeString(String value) {}

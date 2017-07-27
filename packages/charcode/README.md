@@ -1,19 +1,24 @@
 Character code constants.
 
-These libraries define symbolic names for some character codes.
+[![Build Status](https://travis-ci.org/dart-lang/charcode.svg?branch=master)](https://travis-ci.org/dart-lang/charcode)
+[![Pub](https://img.shields.io/pub/v/charcode.svg)](https://pub.dartlang.org/packages/charcode)
 
-This is not an official Goggle package, and is not supported by Google.
+These libraries define symbolic names for some character codes.
 
 ## Using
 
 Import either one of the libraries:
 
-    import "package:charcode/ascii.dart"
-    import "package:charcode/html_entity.dart"
+```dart
+import "package:charcode/ascii.dart";
+import "package:charcode/html_entity.dart";
+```
 
 or import both libraries using the `charcode.dart` library:
 
-    import "package:charcode/charcode.dart"
+```dart
+import "package:charcode/charcode.dart";
+```
 
 # Naming
 
@@ -25,15 +30,15 @@ Examples: `$_`, `$a`, `$B` and `$3`. Other characters are given symbolic names.
 
 The names of letters are lower-case for lower-case letters, and mixed- or
 upper-case for upper-case letters. The names of symbols are all lower-case,
-and omit suffixes like "sign", "symbol" and "mark". E
-xamples: `$plus`, `$exclamation`
+and omit suffixes like "sign", "symbol" and "mark".
+Examples: `$plus`, `$exclamation`
 
 The `ascii.dart` library defines a symbolic name for each ASCII character.
-For some chraceters, it has more than one name. For example the common `$tab`
-and the official `$ht` for the horisontal tab.
+For some characters, it has more than one name. For example the common `$tab`
+and the official `$ht` for the horizontal tab.
 
 The `html_entity.dart` library defines a constant for each HTML 4.01 character
-entity, using the standard entity abbreviation, incluing its case.
+entity, using the standard entity abbreviation, including its case.
 Examples: `$nbsp` for `&nbps;`, `$aring` for the lower-case `&aring;`
 and `$Aring` for the upper-case `&Aring;`.
 
@@ -48,4 +53,4 @@ The `charcode.dart` library just exports both `ascii.dart` and
 The Dart language doesn't have character literals. If that ever happens, this
 library will be irrelevant. Until then, this library can be used for the most
 common characters.
-See [http://dartbug.com/4415](request for character literals).
+See [request for character literals](http://dartbug.com/4415).

@@ -2,9 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library source_span.span_mixin;
-
 import 'dart:math' as math;
+
+import 'package:charcode/charcode.dart';
 import 'package:path/path.dart' as p;
 
 import 'colors.dart' as colors;
@@ -48,21 +48,27 @@ abstract class SourceSpanMixin implements SourceSpan {
   }
 
   String message(String message, {color}) {
-    if (color == true) color = colors.RED;
-    if (color == false) color = null;
-
-    var line = start.line;
-    var column = start.column;
-
     var buffer = new StringBuffer();
-    buffer.write('line ${line + 1}, column ${column + 1}');
+    buffer.write('line ${start.line + 1}, column ${start.column + 1}');
     if (sourceUrl != null) buffer.write(' of ${p.prettyUri(sourceUrl)}');
     buffer.write(': $message');
 
-    if (length == 0 && this is! SourceSpanWithContext) return buffer.toString();
-    buffer.write("\n");
+    var highlight = this.highlight(color: color);
+    if (!highlight.isEmpty) {
+      buffer.writeln();
+      buffer.write(highlight);
+    }
 
-    var textLine;
+    return buffer.toString();
+  }
+
+  String highlight({color}) {
+    if (color == true) color = colors.RED;
+    if (color == false) color = null;
+
+    var column = start.column;
+    var buffer = new StringBuffer();
+    String textLine;
     if (this is SourceSpanWithContext) {
       var context = (this as SourceSpanWithContext).context;
       var lineStart = findLineStart(context, text, column);
@@ -72,7 +78,9 @@ abstract class SourceSpanMixin implements SourceSpan {
       }
       var endIndex = context.indexOf('\n');
       textLine = endIndex == -1 ? context : context.substring(0, endIndex + 1);
-      column = math.min(column, textLine.length - 1);
+      column = math.min(column, textLine.length);
+    } else if (length == 0) {
+      return "";
     } else {
       textLine = text.split("\n").first;
       column = 0;
@@ -90,7 +98,15 @@ abstract class SourceSpanMixin implements SourceSpan {
       buffer.write(textLine);
     }
     if (!textLine.endsWith('\n')) buffer.write('\n');
-    buffer.write(' ' * column);
+
+    for (var i = 0; i < column; i++) {
+      if (textLine.codeUnitAt(i) == $tab) {
+        buffer.writeCharCode($tab);
+      } else {
+        buffer.writeCharCode($space);
+      }
+    }
+
     if (color != null) buffer.write(color);
     buffer.write('^' * math.max(toColumn - column, 1));
     if (color != null) buffer.write(colors.NONE);

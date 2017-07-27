@@ -52,11 +52,11 @@ or
 ```dart
 print(myMessage(dateString, locale: 'ar');
 ```
-	  
+
 or
 
 ```dart
-Intl.defaultLocale = "es"'
+Intl.defaultLocale = "es";
 new DateFormat.jm().format(new DateTime.now());
 ```
 
@@ -96,13 +96,20 @@ This provides, in addition to the basic message string, a name, a
 description for translators, the arguments used in the message, and
 examples. The `name` and `args` parameters are required, and must
 match the name (or ClassName_methodName) and arguments list of the
-function respectively.  In the future we
-hope to have these provided automatically.
+function respectively. However, there is a transformer provided that
+will automatically insert those parameters for you. In pubspec.yaml,
+add a section like
 
-This can be run in the program before any translation has been done,
-and will just return the message string. It can also be extracted to a
-file and then be made to return a translated version without modifying
-the original program. See "Extracting Messages" below for more
+      transformers:
+      - intl:
+      $include: some_file.dart
+
+and then you can omit the name and args.
+
+A function with an Intl.message call can be run in the program before any
+translation has been done, and will just return the message string. It can also
+be extracted to a file and then be made to return a translated version without
+modifying the original program. See "Extracting Messages" below for more
 details.
 
 The purpose of wrapping the message in a function is to allow it to
@@ -123,13 +130,13 @@ the message.
           name: "greetingMessage",
           args: [name],
           desc: "Greet the user as they first open the application",
-          examples: {'name': "Emily"});
+          examples: const {'name': "Emily"});
       print(greetingMessage('Dan'));
 
 There is one special class of complex expressions allowed in the
 message string, for plurals and genders.
 
-      remainingEmailsMessage(int howMany, String userName) => 
+      remainingEmailsMessage(int howMany, String userName) =>
         Intl.message(
           "${Intl.plural(howMany,
               zero: 'There are no emails left for $userName.',
@@ -138,7 +145,7 @@ message string, for plurals and genders.
         name: "remainingEmailsMessage",
         args: [howMany, userName],
         desc: "How many emails remain after archiving.",
-        examples: {'howMany': 42, 'userName': 'Fred'});
+        examples: const {'howMany': 42, 'userName': 'Fred'});
 
       print(remainingEmailsMessage(1, "Fred"));
 
@@ -146,30 +153,30 @@ However, since the typical usage for a plural or gender is for it to
 be at the top-level, we can also omit the [Intl.message][Intl.message] call and
 provide its parameters to the [Intl.plural][Intl.plural] call instead.
 
-      remainingEmailsMessage(int howMany, String userName) => 
+      remainingEmailsMessage(int howMany, String userName) =>
         Intl.plural(
           howMany,
           zero: 'There are no emails left for $userName.',
           one: 'There is one email left for $userName.',
-          other: 'There are $howMany emails left for $userName.'),
+          other: 'There are $howMany emails left for $userName.',
           name: "remainingEmailsMessage",
           args: [howMany, userName],
           desc: "How many emails remain after archiving.",
-          examples: {'howMany': 42, 'userName': 'Fred'});
+          examples: const {'howMany': 42, 'userName': 'Fred'});
 
 Similarly, there is an [Intl.gender][Intl.gender] message, and plurals
 and genders can be nested.
 
-      notOnlineMessage(String userName, String userGender) => 
+      notOnlineMessage(String userName, String userGender) =>
         Intl.gender(
           userGender,
           male: '$userName is unavailable because he is not online.',
           female: '$userName is unavailable because she is not online.',
-          other: '$userName is unavailable because they are not online'),
+          other: '$userName is unavailable because they are not online',
           name: "notOnlineMessage",
           args: [userName, userGender],
           desc: "The user is not available to hangout.",
-          examples: {{'userGender': 'male', 'userName': 'Fred'},
+          examples: const {{'userGender': 'male', 'userName': 'Fred'},
               {'userGender': 'female', 'userName' : 'Alice'}});
 
 It's recommended to use complete sentences in the sub-messages to keep
@@ -179,26 +186,29 @@ the structure as simple as possible for the translators.
 
 When your program contains messages that need translation, these must
 be extracted from the program source, sent to human translators, and the
-results need to be incorporated. 
+results need to be incorporated. The code for this is in the
+[Intl_translation][Intl_translation] package.
 
 To extract messages, run the `extract_to_arb.dart` program.
 
-      pub run intl:extract_to_arb --output-dir=target/directory
+      pub run intl_translation:extract_to_arb --output-dir=target/directory
           my_program.dart more_of_my_program.dart
 
 This will produce a file `intl_messages.arb` with the messages from
 all of these programs. an [ARB]
 (https://code.google.com/p/arb/wiki/ApplicationResourceBundleSpecification)
 format file which can be used for input to translation tools like
-[Google Translator Toolkit](https://translate.google.com/toolkit/) 
+[Google Translator Toolkit](https://translate.google.com/toolkit/)
 The resulting translations can be used to generate a set of libraries
 using the `generate_from_arb.dart` program.
 
 This expects to receive a series of files, one per
-locale. 
+locale.
 
-      pub run intl:generate_from_arb --generated_file_prefix=<prefix> 
-          <my_dart_files> <translated_ARB_files>
+```
+pub run intl_translation:generate_from_arb --generated_file_prefix=<prefix>
+    <my_dart_files> <translated_ARB_files>
+```
 
 This will generate Dart libraries, one per locale, which contain the
 translated versions. Your Dart libraries can import the primary file,
@@ -307,16 +317,16 @@ detected from the text.
         new BidiFormatter.RTL().wrapWithUnicode('xyz');
         new BidiFormatter.RTL().wrapWithSpan('xyz');
 
-[intl_lib]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl
-[Intl]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl
-[DateFormat]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.DateFormat
-[NumberFormat]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.NumberFormat
-[withLocale]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.Intl#id_withLocale
-[defaultLocale]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.Intl#id_defaultLocale
-[Intl.message]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.Intl#id_message
-[Intl.plural]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.Intl#id_plural
-[Intl.gender]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.Intl#id_gender
-[DateTime]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/dart:core.DateTime
-[BidiFormatter]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.BidiFormatter
-[BidiFormatter.RTL]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.BidiFormatter#id_BidiFormatter-RTL
-[BidiFormatter.LTR]: https://api.dartlang.org/apidocs/channels/stable/dartdoc-viewer/intl/intl.BidiFormatter#id_BidiFormatter-LTR
+[intl_lib]: https://www.dartdocs.org/documentation/intl/latest/intl/intl-library.html
+[Intl]: https://www.dartdocs.org/documentation/intl/latest
+[DateFormat]: https://www.dartdocs.org/documentation/intl/latest/intl/DateFormat-class.html
+[NumberFormat]: https://www.dartdocs.org/documentation/intl/latest/intl/NumberFormat-class.html
+[withLocale]: https://www.dartdocs.org/documentation/intl/latest/intl/Intl/withLocale.html
+[defaultLocale]: https://www.dartdocs.org/documentation/intl/latest/intl/Intl/defaultLocale.html
+[Intl.message]: https://www.dartdocs.org/documentation/intl/latest/intl/Intl/message.html
+[Intl.plural]: https://www.dartdocs.org/documentation/intl/latest/intl/Intl/plural.html
+[Intl.gender]: https://www.dartdocs.org/documentation/intl/latest/intl/Intl/gender.html
+[DateTime]: https://api.dartlang.org/stable/dart-core/DateTime-class.html
+[BidiFormatter]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter-class.html
+[BidiFormatter.RTL]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter/BidiFormatter.RTL.html
+[BidiFormatter.LTR]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter/BidiFormatter.LTR.html

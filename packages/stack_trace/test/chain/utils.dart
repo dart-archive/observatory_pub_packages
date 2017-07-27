@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library stack_trace.test.chain.utils;
-
 import 'dart:async';
 
 import 'package:stack_trace/stack_trace.dart';
@@ -72,11 +70,15 @@ Future<Chain> chainForTrace(asyncFn(callback()), callback()) {
     // [new Future.sync] because those methods don't pass the exception through
     // the zone specification before propagating it, so there's no chance to
     // attach a chain to its stack trace. See issue 15105.
-    new Future.value().then((_) => callback())
+    new Future.value()
+        .then((_) => callback())
         .catchError(completer.completeError);
   });
+
+  // TODO(rnystrom): Remove this cast if catchError() gets a better type.
   return completer.future
-      .catchError((_, stackTrace) => new Chain.forTrace(stackTrace));
+          .catchError((_, stackTrace) => new Chain.forTrace(stackTrace))
+      as Future<Chain>;
 }
 
 /// Runs [callback] in a [Chain.capture] zone and returns a Future that

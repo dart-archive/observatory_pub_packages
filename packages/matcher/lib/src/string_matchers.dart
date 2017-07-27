@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library matcher.string_matchers;
-
 import 'interfaces.dart';
 
 /// Returns a matcher which matches if the match argument is a string and
@@ -67,8 +65,8 @@ class _IsEqualIgnoringWhitespace extends _StringMatcher {
           .addDescriptionOf(collapseWhitespace(item))
           .add(' with whitespace compressed');
     } else {
-      return super.describeMismatch(
-          item, mismatchDescription, matchState, verbose);
+      return super
+          .describeMismatch(item, mismatchDescription, matchState, verbose);
     }
   }
 }
@@ -171,8 +169,8 @@ abstract class _StringMatcher extends Matcher {
     if (!(item is String)) {
       return mismatchDescription.addDescriptionOf(item).add(' not a string');
     } else {
-      return super.describeMismatch(
-          item, mismatchDescription, matchState, verbose);
+      return super
+          .describeMismatch(item, mismatchDescription, matchState, verbose);
     }
   }
 }

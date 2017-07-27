@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library path.test.windows_test;
-
 import 'package:test/test.dart';
 import 'package:path/path.dart' as path;
 
@@ -332,6 +330,7 @@ main() {
     test('eliminates "." parts', () {
       expect(context.normalize(r'.\'), '.');
       expect(context.normalize(r'c:\.'), r'c:\');
+      expect(context.normalize(r'c:\foo\.'), r'c:\foo');
       expect(context.normalize(r'B:\.\'), r'B:\');
       expect(context.normalize(r'\\server\share\.'), r'\\server\share');
       expect(context.normalize(r'.\.'), '.');
@@ -353,6 +352,7 @@ main() {
       expect(
           context.normalize(r'\\server\share\..\../..\a'), r'\\server\share\a');
       expect(context.normalize(r'c:\..'), r'c:\');
+      expect(context.normalize(r'c:\foo\..'), r'c:\');
       expect(context.normalize(r'A:/..\..\..'), r'A:\');
       expect(context.normalize(r'b:\..\..\..\a'), r'b:\a');
       expect(context.normalize(r'b:\r\..\..\..\a\c\.\..'), r'b:\a');
@@ -379,6 +379,14 @@ main() {
 
     test('normalizes separators', () {
       expect(context.normalize(r'a/b\c'), r'a\b\c');
+    });
+
+    test('when canonicalizing', () {
+      expect(context.canonicalize('.'), r'c:\root\path');
+      expect(context.canonicalize('foo/bar'), r'c:\root\path\foo\bar');
+      expect(context.canonicalize('FoO'), r'c:\root\path\foo');
+      expect(context.canonicalize('/foo'), r'c:\foo');
+      expect(context.canonicalize('D:/foo'), r'd:\foo');
     });
   });
 
@@ -425,6 +433,12 @@ main() {
         expect(context.relative(r'a\b.txt'), r'a\b.txt');
         expect(context.relative(r'..\a\b.txt'), r'..\a\b.txt');
         expect(context.relative(r'a\.\b\..\c.txt'), r'a\c.txt');
+      });
+
+      test('is case-insensitive', () {
+        expect(context.relative(r'c:\'), r'..\..');
+        expect(context.relative(r'c:\RoOt'), r'..');
+        expect(context.relative(r'c:\rOoT\pAtH\a'), r'a');
       });
 
       // Regression
@@ -569,6 +583,59 @@ main() {
       expect(r.isWithin(r'C:\', r'C:\baz\bang'), isTrue);
       expect(r.isWithin('.', r'C:\baz\bang'), isFalse);
     });
+
+    test('is case-insensitive', () {
+      expect(context.isWithin(r'FoO', r'fOo\bar'), isTrue);
+      expect(context.isWithin(r'C:\', r'c:\foo'), isTrue);
+      expect(context.isWithin(r'fOo\qux\..\BaR', r'FoO\bAr\baz'), isTrue);
+    });
+  });
+
+  group('equals and hash', () {
+    test('simple cases', () {
+      expectEquals(context, r'foo\bar', r'foo\bar');
+      expectNotEquals(context, r'foo\bar', r'foo\bar\baz');
+      expectNotEquals(context, r'foo\bar', r'foo');
+      expectNotEquals(context, r'foo\bar', r'foo\baz');
+      expectEquals(context, r'foo\bar', r'..\path\foo\bar');
+      expectEquals(context, r'D:\', r'D:\');
+      expectEquals(context, r'C:\', r'..\..');
+      expectEquals(context, r'baz', r'C:\root\path\baz');
+    });
+
+    test('complex cases', () {
+      expectEquals(context, r'foo\.\bar', r'foo\bar');
+      expectEquals(context, r'foo\\bar', r'foo\bar');
+      expectEquals(context, r'foo\qux\..\bar', r'foo\bar');
+      expectNotEquals(context, r'foo\qux\..\bar', r'foo\qux');
+      expectNotEquals(context, r'foo\bar', r'foo\bar\baz\..\..');
+      expectEquals(context, r'foo\bar', r'foo\bar\\\');
+      expectEquals(context, r'foo\.bar', r'foo\.bar');
+      expectNotEquals(context, r'foo\.\bar', r'foo\.bar');
+      expectEquals(context, r'foo\..bar', r'foo\..bar');
+      expectNotEquals(context, r'foo\..\bar', r'foo\..bar');
+      expectEquals(context, r'foo\bar', r'foo\bar\baz\..');
+      expectEquals(context, r'FoO\bAr', r'foo\bar');
+      expectEquals(context, r'foo/\bar', r'foo\/bar');
+      expectEquals(context, r'c:\', r'C:\');
+      expectEquals(context, r'C:\root', r'..');
+    });
+
+    test('with root-relative paths', () {
+      expectEquals(context, r'\foo', r'C:\foo');
+      expectNotEquals(context, r'\foo', 'http://google.com/foo');
+      expectEquals(context, r'C:\root\path\foo\bar', r'foo\bar');
+    });
+
+    test('from a relative root', () {
+      var r = new path.Context(style: path.Style.windows, current: r'foo\bar');
+      expectEquals(r, r'a\b', r'a\b');
+      expectNotEquals(r, '.', r'foo\bar');
+      expectNotEquals(r, '.', r'..\a\b');
+      expectEquals(r, '.', r'..\bar');
+      expectEquals(r, r'C:\baz\bang', r'C:\baz\bang');
+      expectNotEquals(r, r'baz\bang', r'C:\baz\bang');
+    });
   });
 
   group('absolute', () {
@@ -639,6 +706,7 @@ main() {
           r'\\server\share\path\to\foo#bar');
       expect(context.fromUri(Uri.parse('_%7B_%7D_%60_%5E_%20_%22_%25_')),
           r'_{_}_`_^_ _"_%_');
+      expect(context.fromUri(Uri.parse('/foo')), r'\foo');
       expect(() => context.fromUri(Uri.parse('http://dartlang.org')),
           throwsArgumentError);
     });

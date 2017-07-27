@@ -13,8 +13,8 @@ void main() {
   group("without being canceled", () {
     var completer;
     setUp(() {
-      completer = new CancelableCompleter(
-          onCancel: expectAsync(() {}, count: 0));
+      completer =
+          new CancelableCompleter(onCancel: expectAsync0(() {}, count: 0));
     });
 
     test("sends values to the future", () {
@@ -45,6 +45,16 @@ void main() {
       expect(completer.isCompleted, isTrue);
     });
 
+    test("sends values to valueOrCancellation", () {
+      expect(completer.operation.valueOrCancellation(), completion(equals(1)));
+      completer.complete(1);
+    });
+
+    test("sends errors to valueOrCancellation", () {
+      expect(completer.operation.valueOrCancellation(), throwsA("error"));
+      completer.completeError("error");
+    });
+
     group("throws a StateError if completed", () {
       test("successfully twice", () {
         completer.complete(1);
@@ -64,8 +74,8 @@ void main() {
 
       test("successfully then with a future", () {
         completer.complete(1);
-        expect(() => completer.complete(new Completer().future),
-            throwsStateError);
+        expect(
+            () => completer.complete(new Completer().future), throwsStateError);
       });
 
       test("with a future then successfully", () {
@@ -75,8 +85,8 @@ void main() {
 
       test("with a future twice", () {
         completer.complete(new Completer().future);
-        expect(() => completer.complete(new Completer().future),
-            throwsStateError);
+        expect(
+            () => completer.complete(new Completer().future), throwsStateError);
       });
     });
 
@@ -87,8 +97,8 @@ void main() {
       });
 
       test("forwards errors", () {
-        var operation = new CancelableOperation.fromFuture(
-            new Future.error("error"));
+        var operation =
+            new CancelableOperation.fromFuture(new Future.error("error"));
         expect(operation.value, throwsA("error"));
       });
     });
@@ -97,7 +107,7 @@ void main() {
   group("when canceled", () {
     test("causes the future never to fire", () async {
       var completer = new CancelableCompleter();
-      completer.operation.value.whenComplete(expectAsync(() {}, count: 0));
+      completer.operation.value.whenComplete(expectAsync0(() {}, count: 0));
       completer.operation.cancel();
 
       // Give the future plenty of time to fire if it's going to.
@@ -109,7 +119,7 @@ void main() {
     test("fires onCancel", () {
       var canceled = false;
       var completer;
-      completer = new CancelableCompleter(onCancel: expectAsync(() {
+      completer = new CancelableCompleter(onCancel: expectAsync0(() {
         expect(completer.isCanceled, isTrue);
         canceled = true;
       }));
@@ -124,7 +134,7 @@ void main() {
     });
 
     test("returns the onCancel future each time cancel is called", () {
-      var completer = new CancelableCompleter(onCancel: expectAsync(() {
+      var completer = new CancelableCompleter(onCancel: expectAsync0(() {
         return new Future.value(1);
       }));
       expect(completer.operation.cancel(), completion(equals(1)));
@@ -133,29 +143,31 @@ void main() {
     });
 
     test("returns a future even if onCancel doesn't", () {
-      var completer = new CancelableCompleter(onCancel: expectAsync(() {}));
+      var completer = new CancelableCompleter(onCancel: expectAsync0(() {}));
       expect(completer.operation.cancel(), completes);
     });
 
     test("doesn't call onCancel if the completer has completed", () {
-      var completer = new CancelableCompleter(
-          onCancel: expectAsync(() {}, count: 0));
+      var completer =
+          new CancelableCompleter(onCancel: expectAsync0(() {}, count: 0));
       completer.complete(1);
       expect(completer.operation.value, completion(equals(1)));
       expect(completer.operation.cancel(), completes);
     });
 
-    test("does call onCancel if the completer has completed to an unfired "
+    test(
+        "does call onCancel if the completer has completed to an unfired "
         "Future", () {
-      var completer = new CancelableCompleter(onCancel: expectAsync(() {}));
+      var completer = new CancelableCompleter(onCancel: expectAsync0(() {}));
       completer.complete(new Completer().future);
       expect(completer.operation.cancel(), completes);
     });
 
-    test("doesn't call onCancel if the completer has completed to a fired "
+    test(
+        "doesn't call onCancel if the completer has completed to a fired "
         "Future", () async {
-      var completer = new CancelableCompleter(
-          onCancel: expectAsync(() {}, count: 0));
+      var completer =
+          new CancelableCompleter(onCancel: expectAsync0(() {}, count: 0));
       completer.complete(new Future.value(1));
       await completer.operation.value;
       expect(completer.operation.cancel(), completes);
@@ -163,10 +175,43 @@ void main() {
 
     test("can be completed once after being canceled", () async {
       var completer = new CancelableCompleter();
-      completer.operation.value.whenComplete(expectAsync(() {}, count: 0));
+      completer.operation.value.whenComplete(expectAsync0(() {}, count: 0));
       await completer.operation.cancel();
       completer.complete(1);
       expect(() => completer.complete(1), throwsStateError);
+    });
+
+    test("fires valueOrCancellation with the given value", () {
+      var completer = new CancelableCompleter();
+      expect(completer.operation.valueOrCancellation(1), completion(equals(1)));
+      completer.operation.cancel();
+    });
+
+    test("pipes an error through valueOrCancellation", () {
+      var completer = new CancelableCompleter(onCancel: () {
+        throw "error";
+      });
+      expect(completer.operation.valueOrCancellation(1), throwsA("error"));
+      completer.operation.cancel();
+    });
+
+    test("valueOrCancellation waits on the onCancel future", () async {
+      var innerCompleter = new Completer();
+      var completer =
+          new CancelableCompleter(onCancel: () => innerCompleter.future);
+
+      var fired = false;
+      completer.operation.valueOrCancellation().then((_) {
+        fired = true;
+      });
+
+      completer.operation.cancel();
+      await flushMicrotasks();
+      expect(fired, isFalse);
+
+      innerCompleter.complete();
+      await flushMicrotasks();
+      expect(fired, isTrue);
     });
   });
 
@@ -186,10 +231,10 @@ void main() {
     });
 
     test("cancels the completer when the subscription is canceled", () {
-      var completer = new CancelableCompleter(onCancel: expectAsync(() {}));
-      var sub = completer.operation.asStream()
-          .listen(expectAsync((_) {}, count: 0));
-      completer.operation.value.whenComplete(expectAsync(() {}, count: 0));
+      var completer = new CancelableCompleter(onCancel: expectAsync0(() {}));
+      var sub =
+          completer.operation.asStream().listen(expectAsync1((_) {}, count: 0));
+      completer.operation.value.whenComplete(expectAsync0(() {}, count: 0));
       sub.cancel();
       expect(completer.isCanceled, isTrue);
     });

@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library glob.ast;
-
 import 'package:path/path.dart' as p;
 import 'package:collection/collection.dart';
 
@@ -16,15 +14,20 @@ abstract class AstNode {
   /// The cached regular expression that this AST was compiled into.
   RegExp _regExp;
 
+  /// Whether this node matches case-sensitively or not.
+  final bool caseSensitive;
+
   /// Whether this glob could match an absolute path.
   ///
   /// Either this or [canMatchRelative] or both will be true.
-  final bool canMatchAbsolute = false;
+  bool get canMatchAbsolute => false;
 
   /// Whether this glob could match a relative path.
   ///
   /// Either this or [canMatchRelative] or both will be true.
-  final bool canMatchRelative = true;
+  bool get canMatchRelative => true;
+
+  AstNode._(this.caseSensitive);
 
   /// Returns a new glob with all the options bubbled to the top level.
   ///
@@ -35,11 +38,15 @@ abstract class AstNode {
   ///
   /// For example, given the glob `{foo,bar}/{click/clack}`, this would return
   /// `{foo/click,foo/clack,bar/click,bar/clack}`.
-  OptionsNode flattenOptions() => new OptionsNode([new SequenceNode([this])]);
+  OptionsNode flattenOptions() => new OptionsNode(
+      [new SequenceNode([this], caseSensitive: caseSensitive)],
+      caseSensitive: caseSensitive);
 
   /// Returns whether this glob matches [string].
   bool matches(String string) {
-    if (_regExp == null) _regExp = new RegExp('^${_toRegExp()}\$');
+    if (_regExp == null) {
+      _regExp = new RegExp('^${_toRegExp()}\$', caseSensitive: caseSensitive);
+    }
     return _regExp.hasMatch(string);
   }
 
@@ -55,11 +62,14 @@ class SequenceNode extends AstNode {
   bool get canMatchAbsolute => nodes.first.canMatchAbsolute;
   bool get canMatchRelative => nodes.first.canMatchRelative;
 
-  SequenceNode(Iterable<AstNode> nodes)
-      : nodes = nodes.toList();
+  SequenceNode(Iterable<AstNode> nodes, {bool caseSensitive: true})
+      : nodes = nodes.toList(),
+        super._(caseSensitive);
 
   OptionsNode flattenOptions() {
-    if (nodes.isEmpty) return new OptionsNode([this]);
+    if (nodes.isEmpty) {
+      return new OptionsNode([this], caseSensitive: caseSensitive);
+    }
 
     var sequences = nodes.first.flattenOptions().options
         .map((sequence) => sequence.nodes);
@@ -76,17 +86,19 @@ class SequenceNode extends AstNode {
 
     return new OptionsNode(sequences.map((sequence) {
       // Combine any adjacent LiteralNodes in [sequence].
-      return new SequenceNode(sequence.fold([], (combined, node) {
+      return new SequenceNode(sequence.fold/*<List<AstNode>>*/([], (combined, node) {
         if (combined.isEmpty || combined.last is! LiteralNode ||
             node is! LiteralNode) {
           return combined..add(node);
         }
 
-        combined[combined.length - 1] =
-            new LiteralNode(combined.last.text + node.text);
+        combined[combined.length - 1] = new LiteralNode(
+            // TODO(nweiz): Avoid casting when sdk#25565 is fixed.
+            (combined.last as LiteralNode).text + (node as LiteralNode).text,
+            caseSensitive: caseSensitive);
         return combined;
-      }));
-    }));
+      }), caseSensitive: caseSensitive);
+    }), caseSensitive: caseSensitive);
   }
 
   /// Splits this glob into components along its path separators.
@@ -101,27 +113,35 @@ class SequenceNode extends AstNode {
   /// [context] is used to determine what absolute roots look like for this
   /// glob.
   List<SequenceNode> split(p.Context context) {
-    var componentsToReturn = [];
-    var currentComponent;
+    var componentsToReturn = <SequenceNode>[];
+    List<AstNode> currentComponent;
 
-    addNode(node) {
+    addNode(AstNode node) {
       if (currentComponent == null) currentComponent = [];
       currentComponent.add(node);
     }
 
     finishComponent() {
       if (currentComponent == null) return;
-      componentsToReturn.add(new SequenceNode(currentComponent));
+      componentsToReturn.add(
+          new SequenceNode(currentComponent, caseSensitive: caseSensitive));
       currentComponent = null;
     }
 
     for (var node in nodes) {
-      if (node is! LiteralNode || !node.text.contains('/')) {
+      if (node is! LiteralNode) {
         addNode(node);
         continue;
       }
 
-      var text = node.text;
+      // TODO(nweiz): Avoid casting when sdk#25565 is fixed.
+      var literal = node as LiteralNode;
+      if (!literal.text.contains('/')) {
+        addNode(literal);
+        continue;
+      }
+
+      var text = literal.text;
       if (context.style == p.Style.windows) text = text.replaceAll("/", "\\");
       var components = context.split(text);
 
@@ -139,7 +159,7 @@ class SequenceNode extends AstNode {
             // So we switch it back here.
             root = root.replaceAll("\\", "/");
           }
-          addNode(new LiteralNode(root));
+          addNode(new LiteralNode(root, caseSensitive: caseSensitive));
         }
         finishComponent();
         components = components.skip(1);
@@ -149,14 +169,14 @@ class SequenceNode extends AstNode {
       // For each component except the last one, add a separate sequence to
       // [sequences] containing only that component.
       for (var component in components.take(components.length - 1)) {
-        addNode(new LiteralNode(component));
+        addNode(new LiteralNode(component, caseSensitive: caseSensitive));
         finishComponent();
       }
 
       // For the final component, only end its sequence (by adding a new empty
       // sequence) if it ends with a separator.
-      addNode(new LiteralNode(components.last));
-      if (node.text.endsWith('/')) finishComponent();
+      addNode(new LiteralNode(components.last, caseSensitive: caseSensitive));
+      if (literal.text.endsWith('/')) finishComponent();
     }
 
     finishComponent();
@@ -175,7 +195,7 @@ class SequenceNode extends AstNode {
 
 /// A node matching zero or more non-separator characters.
 class StarNode extends AstNode {
-  StarNode();
+  StarNode({bool caseSensitive: true}) : super._(caseSensitive);
 
   String _toRegExp() => '[^/]*';
 
@@ -193,7 +213,8 @@ class DoubleStarNode extends AstNode {
   /// This is used to determine what absolute paths look like.
   final p.Context _context;
 
-  DoubleStarNode(this._context);
+  DoubleStarNode(this._context, {bool caseSensitive: true})
+      : super._(caseSensitive);
 
   String _toRegExp() {
     // Double star shouldn't match paths with a leading "../", since these paths
@@ -229,7 +250,7 @@ class DoubleStarNode extends AstNode {
 
 /// A node matching a single non-separator character.
 class AnyCharNode extends AstNode {
-  AnyCharNode();
+  AnyCharNode({bool caseSensitive: true}) : super._(caseSensitive);
 
   String _toRegExp() => '[^/]';
 
@@ -250,8 +271,9 @@ class RangeNode extends AstNode {
   /// Whether this range was negated.
   final bool negated;
 
-  RangeNode(Iterable<Range> ranges, {this.negated})
-      : ranges = ranges.toSet();
+  RangeNode(Iterable<Range> ranges, {this.negated, bool caseSensitive: true})
+      : ranges = ranges.toSet(),
+        super._(caseSensitive);
 
   OptionsNode flattenOptions() {
     if (negated || ranges.any((range) => !range.isSingleton)) {
@@ -262,9 +284,10 @@ class RangeNode extends AstNode {
     // a separate expansion.
     return new OptionsNode(ranges.map((range) {
       return new SequenceNode([
-        new LiteralNode(new String.fromCharCodes([range.min]))
-      ]);
-    }));
+        new LiteralNode(new String.fromCharCodes([range.min]),
+            caseSensitive: caseSensitive)
+      ], caseSensitive: caseSensitive);
+    }), caseSensitive: caseSensitive);
   }
 
   String _toRegExp() {
@@ -325,11 +348,13 @@ class OptionsNode extends AstNode {
   bool get canMatchAbsolute => options.any((node) => node.canMatchAbsolute);
   bool get canMatchRelative => options.any((node) => node.canMatchRelative);
 
-  OptionsNode(Iterable<SequenceNode> options)
-      : options = options.toList();
+  OptionsNode(Iterable<SequenceNode> options, {bool caseSensitive: true})
+      : options = options.toList(),
+        super._(caseSensitive);
 
   OptionsNode flattenOptions() => new OptionsNode(
-      options.expand((option) => option.flattenOptions().options));
+      options.expand((option) => option.flattenOptions().options),
+      caseSensitive: caseSensitive);
 
   String _toRegExp() =>
       '(?:${options.map((option) => option._toRegExp()).join("|")})';
@@ -360,7 +385,9 @@ class LiteralNode extends AstNode {
 
   bool get canMatchRelative => !canMatchAbsolute;
 
-  LiteralNode(this.text, [this._context]);
+  LiteralNode(this.text, {p.Context context, bool caseSensitive: true})
+      : _context = context,
+        super._(caseSensitive);
 
   String _toRegExp() => regExpQuote(text);
 

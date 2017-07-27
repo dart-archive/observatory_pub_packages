@@ -4,49 +4,48 @@
 
 part of intl;
 
-/**
- * This is a private class internal to DateFormat which is used for formatting
- * particular fields in a template. e.g. if the format is hh:mm:ss then the
- * fields would be "hh", ":", "mm", ":", and "ss". Each type of field knows
- * how to format that portion of a date.
- */
+/// This is a private class internal to DateFormat which is used for formatting
+/// particular fields in a template. e.g. if the format is hh:mm:ss then the
+/// fields would be "hh", ":", "mm", ":", and "ss". Each type of field knows
+/// how to format that portion of a date.
 abstract class _DateFormatField {
-  /** The format string that defines us, e.g. "hh" */
-  String pattern;
+  /// The format string that defines us, e.g. "hh"
+  final String pattern;
 
-  /** The DateFormat that we are part of.*/
+  /// The DateFormat that we are part of.
   DateFormat parent;
 
-  _DateFormatField(this.pattern, this.parent);
+  /// Trimmed version of [pattern].
+  String _trimmedPattern;
 
-  /**
-   * Return the width of [pattern]. Different widths represent different
-   * formatting options. See the comment for DateFormat for details.
-   */
+  _DateFormatField(this.pattern, this.parent) {
+    _trimmedPattern = pattern.trim();
+  }
+
+  /// Return the width of [pattern]. Different widths represent different
+  /// formatting options. See the comment for DateFormat for details.
   int get width => pattern.length;
 
   String fullPattern() => pattern;
 
   String toString() => pattern;
 
-  /** Format date according to our specification and return the result. */
+  /// Format date according to our specification and return the result.
   String format(DateTime date) {
     // Default implementation in the superclass, works for both types of
     // literal patterns, and is overridden by _DateFormatPatternField.
     return pattern;
   }
 
-  /** Abstract method for subclasses to implementing parsing for their format.*/
+  /// Abstract method for subclasses to implementing parsing for their format.
   void parse(_Stream input, _DateBuilder dateFields);
 
-  /**
-   * Abstract method for subclasses to implementing 'loose' parsing for
-   * their format, accepting input case-insensitively, and allowing some
-   * delimiters to be skipped.
-   */
+  /// Abstract method for subclasses to implementing 'loose' parsing for
+  /// their format, accepting input case-insensitively, and allowing some
+  /// delimiters to be skipped.
   void parseLoose(_Stream input, _DateBuilder dateFields);
 
-  /** Parse a literal field. We just look for the exact input. */
+  /// Parse a literal field. We just look for the exact input.
   void parseLiteral(_Stream input) {
     var found = input.read(width);
     if (found != pattern) {
@@ -54,32 +53,41 @@ abstract class _DateFormatField {
     }
   }
 
-  /**
-   * Parse a literal field. We accept either an exact match, or an arbitrary
-   * amount of whitespace.
-   */
+  /// Parse a literal field. We accept either an exact match, or an arbitrary
+  /// amount of whitespace.
+  ///
+  /// Any whitespace which occurs before or after the literal field is trimmed
+  /// from the input stream. Any leading or trailing whitespace in the literal
+  /// field's format specification is also trimmed before matching is
+  /// attempted. Therefore, leading and trailing whitespace is optional, and
+  /// arbitrary additional whitespace may be added before/after the literal.
   void parseLiteralLoose(_Stream input) {
-    var found = input.peek(width);
-    if (found == pattern) {
-      input.read(width);
+    _trimWhitespace(input);
+
+    var found = input.peek(_trimmedPattern.length);
+    if (found == _trimmedPattern) {
+      input.read(_trimmedPattern.length);
     }
+
+    _trimWhitespace(input);
+  }
+
+  void _trimWhitespace(_Stream input) {
     while (!input.atEnd() && input.peek().trim().isEmpty) {
       input.read();
     }
   }
 
-  /** Throw a format exception with an error message indicating the position.*/
+  /// Throw a format exception with an error message indicating the position.
   void throwFormatException(_Stream stream) {
     throw new FormatException("Trying to read $this from ${stream.contents} "
         "at position ${stream.index}");
   }
 }
 
-/**
- * Represents a literal field - a sequence of characters that doesn't
- * change according to the date's data. As such, the implementation
- * is extremely simple.
- */
+/// Represents a literal field - a sequence of characters that doesn't
+/// change according to the date's data. As such, the implementation
+/// is extremely simple.
 class _DateFormatLiteralField extends _DateFormatField {
   _DateFormatLiteralField(pattern, parent) : super(pattern, parent);
 
@@ -91,18 +99,16 @@ class _DateFormatLiteralField extends _DateFormatField {
       parseLiteralLoose(input);
 }
 
-/**
- * Represents a literal field with quoted characters in it. This is
- * only slightly more complex than a _DateFormatLiteralField.
- */
+/// Represents a literal field with quoted characters in it. This is
+/// only slightly more complex than a _DateFormatLiteralField.
 class _DateFormatQuotedField extends _DateFormatField {
   String _fullPattern;
 
   String fullPattern() => _fullPattern;
 
-  _DateFormatQuotedField(pattern, parent) : super(pattern, parent) {
+  _DateFormatQuotedField(pattern, parent)
+      : super(_patchQuotes(pattern), parent) {
     _fullPattern = pattern;
-    patchQuotes();
   }
 
   parse(_Stream input, _DateBuilder dateFields) {
@@ -112,30 +118,28 @@ class _DateFormatQuotedField extends _DateFormatField {
   parseLoose(_Stream input, _DateBuilder dateFields) =>
       parseLiteralLoose(input);
 
-  void patchQuotes() {
+  static final _twoEscapedQuotes = new RegExp(r"''");
+
+  static String _patchQuotes(String pattern) {
     if (pattern == "''") {
-      pattern = "'";
+      return "'";
     } else {
-      pattern = pattern.substring(1, pattern.length - 1);
-      var twoEscapedQuotes = new RegExp(r"''");
-      pattern = pattern.replaceAll(twoEscapedQuotes, "'");
+      return pattern
+          .substring(1, pattern.length - 1)
+          .replaceAll(_twoEscapedQuotes, "'");
     }
   }
 }
 
-/**
- * A field that parses "loosely", meaning that we'll accept input that is
- * missing delimiters, has upper/lower case mixed up, and might not strictly
- * conform to the pattern, e.g. the pattern calls for Sep we might accept
- * sep, september, sEPTember. Doesn't affect numeric fields.
- */
+/// A field that parses "loosely", meaning that we'll accept input that is
+/// missing delimiters, has upper/lower case mixed up, and might not strictly
+/// conform to the pattern, e.g. the pattern calls for Sep we might accept
+/// sep, september, sEPTember. Doesn't affect numeric fields.
 class _LoosePatternField extends _DateFormatPatternField {
   _LoosePatternField(String pattern, parent) : super(pattern, parent);
 
-  /**
-    * Parse from a list of possibilities, but case-insensitively.
-    * Assumes that input is lower case.
-    */
+  /// Parse from a list of possibilities, but case-insensitively.
+  /// Assumes that input is lower case.
   int parseEnumeratedString(_Stream input, List possibilities) {
     var lowercasePossibilities =
         possibilities.map((x) => x.toLowerCase()).toList();
@@ -146,10 +150,8 @@ class _LoosePatternField extends _DateFormatPatternField {
     }
   }
 
-  /**
-   * Parse a month name, case-insensitively, and set it in [dateFields].
-   * Assumes that [input] is lower case.
-   */
+  /// Parse a month name, case-insensitively, and set it in [dateFields].
+  /// Assumes that [input] is lower case.
   void parseMonth(input, dateFields) {
     if (width <= 2) {
       handleNumericField(input, dateFields.setMonth);
@@ -163,12 +165,11 @@ class _LoosePatternField extends _DateFormatPatternField {
         return;
       }
     }
+    throwFormatException(input);
   }
 
-  /**
-   * Parse a standalone day name, case-insensitively.
-   * Assumes that input is lower case. Doesn't do anything
-   */
+  /// Parse a standalone day name, case-insensitively.
+  /// Assumes that input is lower case. Doesn't do anything
   void parseStandaloneDay(input) {
     // This is ignored, but we still have to skip over it the correct amount.
     if (width <= 2) {
@@ -187,13 +188,11 @@ class _LoosePatternField extends _DateFormatPatternField {
     }
   }
 
-  /**
-   * Parse a standalone month name, case-insensitively.
-   * Assumes that input is lower case. Doesn't do anything
-   */
+  /// Parse a standalone month name, case-insensitively, and set it in
+  /// [dateFields]. Assumes that input is lower case.
   void parseStandaloneMonth(input, dateFields) {
     if (width <= 2) {
-      handleNumericField(input, (x) => x);
+      handleNumericField(input, dateFields.setMonth);
       return;
     }
     var possibilities = [
@@ -207,12 +206,11 @@ class _LoosePatternField extends _DateFormatPatternField {
         return;
       }
     }
+    throwFormatException(input);
   }
 
-  /**
-   * Parse a day of the week name, case-insensitively.
-   * Assumes that input is lower case. Doesn't do anything
-   */
+  /// Parse a day of the week name, case-insensitively.
+  /// Assumes that input is lower case. Doesn't do anything
   void parseDayOfWeek(_Stream input) {
     // This is IGNORED, but we still have to skip over it the correct amount.
     if (width <= 2) {
@@ -237,32 +235,26 @@ class _LoosePatternField extends _DateFormatPatternField {
 class _DateFormatPatternField extends _DateFormatField {
   _DateFormatPatternField(pattern, parent) : super(pattern, parent);
 
-  /** Format date according to our specification and return the result. */
+  /// Format date according to our specification and return the result.
   String format(DateTime date) {
     return formatField(date);
   }
 
-  /**
-   * Parse the date according to our specification and put the result
-   * into the correct place in dateFields.
-   */
+  /// Parse the date according to our specification and put the result
+  /// into the correct place in dateFields.
   void parse(_Stream input, _DateBuilder dateFields) {
     parseField(input, dateFields);
   }
 
-  /**
-   * Parse the date according to our specification and put the result
-   * into the correct place in dateFields. Allow looser parsing, accepting
-   * case-insensitive input and skipped delimiters.
-   */
+  /// Parse the date according to our specification and put the result
+  /// into the correct place in dateFields. Allow looser parsing, accepting
+  /// case-insensitive input and skipped delimiters.
   void parseLoose(_Stream input, _DateBuilder dateFields) {
     new _LoosePatternField(pattern, parent).parse(input, dateFields);
   }
 
-  /**
-   * Parse a field representing part of a date pattern. Note that we do not
-   * return a value, but rather build up the result in [builder].
-   */
+  /// Parse a field representing part of a date pattern. Note that we do not
+  /// return a value, but rather build up the result in [builder].
   void parseField(_Stream input, _DateBuilder builder) {
     try {
       switch (pattern[0]) {
@@ -283,6 +275,7 @@ class _DateFormatPatternField extends _DateFormatField {
           parseDayOfWeek(input);
           break;
         case 'G':
+          parseEra(input);
           break; // era
         case 'h':
           parse1To12Hours(input, builder);
@@ -330,7 +323,7 @@ class _DateFormatPatternField extends _DateFormatField {
     }
   }
 
-  /** Formatting logic if we are of type FIELD */
+  /// Formatting logic if we are of type FIELD
   String formatField(DateTime date) {
     switch (pattern[0]) {
       case 'a':
@@ -378,8 +371,8 @@ class _DateFormatPatternField extends _DateFormatField {
     }
   }
 
-  /** Return the symbols for our current locale. */
-  DateSymbols get symbols => dateTimeSymbols[parent.locale];
+  /// Return the symbols for our current locale.
+  DateSymbols get symbols => parent.dateSymbols;
 
   formatEra(DateTime date) {
     var era = date.year > 0 ? 1 : 0;
@@ -395,29 +388,25 @@ class _DateFormatPatternField extends _DateFormatField {
     return width == 2 ? padTo(2, year % 100) : padTo(width, year);
   }
 
-  /**
-   * We are given [input] as a stream from which we want to read a date. We
-   * can't dynamically build up a date, so we are given a list [dateFields] of
-   * the constructor arguments and an [position] at which to set it
-   * (year,month,day,hour,minute,second,fractionalSecond)
-   * then after all parsing is done we construct a date from the arguments.
-   * This method handles reading any of the numeric fields. The [offset]
-   * argument allows us to compensate for zero-based versus one-based values.
-   */
+  /// We are given [input] as a stream from which we want to read a date. We
+  /// can't dynamically build up a date, so we are given a list [dateFields] of
+  /// the constructor arguments and an [position] at which to set it
+  /// (year,month,day,hour,minute,second,fractionalSecond)
+  /// then after all parsing is done we construct a date from the arguments.
+  /// This method handles reading any of the numeric fields. The [offset]
+  /// argument allows us to compensate for zero-based versus one-based values.
   void handleNumericField(_Stream input, Function setter, [int offset = 0]) {
     var result = input.nextInteger();
     if (result == null) throwFormatException(input);
     setter(result + offset);
   }
 
-  /**
-   * We are given [input] as a stream from which we want to read a date. We
-   * can't dynamically build up a date, so we are given a list [dateFields] of
-   * the constructor arguments and an [position] at which to set it
-   * (year,month,day,hour,minute,second,fractionalSecond)
-   * then after all parsing is done we construct a date from the arguments.
-   * This method handles reading any of string fields from an enumerated set.
-   */
+  /// We are given [input] as a stream from which we want to read a date. We
+  /// can't dynamically build up a date, so we are given a list [dateFields] of
+  /// the constructor arguments and an [position] at which to set it
+  /// (year,month,day,hour,minute,second,fractionalSecond)
+  /// then after all parsing is done we construct a date from the arguments.
+  /// This method handles reading any of string fields from an enumerated set.
   int parseEnumeratedString(_Stream input, List possibilities) {
     var results = new _Stream(possibilities)
         .findIndexes((each) => input.peek(each.length) == each);
@@ -477,7 +466,7 @@ class _DateFormatPatternField extends _DateFormatField {
 
   String formatAmPm(DateTime date) {
     var hours = date.hour;
-    var index = (date.hour >= 12) && (date.hour < 24) ? 1 : 0;
+    var index = (hours >= 12) && (hours < 24) ? 1 : 0;
     var ampm = symbols.AMPMS;
     return ampm[index];
   }
@@ -573,37 +562,37 @@ class _DateFormatPatternField extends _DateFormatField {
 
   String formatQuarter(DateTime date) {
     var quarter = ((date.month - 1) / 3).truncate();
-    if (width < 4) {
-      return symbols.SHORTQUARTERS[quarter];
-    } else {
-      return symbols.QUARTERS[quarter];
+    switch (width) {
+      case 4:
+        return symbols.QUARTERS[quarter];
+      case 3:
+        return symbols.SHORTQUARTERS[quarter];
+      default:
+        return padTo(width, quarter + 1);
     }
   }
+
   String formatDayOfMonth(DateTime date) {
     return padTo(width, date.day);
   }
 
   String formatDayOfYear(DateTime date) => padTo(width, dayNumberInYear(date));
 
-  /** Return the ordinal day, i.e. the day number in the year. */
+  /// Return the ordinal day, i.e. the day number in the year.
   int dayNumberInYear(DateTime date) {
     if (date.month == 1) return date.day;
     if (date.month == 2) return date.day + 31;
     return ordinalDayFromMarchFirst(date) + 59 + (isLeapYear(date) ? 1 : 0);
   }
 
-  /**
-   * Return the day of the year counting March 1st as 1, after which the
-   * number of days per month is constant, so it's easier to calculate.
-   * Formula from http://en.wikipedia.org/wiki/Ordinal_date
-   */
+  /// Return the day of the year counting March 1st as 1, after which the
+  /// number of days per month is constant, so it's easier to calculate.
+  /// Formula from http://en.wikipedia.org/wiki/Ordinal_date
   int ordinalDayFromMarchFirst(DateTime date) =>
       ((30.6 * date.month) - 91.4).floor() + date.day;
 
-  /**
-   * Return true if this is a leap year. Rely on [DateTime] to do the
-   * underlying calculation, even though it doesn't expose the test to us.
-   */
+  /// Return true if this is a leap year. Rely on [DateTime] to do the
+  /// underlying calculation, even though it doesn't expose the test to us.
   bool isLeapYear(DateTime date) {
     var feb29 = new DateTime(date.year, 2, 29);
     return feb29.month == 2;
@@ -611,14 +600,18 @@ class _DateFormatPatternField extends _DateFormatField {
 
   String formatDayOfWeek(DateTime date) {
     // Note that Dart's weekday returns 1 for Monday and 7 for Sunday.
-    return (width >= 4
-        ? symbols.WEEKDAYS
-        : symbols.SHORTWEEKDAYS)[(date.weekday) % 7];
+    return (width >= 4 ? symbols.WEEKDAYS : symbols.SHORTWEEKDAYS)[
+        (date.weekday) % 7];
   }
 
   void parseDayOfWeek(_Stream input) {
     // This is IGNORED, but we still have to skip over it the correct amount.
     var possibilities = width >= 4 ? symbols.WEEKDAYS : symbols.SHORTWEEKDAYS;
+    parseEnumeratedString(input, possibilities);
+  }
+
+  void parseEra(_Stream input) {
+    var possibilities = width >= 4 ? symbols.ERANAMES : symbols.ERAS;
     parseEnumeratedString(input, possibilities);
   }
 
@@ -643,18 +636,8 @@ class _DateFormatPatternField extends _DateFormatField {
     throw new UnimplementedError();
   }
 
-  /**
-  * Return a string representation of the object padded to the left with
-  * zeros. Primarily useful for numbers.
-  */
-  String padTo(int width, Object toBePrinted) {
-    var basicString = toBePrinted.toString();
-    if (basicString.length >= width) return basicString;
-    var buffer = new StringBuffer();
-    for (var i = 0; i < width - basicString.length; i++) {
-      buffer.write('0');
-    }
-    buffer.write(basicString);
-    return buffer.toString();
-  }
+  /// Return a string representation of the object padded to the left with
+  /// zeros. Primarily useful for numbers.
+  static String padTo(int width, Object toBePrinted) =>
+      '$toBePrinted'.padLeft(width, '0');
 }

@@ -10,7 +10,7 @@ void main() {
     var map;
     setUp(() {
       map = new CanonicalizedMap<int, String, String>(int.parse,
-          isValidKey: new RegExp(r"^\d+$").hasMatch);
+          isValidKey: (s) => new RegExp(r"^\d+$").hasMatch(s));
     });
 
     test("canonicalizes keys on set and get", () {
@@ -22,33 +22,28 @@ void main() {
       expect(map["foo"], isNull);
     });
 
+    test("set affects nothing for uncanonicalizable key", () {
+      map["foo"] = "value";
+      expect(map["foo"], isNull);
+      expect(map.containsKey("foo"), isFalse);
+      expect(map.length, equals(0));
+    });
+
     test("canonicalizes keys for addAll", () {
-      map.addAll({
-        "1": "value 1",
-        "2": "value 2",
-        "3": "value 3"
-      });
+      map.addAll({"1": "value 1", "2": "value 2", "3": "value 3"});
       expect(map["01"], equals("value 1"));
       expect(map["02"], equals("value 2"));
       expect(map["03"], equals("value 3"));
     });
 
     test("uses the final value for addAll collisions", () {
-      map.addAll({
-        "1": "value 1",
-        "01": "value 2",
-        "001": "value 3"
-      });
+      map.addAll({"1": "value 1", "01": "value 2", "001": "value 3"});
       expect(map.length, equals(1));
       expect(map["0001"], equals("value 3"));
     });
 
     test("clear clears the map", () {
-      map.addAll({
-        "1": "value 1",
-        "2": "value 2",
-        "3": "value 3"
-      });
+      map.addAll({"1": "value 1", "2": "value 2", "3": "value 3"});
       expect(map, isNot(isEmpty));
       map.clear();
       expect(map, isEmpty);
@@ -66,8 +61,8 @@ void main() {
 
     test("canonicalizes keys for putIfAbsent", () {
       map["1"] = "value";
-      expect(map.putIfAbsent("01", () => throw "shouldn't run"),
-             equals("value"));
+      expect(
+          map.putIfAbsent("01", () => throw "shouldn't run"), equals("value"));
       expect(map.putIfAbsent("2", () => "new value"), equals("new value"));
     });
 
@@ -130,12 +125,8 @@ void main() {
     });
 
     test("values returns all values in the map", () {
-      map.addAll({
-        "1": "value 1",
-        "01": "value 01",
-        "2": "value 2",
-        "03": "value 03"
-      });
+      map.addAll(
+          {"1": "value 1", "01": "value 01", "2": "value 2", "03": "value 03"});
 
       expect(map.values, equals(["value 01", "value 2", "value 03"]));
     });
@@ -143,22 +134,16 @@ void main() {
 
   group("CanonicalizedMap.from", () {
     test("canonicalizes its keys", () {
-      var map = new CanonicalizedMap.from({
-        "1": "value 1",
-        "2": "value 2",
-        "3": "value 3"
-      }, int.parse);
+      var map = new CanonicalizedMap.from(
+          {"1": "value 1", "2": "value 2", "3": "value 3"}, int.parse);
       expect(map["01"], equals("value 1"));
       expect(map["02"], equals("value 2"));
       expect(map["03"], equals("value 3"));
     });
 
     test("uses the final value for collisions", () {
-      var map = new CanonicalizedMap.from({
-        "1": "value 1",
-        "01": "value 2",
-        "001": "value 3"
-      }, int.parse);
+      var map = new CanonicalizedMap.from(
+          {"1": "value 1", "01": "value 2", "001": "value 3"}, int.parse);
       expect(map.length, equals(1));
       expect(map["0001"], equals("value 3"));
     });

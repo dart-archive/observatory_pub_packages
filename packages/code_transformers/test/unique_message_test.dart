@@ -3,11 +3,12 @@
 // BSD-style license that can be found in the LICENSE file.
 
 /// Tests for some of the utility helper functions used by the compiler.
+@TestOn('vm')
 library polymer.test.build.messages_test;
 
 import 'dart:mirrors';
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:code_transformers/messages/messages.dart' show Message;
 
 import 'package:code_transformers/src/messages.dart' as p1;
@@ -27,8 +28,9 @@ main() {
       var name = MirrorSystem.getName(symbol);
       if (field is! Message) return;
       var id = field.id;
-      expect(seen.containsKey(id), isFalse, reason: 'Duplicate id `$id`. '
-          'Currently set for both `$name` and `${seen[id]}`.');
+      expect(seen.containsKey(id), isFalse,
+          reason: 'Duplicate id `$id`. '
+              'Currently set for both `$name` and `${seen[id]}`.');
       seen[id] = name;
       total++;
     });

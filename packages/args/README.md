@@ -51,9 +51,11 @@ The default value for non-flag options can be any string. For flags, it must
 be a `bool`.
 
 To validate a non-flag option, you can use the `allowed` parameter to provide an
-allowed set of values. When you do, the parser throws a [FormatException] if the
-value for an option is not in the allowed set. Here's an example of specifying
-allowed values:
+allowed set of values. When you do, the parser throws an
+[`ArgParserException`][ArgParserException] if the value for an option is not in
+the allowed set. Here's an example of specifying allowed values:
+
+[ArgParserException]: https://www.dartdocs.org/documentation/args/latest/args/ArgParserException-class.html
 
 ```dart
 parser.addOption('mode', allowed: ['debug', 'release']);
@@ -294,9 +296,9 @@ class CommitCommand extends Command {
 
   // [run] may also return a Future.
   void run() {
-    // [options] is set before [run()] is called and contains the options
+    // [argResults] is set before [run()] is called and contains the options
     // passed to this command.
-    print(options['all']);
+    print(argResults['all']);
   }
 }
 ```
@@ -320,12 +322,12 @@ class StashCommand extends Command {
 [CommandRunner][] automatically adds a `help` command that displays usage
 information for commands, as well as support for the `--help` flag for all
 commands. If it encounters an error parsing the arguments or processing a
-command, it throws a [UsageError][]; your `main()` method should catch these and
+command, it throws a [UsageException][]; your `main()` method should catch these and
 print them appropriately. For example:
 
 ```dart
 runner.run(arguments).catchError((error) {
-  if (error is! UsageError) throw error;
+  if (error is! UsageException) throw error;
   print(error);
   exit(64); // Exit code 64 indicates a usage error.
 });
@@ -363,10 +365,10 @@ parser.addOption('arch', help: 'The architecture to compile for',
     });
 ```
 
-To display the help, use the [getUsage()][getUsage] method:
+To display the help, use the [usage][usage] getter:
 
 ```dart
-print(parser.getUsage());
+print(parser.usage);
 ```
 
 The resulting string looks something like this:
@@ -386,14 +388,14 @@ The resulting string looks something like this:
 [gnu]: http://www.gnu.org/prep/standards/standards.html#Command_002dLine-Interfaces
 [ArgParser]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser
 [ArgResults]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgResults
-[CommandRunner]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.CommandRunner
-[Command]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.Command
-[UsageError]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.UsageError
+[CommandRunner]: http://www.dartdocs.org/documentation/args/latest/index.html#args/command_runner.CommandRunner
+[Command]: http://www.dartdocs.org/documentation/args/latest/index.html#args/command_runner.Command
+[UsageException]: http://www.dartdocs.org/documentation/args/latest/index.html#args/command_runner.UsageException
 [addOption]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser@id_addOption
 [addFlag]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser@id_addFlag
 [parse]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser@id_parse
 [rest]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgResults@id_rest
 [addCommand]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser@id_addCommand
 [getUsage]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.ArgParser@id_getUsage
-[addSubcommand]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.Command@id_addSubcommand
-[run]: http://www.dartdocs.org/documentation/args/latest/index.html#args/args.Command@id_run
+[addSubcommand]: http://www.dartdocs.org/documentation/args/latest/index.html#args/command_runner.Command@id_addSubcommand
+[run]: http://www.dartdocs.org/documentation/args/latest/index.html#args/command_runner.Command@id_run

@@ -2,11 +2,11 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library watcher.utils;
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:collection';
+
+import 'package:async/async.dart';
 
 /// Returns `true` if [error] is a [FileSystemException] for a missing
 /// directory.
@@ -31,17 +31,18 @@ Set unionAll(Iterable<Set> sets) =>
 /// If [broadcast] is true, a broadcast stream is returned. This assumes that
 /// the stream returned by [future] will be a broadcast stream as well.
 /// [broadcast] defaults to false.
-Stream futureStream(Future<Stream> future, {bool broadcast: false}) {
+Stream/*<T>*/ futureStream/*<T>*/(Future<Stream/*<T>*/> future,
+    {bool broadcast: false}) {
   var subscription;
-  var controller;
+  StreamController/*<T>*/ controller;
 
-  future = future.catchError((e, stackTrace) {
+  future = DelegatingFuture.typed(future.catchError((e, stackTrace) {
     // Since [controller] is synchronous, it's likely that emitting an error
     // will cause it to be cancelled before we call close.
     if (controller != null) controller.addError(e, stackTrace);
     if (controller != null) controller.close();
     controller = null;
-  });
+  }));
 
   onListen() {
     future.then((stream) {
@@ -94,7 +95,7 @@ Future pumpEventQueue([int times = 20]) {
 /// microtasks.
 class BatchedStreamTransformer<T> implements StreamTransformer<T, List<T>> {
   Stream<List<T>> bind(Stream<T> input) {
-    var batch = new Queue();
+    var batch = new Queue<T>();
     return new StreamTransformer<T, List<T>>.fromHandlers(
         handleData: (event, sink) {
       batch.add(event);

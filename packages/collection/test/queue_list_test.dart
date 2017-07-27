@@ -69,7 +69,8 @@ void main() {
       expect(queue, equals([2, 3]));
     });
 
-    test("removes an element from the beginning of a queue with an internal "
+    test(
+        "removes an element from the beginning of a queue with an internal "
         "gap", () {
       var queue = withInternalGap();
       expect(queue.removeFirst(), equals(1));
@@ -167,7 +168,8 @@ void main() {
       expect(() => queue[-1], throwsRangeError);
     });
 
-    test("throws a RangeError if the index is greater than or equal to the "
+    test(
+        "throws a RangeError if the index is greater than or equal to the "
         "length", () {
       var queue = new QueueList.from([1, 2, 3]);
       expect(() => queue[3], throwsRangeError);
@@ -176,7 +178,7 @@ void main() {
 
   group("[]=", () {
     test("sets individual entries in the queue", () {
-      var queue = new QueueList.from([1, 2, 3]);
+      var queue = new QueueList<dynamic>.from([1, 2, 3]);
       queue[0] = "a";
       queue[1] = "b";
       queue[2] = "c";
@@ -202,7 +204,8 @@ void main() {
       }, throwsRangeError);
     });
 
-    test("throws a RangeError if the index is greater than or equal to the "
+    test(
+        "throws a RangeError if the index is greater than or equal to the "
         "length", () {
       var queue = new QueueList.from([1, 2, 3]);
       expect(() {
@@ -271,5 +274,5 @@ QueueList withInternalGap() {
 
 /// Returns a matcher that expects that a closure throws a
 /// [ConcurrentModificationError].
-final throwsConcurrentModificationError = throwsA(
-    new isInstanceOf<ConcurrentModificationError>());
+final throwsConcurrentModificationError =
+    throwsA(new isInstanceOf<ConcurrentModificationError>());

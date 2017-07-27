@@ -44,8 +44,6 @@
 ///
 /// This will join "directory" and "file.txt" using the Windows path separator,
 /// even when the program is run on a POSIX machine.
-library path;
-
 import 'src/context.dart';
 import 'src/style.dart';
 
@@ -60,6 +58,9 @@ final Context posix = new Context(style: Style.posix);
 final Context windows = new Context(style: Style.windows);
 
 /// A default context for manipulating URLs.
+///
+/// URL path equality is undefined for paths that differ only in their
+/// percent-encoding or only in the case of their host segment.
 final Context url = new Context(style: Style.url);
 
 /// The system path context.
@@ -283,8 +284,26 @@ String joinAll(Iterable<String> parts) => context.joinAll(parts);
 ///       // -> ['http://dartlang.org', 'path', 'to', 'foo']
 List<String> split(String path) => context.split(path);
 
+/// Canonicalizes [path].
+///
+/// This is guaranteed to return the same path for two different input paths
+/// if and only if both input paths point to the same location. Unlike
+/// [normalize], it returns absolute paths when possible and canonicalizes
+/// ASCII case on Windows.
+///
+/// Note that this does not resolve symlinks.
+///
+/// If you want a map that uses path keys, it's probably more efficient to
+/// pass [equals] and [hash] to [new HashMap] than it is to canonicalize every
+/// key.
+String canonicalize(String path) => context.canonicalize(path);
+
 /// Normalizes [path], simplifying it by handling `..`, and `.`, and
 /// removing redundant path separators whenever possible.
+///
+/// Note that this is *not* guaranteed to return the same result for two
+/// equivalent input paths. For that, see [canonicalize]. Or, if you're using
+/// paths as map keys, pass [equals] and [hash] to [new HashMap].
 ///
 ///     path.normalize('path/./to/..//file.text'); // -> 'path/file.txt'
 String normalize(String path) => context.normalize(path);
@@ -325,6 +344,20 @@ String relative(String path, {String from}) =>
 ///     path.isWithin('/root/path', '/root/other'); // -> false
 ///     path.isWithin('/root/path', '/root/path') // -> false
 bool isWithin(String parent, String child) => context.isWithin(parent, child);
+
+/// Returns `true` if [path1] points to the same location as [path2], and
+/// `false` otherwise.
+///
+/// The [hash] function returns a hash code that matches these equality
+/// semantics.
+bool equals(String path1, String path2) => context.equals(path1, path2);
+
+/// Returns a hash code for [path] such that, if [equals] returns `true` for two
+/// paths, their hash codes are the same.
+///
+/// Note that the same path may have different hash codes on different platforms
+/// or with different [current] directories.
+int hash(String path) => context.hash(path);
 
 /// Removes a trailing extension from the last part of [path].
 ///

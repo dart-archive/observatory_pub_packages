@@ -84,6 +84,7 @@ class DefaultCartesianAreaImpl implements CartesianArea {
   Iterable<ChartSeries> _series;
 
   bool _pendingLegendUpdate = false;
+  bool _pendingAxisConfigUpdate = false;
   List<ChartBehavior> _behaviors = new List<ChartBehavior>();
   Map<ChartSeries, _ChartSeriesInfo> _seriesInfoCache = new Map();
 
@@ -135,6 +136,9 @@ class DefaultCartesianAreaImpl implements CartesianArea {
       _chartAxesUpdatedController.close();
       _chartAxesUpdatedController = null;
     }
+    if (_behaviors.isNotEmpty) {
+      _behaviors.forEach((behavior) => behavior.dispose());
+    }
   }
 
   static bool isNotInline(Element e) =>
@@ -166,9 +170,11 @@ class DefaultCartesianAreaImpl implements CartesianArea {
     _config = value;
     _configEventsDisposer.dispose();
     _pendingLegendUpdate = true;
+    _pendingAxisConfigUpdate = true;
 
     if (_config != null && _config is Observable) {
       _configEventsDisposer.add((_config as Observable).changes.listen((_) {
+        _pendingAxisConfigUpdate = true;
         _pendingLegendUpdate = true;
         draw();
       }));
@@ -200,6 +206,7 @@ class DefaultCartesianAreaImpl implements CartesianArea {
               : new DefaultChartAxisImpl(this);
       return axis;
     });
+
     return _measureAxes[axisId];
   }
 
@@ -317,7 +324,7 @@ class DefaultCartesianAreaImpl implements CartesianArea {
         info.check();
         group.attributes['transform'] = transform;
         (s.renderer as CartesianRenderer)
-            .draw(group, schedulePostRender: schedulePostRender);
+            ?.draw(group, schedulePostRender: schedulePostRender);
       });
 
       // A series that was rendered earlier isn't there anymore, remove it
@@ -339,6 +346,7 @@ class DefaultCartesianAreaImpl implements CartesianArea {
 
     // Save the list of valid series and initialize axes.
     _series = series;
+    _updateAxisConfig();
     _initAxes(preRender: preRender);
 
     // Render the chart, now that the axes layer is already in DOM.
@@ -353,6 +361,7 @@ class DefaultCartesianAreaImpl implements CartesianArea {
   /// Initialize the axes - required even if the axes are not being displayed.
   _initAxes({bool preRender: false}) {
     Map measureAxisUsers = <String, Iterable<ChartSeries>>{};
+    var keysToRemove = _measureAxes.keys.toList();
 
     // Create necessary measures axes.
     // If measure axes were not configured on the series, default is used.
@@ -360,6 +369,9 @@ class DefaultCartesianAreaImpl implements CartesianArea {
       var measureAxisIds =
           isNullOrEmpty(s.measureAxisIds) ? MEASURE_AXIS_IDS : s.measureAxisIds;
       measureAxisIds.forEach((axisId) {
+        if (keysToRemove.contains(axisId)) {
+          keysToRemove.remove(axisId);
+        }
         _getMeasureAxis(axisId); // Creates axis if required
         var users = measureAxisUsers[axisId];
         if (users == null) {
@@ -369,6 +381,10 @@ class DefaultCartesianAreaImpl implements CartesianArea {
         }
       });
     });
+
+    for (var key in keysToRemove) {
+      _measureAxes.remove(key);
+    }
 
     // Now that we know a list of series using each measure axis, configure
     // the input domain of each axis.
@@ -577,6 +593,28 @@ class DefaultCartesianAreaImpl implements CartesianArea {
 
     _config.legend.update(legend, this);
     _pendingLegendUpdate = false;
+  }
+
+  // Updates the AxisConfig, if configuration chagned since the last time the
+  // AxisConfig was updated.
+  _updateAxisConfig() {
+    if (!_pendingAxisConfigUpdate) return;
+    _series.forEach((ChartSeries s) {
+      var measureAxisIds =
+          isNullOrEmpty(s.measureAxisIds) ? MEASURE_AXIS_IDS : s.measureAxisIds;
+      measureAxisIds.forEach((axisId) {
+        var axis = _getMeasureAxis(axisId); // Creates axis if required
+        axis.config = config.getMeasureAxis(axisId);
+      });
+    });
+
+    int dimensionAxesCount = useTwoDimensionAxes ? 2 : 1;
+    config.dimensions.take(dimensionAxesCount).forEach((int column) {
+      var axis = _getDimensionAxis(column);
+      axis.config = config.getDimensionAxis(column);
+    });
+
+    _pendingAxisConfigUpdate = false;
   }
 
   @override

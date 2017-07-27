@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library string_scanner.error_test;
-
 import 'package:string_scanner/string_scanner.dart';
 import 'package:test/test.dart';
 
@@ -61,11 +59,11 @@ void main() {
   });
 
   group("with position and/or length", () {
-    test('defaults to length 1', () {
+    test('defaults to length 0', () {
       var scanner = new StringScanner('foo bar baz');
       scanner.expect('foo ');
       expect(() => scanner.error('oh no!', position: 1),
-          throwsStringScannerException('o'));
+          throwsStringScannerException(''));
     });
 
     test('defaults to the current position', () {

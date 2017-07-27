@@ -28,14 +28,14 @@ void main() {
     });
 
     test('thrown in a one-shot timer', () async {
-      var chain = await captureFuture(
-          () => inOneShotTimer(() => throw 'error'));
+      var chain =
+          await captureFuture(() => inOneShotTimer(() => throw 'error'));
       expect(chain.traces, hasLength(2));
     });
 
     test('thrown in a periodic timer', () async {
-      var chain = await captureFuture(
-          () => inPeriodicTimer(() => throw 'error'));
+      var chain =
+          await captureFuture(() => inPeriodicTimer(() => throw 'error'));
       expect(chain.traces, hasLength(2));
     });
 
@@ -238,11 +238,11 @@ void main() {
     });
   });
 
-  test('current() outside of capture() returns a chain wrapping the current '
+  test(
+      'current() outside of capture() returns a chain wrapping the current '
       'trace', () {
-    // The test runner runs all tests with chains enabled, so to test without we
-    // have to do some zone munging.
-    return runZoned(() async {
+    // The test runner runs all tests with chains enabled.
+    return Chain.disable(() async {
       var completer = new Completer();
       inMicrotask(() => completer.complete(new Chain.current()));
 
@@ -251,7 +251,7 @@ void main() {
       // chain isn't available and it just returns the current stack when
       // called.
       expect(chain.traces, hasLength(1));
-    }, zoneValues: {#stack_trace.stack_zone.spec: null});
+    });
   });
 
   group('forTrace() within capture()', () {
@@ -282,7 +282,8 @@ void main() {
       expect(chain.traces, hasLength(3));
     });
 
-    test('called for a stack trace from a nested series of asynchronous '
+    test(
+        'called for a stack trace from a nested series of asynchronous '
         'operations', () async {
       var chain = await Chain.capture(() {
         return chainForTrace((callback) {
@@ -301,7 +302,8 @@ void main() {
       expect(chain.traces, hasLength(3));
     });
 
-    test('called for an unregistered stack trace returns a chain wrapping that '
+    test(
+        'called for an unregistered stack trace returns a chain wrapping that '
         'trace', () {
       var trace;
       var chain = Chain.capture(() {
@@ -319,7 +321,8 @@ void main() {
     });
   });
 
-  test('forTrace() outside of capture() returns a chain wrapping the given '
+  test(
+      'forTrace() outside of capture() returns a chain wrapping the given '
       'trace', () {
     var trace;
     var chain = Chain.capture(() {

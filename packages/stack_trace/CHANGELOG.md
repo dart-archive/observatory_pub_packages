@@ -1,3 +1,90 @@
+## 1.8.0
+
+* Add a `Trace.original` field to provide access to the original `StackTrace`s
+  from which the `Trace` was created, and a matching constructor parameter to
+  `new Trace()`.
+
+## 1.7.4
+
+* Always run `onError` callbacks for `Chain.capture()` in the parent zone.
+
+## 1.7.3
+
+* Fix broken links in the README.
+
+## 1.7.2
+
+* `Trace.foldFrames()` and `Chain.foldFrames()` now remove the outermost folded
+  frame. This matches the behavior of `.terse` with core frames.
+
+* Fix bug parsing a friendly frame with spaces in the member name.
+
+* Fix bug parsing a friendly frame where the location is a data url.
+
+## 1.7.1
+
+* Make `Trace.parse()`, `Chain.parse()`, treat the VM's new causal asynchronous
+  stack traces as chains. Outside of a `Chain.capture()` block, `new
+  Chain.current()` will return a stack chain constructed from the asynchronous
+  stack traces.
+
+## 1.7.0
+
+* Add a `Chain.disable()` function that disables stack-chain tracking.
+
+* Fix a bug where `Chain.capture(..., when: false)` would throw if an error was
+  emitted without a stack trace.
+
+## 1.6.8
+
+* Add a note to the documentation of `Chain.terse` and `Trace.terse`.
+
+## 1.6.7
+
+* Fix a bug where `new Frame.caller()` returned the wrong depth of frame on
+  Dartium.
+
+## 1.6.6
+
+* `new Trace.current()` and `new Chain.current()` now skip an extra frame when
+  run in a JS context. This makes their return values match the VM context.
+
+## 1.6.5
+
+* Really fix strong mode warnings.
+
+## 1.6.4
+
+* Fix a syntax error introduced in 1.6.3.
+
+## 1.6.3
+
+* Make `Chain.capture()` generic. Its signature is now `T Chain.capture<T>(T
+  callback(), ...)`.
+
+## 1.6.2
+
+* Fix all strong mode warnings.
+
+## 1.6.1
+
+* Use `StackTrace.current` in Dart SDK 1.14 to get the current stack trace.
+
+## 1.6.0
+
+* Add a `when` parameter to `Chain.capture()`. This allows capturing to be
+  easily enabled and disabled based on whether the application is running in
+  debug/development mode or not.
+
+* Deprecate the `ChainHandler` typedef. This didn't provide any value over
+  directly annotating the function argument, and it made the documentation less
+  clear.
+
+## 1.5.1
+
+* Fix a crash in `Chain.foldFrames()` and `Chain.terse` when one of the chain's
+  traces has no frames.
+
 ## 1.5.0
 
 * `new Chain.parse()` now parses all the stack trace formats supported by `new

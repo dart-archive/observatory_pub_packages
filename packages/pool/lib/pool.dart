@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library pool;
-
 import 'dart:async';
 import 'dart:collection';
 
@@ -65,7 +63,14 @@ class Pool {
   FutureGroup _closeGroup;
 
   /// Whether [close] has been called.
-  bool get isClosed => _closeGroup != null;
+  bool get isClosed => _closeMemo.hasRun;
+
+  /// A future that completes once the pool is closed and all its outstanding
+  /// resources have been released.
+  ///
+  /// If any [PoolResource.allowRelease] callback throws an exception after the
+  /// pool is closed, this completes with that exception.
+  Future get done => _closeMemo.future;
 
   /// Creates a new pool with the given limit on how many resources may be
   /// allocated at once.
@@ -108,15 +113,18 @@ class Pool {
   /// Future.
   ///
   /// The return value of [callback] is piped to the returned Future.
-  Future withResource(callback()) {
+  Future<T> withResource<T>(FutureOr<T> callback()) {
     if (isClosed) {
       throw new StateError(
           "withResource() may not be called on a closed Pool.");
     }
 
-    // TODO(nweiz): Use async/await when sdk#23497 is fixed.
-    return request().then((resource) {
-      return new Future.sync(callback).whenComplete(resource.release);
+    // We can't use async/await here because we need to start the request
+    // synchronously in case the pool is closed immediately afterwards. Async
+    // functions have an asynchronous gap between calling and running the body,
+    // and [close] could be called during that gap. See #3.
+    return request().then<Future<T>>((resource) {
+      return new Future<T>.sync(callback).whenComplete(resource.release);
     });
   }
 
@@ -131,7 +139,7 @@ class Pool {
   /// an error, the returned future completes with that error.
   ///
   /// This may be called more than once; it returns the same [Future] each time.
-  Future close() {
+  Future close() => _closeMemo.runOnce(() {
     if (_closeGroup != null) return _closeGroup.future;
 
     _resetTimer();
@@ -146,7 +154,8 @@ class Pool {
 
     if (_allocatedResources == 0) _closeGroup.close();
     return _closeGroup.future;
-  }
+  });
+  final _closeMemo = new AsyncMemoizer();
 
   /// If there are any pending requests, this will fire the oldest one.
   void _onResourceReleased() {
@@ -191,7 +200,7 @@ class Pool {
       _onReleaseCompleters.removeFirst().completeError(error, stackTrace);
     });
 
-    var completer = new Completer.sync();
+    var completer = new Completer<PoolResource>.sync();
     _onReleaseCompleters.add(completer);
     return completer.future;
   }

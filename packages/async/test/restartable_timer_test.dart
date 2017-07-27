@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:async';
-
 import 'package:async/async.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
@@ -12,7 +10,7 @@ main() {
   test("runs the callback once the duration has elapsed", () {
     new FakeAsync().run((async) {
       var fired = false;
-      var timer = new RestartableTimer(new Duration(seconds: 5), () {
+      new RestartableTimer(new Duration(seconds: 5), () {
         fired = true;
       });
 
@@ -101,9 +99,8 @@ main() {
 
   test("only runs the callback once if the timer isn't reset", () {
     new FakeAsync().run((async) {
-      var timer = new RestartableTimer(
-          new Duration(seconds: 5),
-          expectAsync(() {}, count: 1));
+      new RestartableTimer(
+          new Duration(seconds: 5), expectAsync0(() {}, count: 1));
       async.elapse(new Duration(seconds: 10));
     });
   });

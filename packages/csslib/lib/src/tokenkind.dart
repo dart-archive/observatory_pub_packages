@@ -100,8 +100,10 @@ class TokenKind {
   static const int COMBINATOR_PLUS = 515; // + combinator
   static const int COMBINATOR_GREATER = 516; // > combinator
   static const int COMBINATOR_TILDE = 517; // ~ combinator
+  static const int COMBINATOR_SHADOW_PIERCING_DESCENDANT = 518; // >>>
+  static const int COMBINATOR_DEEP = 519; // /deep/ (aliases >>>)
 
-  static const int UNARY_OP_NONE = 518; // No unary operator present.
+  static const int UNARY_OP_NONE = 520; // No unary operator present.
 
   // Attribute match types:
   static const int INCLUDES = 530; // '~='
@@ -159,6 +161,10 @@ class TokenKind {
   static const int DIRECTIVE_INCLUDE = 655;
   static const int DIRECTIVE_CONTENT = 656;
   static const int DIRECTIVE_EXTEND = 657;
+  static const int DIRECTIVE_MOZ_DOCUMENT = 658;
+  static const int DIRECTIVE_SUPPORTS = 659;
+  static const int DIRECTIVE_VIEWPORT = 660;
+  static const int DIRECTIVE_MS_VIEWPORT = 661;
 
   // Media query operators
   static const int MEDIA_OP_ONLY = 665; // Unary.
@@ -216,6 +222,10 @@ class TokenKind {
     const {'type': TokenKind.DIRECTIVE_INCLUDE, 'value': 'include'},
     const {'type': TokenKind.DIRECTIVE_CONTENT, 'value': 'content'},
     const {'type': TokenKind.DIRECTIVE_EXTEND, 'value': 'extend'},
+    const {'type': TokenKind.DIRECTIVE_MOZ_DOCUMENT, 'value': '-moz-document'},
+    const {'type': TokenKind.DIRECTIVE_SUPPORTS, 'value': 'supports'},
+    const {'type': TokenKind.DIRECTIVE_VIEWPORT, 'value': 'viewport'},
+    const {'type': TokenKind.DIRECTIVE_MS_VIEWPORT, 'value': '-ms-viewport'},
   ];
 
   static const List<Map<String, dynamic>> MEDIA_OPERATORS = const [

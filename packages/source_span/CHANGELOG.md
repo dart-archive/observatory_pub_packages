@@ -1,3 +1,40 @@
+# 1.4.0
+
+* The `new SourceFile()` constructor is deprecated. This constructed a source
+  file from a string's runes, rather than its code units, which runs counter to
+  the way Dart handles strings otherwise. The `new StringFile.fromString()`
+  constructor (see below) should be used instead.
+
+* The `new SourceFile.fromString()` constructor was added. This works like `new
+  SourceFile()`, except it uses code units rather than runes.
+
+* The current behavior when characters larger than `0xFFFF` are passed to `new
+  SourceFile.decoded()` is now considered deprecated.
+
+# 1.3.1
+
+* Properly highlight spans for lines that include tabs with
+  `SourceSpan.highlight()` and `SourceSpan.message()`.
+
+# 1.3.0
+
+* Add `SourceSpan.highlight()`, which returns just the highlighted text that
+  would be included in `SourceSpan.message()`.
+
+# 1.2.4
+
+* Fix a new strong mode error.
+
+# 1.2.3
+
+* Fix a bug where a point span at the end of a file without a trailing newline
+  would be printed incorrectly.
+
+# 1.2.2
+
+* Allow `SourceSpanException.message`, `SourceSpanFormatException.source`, and
+  `SourceSpanWithContext.context` to be overridden in strong mode.
+
 # 1.2.1
 
 * Fix the declared type of `FileSpan.start` and `FileSpan.end`. In 1.2.0 these

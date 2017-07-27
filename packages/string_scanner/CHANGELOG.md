@@ -1,3 +1,35 @@
+## 1.0.2
+
+* `SpanScanner` no longer crashes when creating a span that contains a UTF-16
+  surrogate pair.
+
+## 1.0.1
+
+* Fix the error text emitted by `StringScanner.expectChar()`.
+
+## 1.0.0
+
+* **Breaking change**: `StringScanner.error()`'s `length` argument now defaults
+  to `0` rather than `1` when no match data is available.
+
+* **Breaking change**: `StringScanner.lastMatch` and related methods are now
+  reset when the scanner's position changes without producing a new match.
+
+**Note**: While the changes in `1.0.0` are user-visible, they're unlikely to
+actually break any code in practice. Unless you know that your package is
+incompatible with 0.1.x, consider using 0.1.5 as your lower bound rather
+than 1.0.0. For example, `string_scanner: ">=0.1.5 <2.0.0"`.
+
+## 0.1.5
+
+* Add `new SpanScanner.within()`, which scans within a existing `FileSpan`.
+
+* Add `StringScanner.scanChar()` and `StringScanner.expectChar()`.
+
+## 0.1.4+1
+
+* Remove the dependency on `path`, since we don't actually import it.
+
 ## 0.1.4
 
 * Add `new SpanScanner.eager()` for creating a `SpanScanner` that eagerly

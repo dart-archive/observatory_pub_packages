@@ -2,13 +2,13 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library async.cancelable_operation;
-
 import 'dart:async';
 
 import 'package:async/async.dart';
 
-/// An asynchronuos operation that can be cancelled.
+import 'utils.dart';
+
+/// An asynchronous operation that can be cancelled.
 ///
 /// The value of this operation is exposed as [value]. When this operation is
 /// cancelled, [value] won't complete either successfully or with an error. If
@@ -24,13 +24,13 @@ class CancelableOperation<T> {
   /// Creates a [CancelableOperation] wrapping [inner].
   ///
   /// When this operation is canceled, [onCancel] will be called and any value
-  /// or error produced by [inner] will be discarded. The callback may return a
-  /// Future to indicate that asynchronous work has to be done to cancel the
-  /// future; this Future will be returned by [cancel].
+  /// or error produced by [inner] will be discarded. If [onCancel] returns a
+  /// [Future], it will be forwarded to [cancel].
   ///
   /// [onCancel] will be called synchronously when the operation is canceled.
   /// It's guaranteed to only be called once.
-  factory CancelableOperation.fromFuture(Future<T> inner, {onCancel()}) {
+  factory CancelableOperation.fromFuture(Future<T> inner,
+      {FutureOr onCancel()}) {
     var completer = new CancelableCompleter<T>(onCancel: onCancel);
     completer.complete(inner);
     return completer.operation;
@@ -44,8 +44,8 @@ class CancelableOperation<T> {
   /// This is like `value.asStream()`, but if a subscription to the stream is
   /// canceled, this is as well.
   Stream<T> asStream() {
-    var controller = new StreamController<T>(
-        sync: true, onCancel: _completer._cancel);
+    var controller =
+        new StreamController<T>(sync: true, onCancel: _completer._cancel);
 
     value.then((value) {
       controller.add(value);
@@ -55,6 +55,24 @@ class CancelableOperation<T> {
       controller.close();
     });
     return controller.stream;
+  }
+
+  /// Creates a [Future] that completes when this operation completes *or* when
+  /// it's cancelled.
+  ///
+  /// If this operation completes, this completes to the same result as [value].
+  /// If this operation is cancelled, the returned future waits for the future
+  /// returned by [cancel], then completes to [cancellationValue].
+  Future valueOrCancellation([T cancellationValue]) {
+    var completer = new Completer<T>.sync();
+    value.then((result) => completer.complete(result),
+        onError: completer.completeError);
+
+    _completer._cancelMemo.future.then((_) {
+      completer.complete(cancellationValue);
+    }, onError: completer.completeError);
+
+    return completer.future;
   }
 
   /// Cancels this operation.
@@ -70,17 +88,17 @@ class CancelableCompleter<T> {
   final Completer<T> _inner;
 
   /// The callback to call if the future is canceled.
-  final ZoneCallback _onCancel;
+  final FutureOrCallback _onCancel;
 
   /// Creates a new completer for a [CancelableOperation].
   ///
   /// When the future operation canceled, as long as the completer hasn't yet
-  /// completed, [onCancel] is called. The callback may return a [Future]; if
-  /// so, that [Future] is returned by [CancelableOperation.cancel].
+  /// completed, [onCancel] is called. If [onCancel] returns a [Future], it's
+  /// forwarded to [CancelableOperation.cancel].
   ///
   /// [onCancel] will be called synchronously when the operation is canceled.
   /// It's guaranteed to only be called once.
-  CancelableCompleter({onCancel()})
+  CancelableCompleter({FutureOr onCancel()})
       : _onCancel = onCancel,
         _inner = new Completer<T>() {
     _operation = new CancelableOperation<T>._(this);
@@ -140,9 +158,12 @@ class CancelableCompleter<T> {
   }
 
   /// Cancel the completer.
-  Future _cancel() => _cancelMemo.runOnce(() {
-    if (_inner.isCompleted) return null;
-    _isCanceled = true;
-    if (_onCancel != null) return _onCancel();
-  });
+  Future _cancel() {
+    if (_inner.isCompleted) return new Future.value();
+
+    return _cancelMemo.runOnce(() {
+      _isCanceled = true;
+      if (_onCancel != null) return _onCancel();
+    });
+  }
 }

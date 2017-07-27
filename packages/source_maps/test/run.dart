@@ -5,9 +5,8 @@
 
 library test.run;
 
-import 'package:unittest/compact_vm_config.dart';
-import 'package:unittest/unittest.dart';
-import 'dart:io' show Options;
+import 'package:test/compact_vm_config.dart';
+import 'package:test/test.dart';
 
 import 'builder_test.dart' as builder_test;
 import 'end2end_test.dart' as end2end_test;

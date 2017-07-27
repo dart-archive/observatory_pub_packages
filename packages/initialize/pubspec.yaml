@@ -1,36 +1,39 @@
 name: initialize
-version: 0.6.1+2
+version: 0.6.2+6
 author: Polymer.dart Authors <web@dartlang.org>
 description: Generic building blocks for doing static initialization.
 homepage: https://github.com/dart-lang/initialize
 dependencies:
-  analyzer: '>=0.15.6 <0.27.0'
+  analyzer: '>=0.27.2 <0.30.0'
   barback: '>=0.14.2 <0.16.0'
-  code_transformers: '>=0.2.7 <0.3.0'
+  code_transformers: '>=0.3.0 <0.6.0'
   dart_style: '>=0.1.3 <0.3.0'
   glob: ">=1.0.4 <2.0.0"
-  html: '>=0.12.0 <0.13.0'
+  html: '>=0.12.0 <0.14.0'
   path: '>=1.3.0 <2.0.0'
 dev_dependencies:
   test_package:
     path: test_package
-  unittest: '>=0.10.0 <0.12.0'
+  test: '>=0.12.0 <0.13.0'
+  transformer_test: '>=0.2.0 <0.3.0'
 environment:
   sdk: ">=1.9.0-dev.7.1 <2.0.0"
 transformers:
 - initialize/build/loader_replacer:
     $include: lib/initialize.dart
 - initialize:
-    $include: '**/*_test.dart'
+    $include: '**/*_test.*'
     entry_points:
-      - test/deferred_library_test.dart
-      - test/initializer_test.dart
-      - test/initializer_from_test.dart
-      - test/initializer_parts_test.dart
-      - test/initializer_super_test.dart
-      - test/initializer_cycle_error_test.dart
-      - test/initializer_custom_filter_test.dart
-      - test/initializer_type_filter_test.dart
-      - test/init_method_test.dart
+      - test/deferred_library_test.html
+      - test/initializer_test.html
+      - test/initializer_from_test.html
+      - test/initializer_parts_test.html
+      - test/initializer_super_test.html
+      - test/initializer_cycle_error_test.html
+      - test/initializer_custom_filter_test.html
+      - test/initializer_type_filter_test.html
+      - test/init_method_test.html
+- test/pub_serve:
+    $include: test/**_test{.*,}.dart
 - $dart2js:
-    $exclude: '**/*.dart'
+    $include: test/*_test.initialize{.*,}.dart

@@ -1,3 +1,114 @@
+## 0.15.1
+ * Use the platform.locale API to get the OS platform.
+ * Convert to use package:test
+
+## 0.15.0
+ * Fix compactCurrency to correctly use passed-in symbol.
+ * A tweak to the way we retry on DateTime.asDate to compensate for a VM bug.
+ * Update CLDR version to 30.
+ * Cache the last result of isRtlLanguage
+ * Some strong mode fixes
+ * Allow passing enums to a select.
+ * Remove the cacheBlocker parameter from HttpRequestDataReader
+ * Optimize padding numbers when printing
+ * Remove the out of date example directory
+ * Add a facility to check if messages are being called before locale
+   initialization, which can lead to errors if the results are being cached. See
+   UninitializedLocaleData.throwOnFallback.
+ * Restore dependency on path which was removed when intl_translation was
+   separated.
+ * Improve the error message when date parsing fails validation to show what the
+   parsed date was.
+
+## 0.14.0
+ * MAJOR BREAKING CHANGE! Remove message extraction and code generation into a
+   separate intl_translation package. This means packages with a runtime
+   dependency on intl don't also depend on analyzer, barback, and so forth.
+
+## 0.13.1
+ * Update CLDR data to version 29.
+ * Add a toBeginningOfSentenceCase() method which converts the first character
+   of a string to uppercase. It may become more clever about that for locales
+   with different conventions over time.
+ * Fixed the use of currency-specific decimal places, which weren't being used
+   if the currency was the default for the locale.
+ * Add support for currency in compact number formats.
+ * Added support for "Q" and "QQ" numeric quarter formatting, which fixes "QQQ"
+   and "QQQQ" in the zh_CN locale.
+ * As part of deprecating transformer usage, allow `rewrite_intl_messages.dart`
+   to add names and arguments to messages with parameters. Make the transformer
+   not generate names for zero-argument methods and just use the name+meaning
+   instead.
+ * Move barback from dev dependencies into public (see
+   https://github.com/dart-lang/intl/issues/120 )
+
+## 0.13.0
+ * Add support for compact number formats ("1.2K") and for significant digits in
+   number formats.
+ * Add a NumberFormat.simpleCurrency constructor which will attempt to
+   automatically determine the currency symbol. Very simple implementation but
+   can be expanded to be per-locale.
+ * Fix a problem where, in a message, a literal dollar sign followed by a number
+   was seen as a valid identifier, resulting in invalid code being generated.
+ * Add support for locale-specific plural rules. Note that this changes the
+   interpretation of plurals and so is potentially breaking. For example, in
+   English three will now be treated as "other" rather than as "few".
+ * Add `onMessage` top level variable, which defaults to `print`. Warning and
+   error messages will all now go through this function instead of calling
+   `print` directly.
+ * Move top-level variables in `extract_messages.dart` into a MessageExtraction
+   object. This is a breaking change for code that imports
+   `extract_messages.dart`, which probably only means message format
+   readers/extractors like `extract_to_arb.dart` and `generate_from_arb.dart`.
+ * Cache the message lookup for a locale, reducing unnecessary locale validation
+   and lookup.
+
+## 0.12.7+1
+ * Change the signature for args and examples in Intl.plural/gender/select to
+   match Intl.message, allowing dynamic values.
+ * Parameters to initializeDateFormatting are optional.
+ * Extend DateFormat.parseLoose() to allow arbitrary amounts of whitespace
+   before literal fields (as well as after), and treat all whitespace around
+   literal fields as optional even if the literal field's pattern has leading
+   or trailing whitespace.
+ * Fix DateFormat.parseLoose() returning unexpected values in certain cases
+   where a pattern was missing from the input string.
+ * Fix DateFormat.parseLoose() ignoring the value of numeric standalone months
+   ('LL' pattern).
+ * Remove relative imports on `generate_locale_data_files.dart`
+
+## 0.12.7
+ * Update SDK dependency to 1.12.0, to reflect use of null-aware operators.
+ * Add a transformer to automatically add the "name" and "args" parameters to
+   Intl.message and related calls. This removes a lot of tedious repetition.
+ * Fix typo in README.
+ * Make Intl strong-mode compatible.
+
+## 0.12.6
+  * Update links in README.md to point to current dartdocs.
+  * Update locale data to CLDR 28.
+  * Remove library directive from generated libraries. Conflicted with linter.
+  * Support @@locale in ARB files as well as the older _locale
+  * Print a message when generating from ARB files if we guess the locale
+    from the file name when there's no explicit @@locale or _locale in the file.
+  * Switch all the source to use line comments.
+  * Slight improvement to the error message when parsing dates has an invalid
+    value.
+  * Introduce new NumberFormat.currency constructor which can explicitly take a
+    separate currency name and symbol, as well as the number of decimal digits.
+  * Provide a default number of decimal digits per-currency.
+  * Deprecate NumberFormat.currencyPattern.
+
+## 0.12.5
+  * Parse Eras in DateFormat.
+  * Update pubspec.yaml to allow newer version of fixnum and analyzer.
+  * Improvements to the compiled size of generated messages code with dart2js.
+  * Allow adjacent literal strings to be used for message names/descriptions.
+  * Provide a better error message for some cases of bad parameters
+    to plural/gender/select messages.
+  * Introduce a simple MicroMoney class that can represent currency values
+    scaled by a constant factor.
+
 ## 0.12.4+3
   * update analyzer to '<0.28.0' and fixnum to '<0.11.0'
 

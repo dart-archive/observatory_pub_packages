@@ -1,3 +1,22 @@
+## 0.15.2+11
+
+* Update `AssetNode.whenAvailable` to be a generic method to fix a new strong
+  mode error.
+
+## 0.15.2+10
+
+* Update `CancelableFuture` to match the new `Future.then` type signature. The
+  `onValue` parameter now has a return type of `FutureOr<S>` instead of
+  `S`.
+
+## 0.15.2+9
+
+* Fix all strong-mode warnings in Dart 1.18.
+
+## 0.15.2+8
+
+* Fix all strong-mode warnings in Dart 1.16.
+
 ## 0.15.2+7
 
 * Add periodic fine-grained logging for long running transformers.

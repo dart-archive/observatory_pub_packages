@@ -11,13 +11,14 @@ library code_transformers.messages;
 // so it can easily be used both in the transformers and in client-side apps
 // (for example in the log_injector).
 import 'dart:collection' show LinkedHashMap;
+
 import 'package:source_span/source_span.dart';
 
 /// A globally unique identifier for an error message. This identifier should be
 /// stable, that is, it should never change after it is asigned to a particular
 /// message. That allows us to document our error messages and make them
 /// searchable for prosperity.
-class MessageId implements Comparable {
+class MessageId implements Comparable<MessageId> {
   /// Name of the package that declares this message.
   final String package;
 
@@ -48,7 +49,9 @@ class MessageId implements Comparable {
         data.substring(0, index), int.parse(data.substring(index + 1)));
   }
 
-  operator ==(MessageId other) => package == other.package && id == other.id;
+  operator ==(Object other) =>
+      other is MessageId && package == other.package && id == other.id;
+
   int get hashCode => 31 * package.hashCode + id;
 }
 
@@ -164,7 +167,10 @@ class BuildLogEntry {
 
   /// Serializes this log entry to JSON.
   Map toJson() {
-    var data = {'level': level, 'message': message.toJson(),};
+    var data = {
+      'level': level,
+      'message': message.toJson(),
+    };
     if (span != null) {
       data['span'] = {
         'start': {
@@ -184,6 +190,7 @@ class BuildLogEntry {
     }
     return data;
   }
+
   String toString() => '${toJson()}';
 }
 
@@ -194,7 +201,7 @@ class LogEntryTable {
   LogEntryTable() : entries = new LinkedHashMap();
 
   /// Creates a new [LogEntryTable] from an encoded value produced via [toJson].
-  factory LogEntryTable.fromJson(Map json) {
+  factory LogEntryTable.fromJson(Map<String, Iterable> json) {
     var res = new LogEntryTable();
     for (String key in json.keys) {
       var id = new MessageId.fromJson(key);
@@ -212,11 +219,13 @@ class LogEntryTable {
     });
     return res;
   }
+
   String toString() => '${toJson()}';
 
   void add(BuildLogEntry entry) {
     entries.putIfAbsent(entry.message.id, () => []).add(entry);
   }
+
   void addAll(LogEntryTable other) {
     for (var key in other.entries.keys) {
       var values = entries.putIfAbsent(key, () => []);

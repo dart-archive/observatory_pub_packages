@@ -2,9 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/**
- * A simple web app to hand-test the usage library.
- */
+/// A simple web app to hand-test the usage library.
 library usage_example;
 
 import 'dart:html';
@@ -16,9 +14,9 @@ String _lastUa;
 int _count = 0;
 
 void main() {
-  querySelector('#foo').onClick.listen((_) => _handleFoo(getAnalytics()));
-  querySelector('#bar').onClick.listen((_) => _handleBar(getAnalytics()));
-  querySelector('#page').onClick.listen((_) => _changePage(getAnalytics()));
+  querySelector('#foo').onClick.listen((_) => _handleFoo());
+  querySelector('#bar').onClick.listen((_) => _handleBar());
+  querySelector('#page').onClick.listen((_) => _changePage());
 }
 
 String _ua() => (querySelector('#ua') as InputElement).value.trim();
@@ -33,15 +31,18 @@ Analytics getAnalytics() {
   return _analytics;
 }
 
-void _handleFoo(Analytics analytics) {
+void _handleFoo() {
+  Analytics analytics = getAnalytics();
   analytics.sendEvent('main', 'foo');
 }
 
-void _handleBar(Analytics analytics) {
+void _handleBar() {
+  Analytics analytics = getAnalytics();
   analytics.sendEvent('main', 'bar');
 }
 
-void _changePage(Analytics analytics) {
+void _changePage() {
+  Analytics analytics = getAnalytics();
   window.history.pushState(null, 'new page', '${++_count}.html');
   analytics.sendScreenView(window.location.pathname);
 }

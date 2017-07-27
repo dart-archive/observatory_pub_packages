@@ -6,9 +6,9 @@ library code_transformer.src.resolver;
 
 import 'dart:async';
 
-import 'package:analyzer/src/generated/ast.dart' show Expression;
+import 'package:analyzer/dart/ast/ast.dart' show Expression;
 import 'package:analyzer/src/generated/constant.dart' show EvaluationResult;
-import 'package:analyzer/src/generated/element.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:barback/barback.dart';
 import 'package:source_maps/refactor.dart';
 import 'package:source_span/source_span.dart';
@@ -21,10 +21,24 @@ abstract class Resolver {
   ///
   /// [release] must be called when done handling this Resolver to allow it
   /// to be used by later phases.
-  Future<Resolver> resolve(Transform transform, [List<AssetId> entryPoints]);
+  ///
+  /// If [resolveAllLibraries] is [false], then transitive imports will not
+  /// be resolved. This will result in faster resolution, but you will need to
+  /// manually call something like
+  /// `libary.context.computeLibraryElement(library.definingCompilationUnit.source);`
+  /// for each [LibraryElement] that you want to ensure is fully resolved. The
+  /// default value is [true].
+  Future<Resolver> resolve(Transform transform,
+      [List<AssetId> entryPoints, bool resolveAllLibraries]);
 
   /// Release this resolver so it can be updated by following transforms.
   void release();
+
+  /// Whether [assetId] represents an Dart library file.
+  ///
+  /// This will be false in the case where the file is not Dart source code, or
+  /// is a 'part of' file.
+  bool isLibrary(AssetId assetId);
 
   /// Gets the resolved Dart library for an asset, or null if the AST has not
   /// been resolved.

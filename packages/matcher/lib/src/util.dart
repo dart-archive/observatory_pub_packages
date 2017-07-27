@@ -2,10 +2,10 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library matcher.util;
-
 import 'core_matchers.dart';
 import 'interfaces.dart';
+
+typedef bool _Predicate(value);
 
 /// A [Map] between whitespace characters and their escape sequences.
 const _escapeMap = const {
@@ -38,7 +38,7 @@ void addStateInfo(Map matchState, Map values) {
 Matcher wrapMatcher(x) {
   if (x is Matcher) {
     return x;
-  } else if (x is Function) {
+  } else if (x is _Predicate) {
     return predicate(x);
   } else {
     return equals(x);

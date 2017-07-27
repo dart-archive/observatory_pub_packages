@@ -27,7 +27,7 @@ import 'package:charted/selection/transition.dart';
 
 import 'package:collection/equality.dart';
 import 'package:logging/logging.dart';
-import 'package:observe/observe.dart';
+import 'package:observable/observable.dart';
 import 'package:quiver/core.dart';
 
 part 'chart_area.dart';
@@ -50,6 +50,7 @@ part 'cartesian_renderers/bar_chart_renderer.dart';
 part 'cartesian_renderers/cartesian_base_renderer.dart';
 part 'cartesian_renderers/bubble_chart_renderer.dart';
 part 'cartesian_renderers/line_chart_renderer.dart';
+part 'cartesian_renderers/stackedline_chart_renderer.dart';
 part 'cartesian_renderers/stackedbar_chart_renderer.dart';
 
 part 'layout_renderers/layout_base_renderer.dart';

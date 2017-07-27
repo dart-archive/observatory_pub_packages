@@ -14,19 +14,16 @@
 
 part of quiver.collection;
 
-/**
- * An implementation of [Iterable] that delegates all methods to another
- * [Iterable].
- * For instance you can create a FruitIterable like this :
- *
- *     class FruitIterable extends DelegatingIterable<Fruit> {
- *       final Iterable<Fruit> _fruits = [];
- *
- *       Iterable<Fruit> get delegate => _fruits;
- *
- *       // custom methods
- *     }
- */
+/// An implementation of [Iterable] that delegates all methods to another
+/// [Iterable].  For instance you can create a FruitIterable like this :
+///
+///     class FruitIterable extends DelegatingIterable<Fruit> {
+///       final Iterable<Fruit> _fruits = [];
+///
+///       Iterable<Fruit> get delegate => _fruits;
+///
+///       // custom methods
+///     }
 abstract class DelegatingIterable<E> implements Iterable<E> {
   Iterable<E> get delegate;
 
@@ -38,15 +35,15 @@ abstract class DelegatingIterable<E> implements Iterable<E> {
 
   bool every(bool test(E element)) => delegate.every(test);
 
-  Iterable expand(Iterable f(E element)) => delegate.expand(f);
+  Iterable<T> expand<T>(Iterable<T> f(E element)) => delegate.expand(f);
 
   E get first => delegate.first;
 
   E firstWhere(bool test(E element), {E orElse()}) =>
       delegate.firstWhere(test, orElse: orElse);
 
-  fold(initialValue, combine(previousValue, E element)) =>
-      delegate.fold(initialValue, combine);
+  T fold<T>(T initialValue, T combine(T previousValue, E element)) => delegate
+      .fold(initialValue, combine);
 
   void forEach(void f(E element)) => delegate.forEach(f);
 
@@ -65,7 +62,7 @@ abstract class DelegatingIterable<E> implements Iterable<E> {
 
   int get length => delegate.length;
 
-  Iterable map(f(E element)) => delegate.map(f);
+  Iterable<T> map<T>(T f(E e)) => delegate.map(f);
 
   E reduce(E combine(E value, E element)) => delegate.reduce(combine);
 

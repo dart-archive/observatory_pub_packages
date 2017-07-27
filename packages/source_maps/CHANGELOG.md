@@ -1,3 +1,38 @@
+## 0.10.4
+* Implement `highlight` in `SourceMapFileSpan`.
+* Require version `^1.3.0` of `source_span`.
+
+## 0.10.3
+ * Add `addMapping` and `containsMapping` members to `MappingBundle`.
+
+## 0.10.2
+ * Support for extended source map format.
+ * Polish `MappingBundle.spanFor` handling of URIs that have a suffix that
+   exactly match a source map in the MappingBundle.
+
+## 0.10.1+5
+ * Fix strong mode warning in test.
+
+## 0.10.1+4
+
+* Extend `MappingBundle.spanFor` to accept requests for output files that
+  don't have source maps.
+
+## 0.10.1+3
+
+* Add `MappingBundle` class that handles extended source map format that
+  supports source maps for multiple output files in a single mapper.
+  Extend `Mapping.spanFor` API to accept a uri parameter that is optional
+  for normal source maps but required for MappingBundle source maps.
+
+## 0.10.1+2
+
+* Fix more strong mode warnings.
+
+## 0.10.1+1
+
+* Fix all strong mode warnings.
+
 ## 0.10.1
 
 * Add a `mapUrl` named argument to `parse` and `parseJson`. This argument is

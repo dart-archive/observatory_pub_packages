@@ -1,20 +1,17 @@
 // Copyright (c) 2014, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
-
+@TestOn('vm')
 library code_transformers.test.assets_test;
 
 import 'dart:async';
 
 import 'package:barback/barback.dart';
 import 'package:code_transformers/assets.dart';
-import 'package:code_transformers/tests.dart';
-import 'package:unittest/compact_vm_config.dart';
-import 'package:unittest/unittest.dart';
+import 'package:transformer_test/utils.dart';
+import 'package:test/test.dart';
 
 main() {
-  useCompactVMConfiguration();
-
   group('uriToAssetId', uriToAssetIdTests);
   group('assetIdToUri', assetIdToUriTests);
 }
@@ -28,18 +25,22 @@ void assetIdToUriTests() {
             logger: transform.logger, span: null, from: from);
         expect(uriOut, result);
       });
-      var messages = [];
+      var messages = <String>[];
       if (message != null) messages.add(message);
 
-      return applyTransformers([[transformer]],
-          inputs: {assetId.toString(): ''}, messages: messages);
+      return applyTransformers([
+        [transformer]
+      ], inputs: {
+        assetId.toString(): ''
+      }, messages: messages);
     });
   }
 
   testAssetIdToUri('resolves relative URIs', new AssetId('a', 'web/main.dart'),
       result: 'main.dart', from: new AssetId('a', 'web/foo.dart'));
 
-  testAssetIdToUri('resolves relative URIs in subfolders', new AssetId('a', 'web/foo/main.dart'),
+  testAssetIdToUri('resolves relative URIs in subfolders',
+      new AssetId('a', 'web/foo/main.dart'),
       result: 'foo/main.dart', from: new AssetId('a', 'web/foo.dart'));
 
   testAssetIdToUri('resolves package: URIs', new AssetId('foo', 'lib/foo.dart'),
@@ -61,29 +62,36 @@ void assetIdToUriTests() {
   testAssetIdToUri('does not allow non-lib assets without specifying `from`',
       new AssetId('foo', 'not-lib/foo.dart'),
       message: 'warning: Cannot create URI for foo|not-lib/foo.dart without '
-      'specifying where to import it from.');
+          'specifying where to import it from.');
 
   testAssetIdToUri('does not allow non-lib, non-relative assets',
       new AssetId('foo', 'not-lib/foo.dart'),
       from: new AssetId('bar', 'lib/bar.dart'),
       message: 'warning: Not possible to import foo|not-lib/foo.dart from '
-      'bar|lib/bar.dart');
+          'bar|lib/bar.dart');
 }
 
 void uriToAssetIdTests() {
-  void testAssetUri(String name, {AssetId source, String uri, AssetId result,
-      String message, bool errorOnAbsolute: true}) {
+  void testAssetUri(String name,
+      {AssetId source,
+      String uri,
+      AssetId result,
+      String message,
+      bool errorOnAbsolute: true}) {
     test(name, () {
       var transformer = new Validator((transform) {
         var assetId = uriToAssetId(source, uri, transform.logger, null,
             errorOnAbsolute: errorOnAbsolute);
         expect(assetId, result);
       });
-      var messages = [];
+      var messages = <String>[];
       if (message != null) messages.add(message);
 
-      return applyTransformers([[transformer]],
-          inputs: {source.toString(): ''}, messages: messages);
+      return applyTransformers([
+        [transformer]
+      ], inputs: {
+        source.toString(): ''
+      }, messages: messages);
     });
   }
 
@@ -116,9 +124,9 @@ void uriToAssetIdTests() {
       source: new AssetId('a', 'lib/index.html'),
       uri: 'packages/foo/bar',
       message: 'warning: Invalid URL to reach to another package: '
-      'packages/foo/bar. Path reaching to other packages must first '
-      'reach up all the way to the packages directory. For example, try '
-      'changing the URL to: ../../packages/foo/bar');
+          'packages/foo/bar. Path reaching to other packages must first '
+          'reach up all the way to the packages directory. For example, try '
+          'changing the URL to: ../../packages/foo/bar');
 
   testAssetUri('allows relative packages from non-dart lib files',
       source: new AssetId('a', 'lib/index.html'),

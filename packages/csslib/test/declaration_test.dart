@@ -4,16 +4,27 @@
 
 library declaration_test;
 
+import 'package:csslib/src/messages.dart';
+import 'package:csslib/visitor.dart';
 import 'package:test/test.dart';
 
 import 'testing.dart';
 
+void expectCss(String css, String expected) {
+  var errors = <Message>[];
+  var styleSheet = parseCss(css, errors: errors, opts: simpleOptions);
+  expect(styleSheet, isNotNull);
+  expect(errors, isEmpty);
+  expect(prettyPrint(styleSheet), expected);
+}
+
 void testSimpleTerms() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 @ import url("test.css");
 .foo {
   background-color: #191919;
+  content: "u+0041";
   width: 10PX;
   height: 22mM !important;
   border-width: 20cm;
@@ -27,6 +38,7 @@ void testSimpleTerms() {
 @import "test.css";
 .foo {
   background-color: #191919;
+  content: "u+0041";
   width: 10px;
   height: 22mm !important;
   border-width: 20cm;
@@ -57,6 +69,17 @@ void testSimpleTerms() {
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(stylesheet), generated2);
+
+  // Regression test to ensure invalid percentages don't throw an exception and
+  // instead print a useful error message when not in checked mode.
+  var css = '''
+.foo {
+  width: Infinity%;
+}''';
+  stylesheet = parseCss(css, errors: errors..clear(), opts: simpleOptions);
+  expect(errors, isNotEmpty);
+  expect(errors.first.message, 'expected }, but found %');
+  expect(errors.first.span.text, '%');
 }
 
 /**
@@ -64,7 +87,7 @@ void testSimpleTerms() {
  * no quotes.  Hex values with # and letters, and functions (rgba, url, etc.)
  */
 void testDeclarations() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 .more {
   color: white;
@@ -102,7 +125,7 @@ void testDeclarations() {
 }
 
 void testIdentifiers() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 #da {
   height: 100px;
@@ -129,7 +152,7 @@ void testIdentifiers() {
 }
 
 void testComposites() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 .xyzzy {
   border: 10px 80px 90px 100px;
@@ -158,7 +181,7 @@ void testComposites() {
 }
 
 void testUnits() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 #id-1 {
   transition: color 0.4s;
@@ -168,8 +191,8 @@ void testUnits() {
   right: 300px;
   bottom: 400cm;
   border-width: 2.5mm;
-  margin-top: .5in;
-  margin-left: 5pc;
+  margin-top: -.5in;
+  margin-left: +5pc;
   margin-right: 5ex;
   margin-bottom: 5ch;
   font-size: 10pt;
@@ -206,8 +229,8 @@ void testUnits() {
   right: 300px;
   bottom: 400cm;
   border-width: 2.5mm;
-  margin-top: .5in;
-  margin-left: 5pc;
+  margin-top: -.5in;
+  margin-left: +5pc;
   margin-right: 5ex;
   margin-bottom: 5ch;
   font-size: 10pt;
@@ -242,7 +265,7 @@ void testUnits() {
 }
 
 void testUnicode() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 .toggle:after {
   content: '✔';
@@ -270,7 +293,7 @@ void testUnicode() {
 }
 
 void testNewerCss() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 @media screen,print {
   .foobar_screen {
@@ -285,6 +308,7 @@ void testNewerCss() {
   width: 10px;
 }
 @page bar : left { @top-left { margin: 8px; } }
+@page { @top-left { margin: 8px; } width: 10px; }
 @charset "ISO-8859-1";
 @charset 'ASCII';''';
 
@@ -306,6 +330,12 @@ void testNewerCss() {
   margin: 8px;
 }
 }
+@page {
+@top-left {
+  margin: 8px;
+}
+  width: 10px;
+}
 @charset "ISO-8859-1";
 @charset "ASCII";''';
 
@@ -317,7 +347,7 @@ void testNewerCss() {
 }
 
 void testMediaQueries() {
-  var errors = [];
+  var errors = <Message>[];
   String input = '''
 @media screen and (-webkit-min-device-pixel-ratio:0) {
   .todo-item .toggle {
@@ -369,11 +399,13 @@ void testMediaQueries() {
 .myclass {
   height: 20px;
 }
-} @media print AND (min-resolution:300dpi) {
+}
+@media print AND (min-resolution:300dpi) {
 #anotherId {
   color: #fff;
 }
-} @media print AND (min-resolution:280dpcm) {
+}
+@media print AND (min-resolution:280dpcm) {
 #finalId {
   color: #aaa;
 }
@@ -390,13 +422,13 @@ void testMediaQueries() {
 
   input = '''
 @media only screen and (min-device-width: 4000px) and
-    (min-device-height: 2000px), screen (another: 100px) {
+    (min-device-height: 2000px), screen AND (another: 100px) {
       html {
         font-size: 10em;
       }
     }''';
   generated = '@media ONLY screen AND (min-device-width:4000px) '
-      'AND (min-device-height:2000px), screen (another:100px) {\n'
+      'AND (min-device-height:2000px), screen AND (another:100px) {\n'
       'html {\n  font-size: 10em;\n}\n}';
 
   stylesheet = parseCss(input, errors: errors..clear(), opts: simpleOptions);
@@ -406,14 +438,14 @@ void testMediaQueries() {
   expect(prettyPrint(stylesheet), generated);
 
   input = '''
-@media screen,print (min-device-width: 4000px) and
-    (min-device-height: 2000px), screen (another: 100px) {
+@media screen,print AND (min-device-width: 4000px) and
+    (min-device-height: 2000px), screen AND (another: 100px) {
       html {
         font-size: 10em;
       }
     }''';
-  generated = '@media screen, print (min-device-width:4000px) AND '
-      '(min-device-height:2000px), screen (another:100px) {\n'
+  generated = '@media screen, print AND (min-device-width:4000px) AND '
+      '(min-device-height:2000px), screen AND (another:100px) {\n'
       'html {\n  font-size: 10em;\n}\n}';
 
   stylesheet = parseCss(input, errors: errors..clear(), opts: simpleOptions);
@@ -423,19 +455,211 @@ void testMediaQueries() {
   expect(prettyPrint(stylesheet), generated);
 
   input = '''
-@import "test.css" ONLY screen, NOT print (min-device-width: 4000px);''';
-  generated =
-      '@import "test.css" ONLY screen, NOT print (min-device-width:4000px);';
+@import "test.css" ONLY screen, NOT print AND (min-device-width: 4000px);''';
+  generated = '@import "test.css" ONLY screen, '
+      'NOT print AND (min-device-width:4000px);';
 
   stylesheet = parseCss(input, errors: errors..clear(), opts: simpleOptions);
 
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(stylesheet), generated);
+
+  var css = '@media (min-device-width:400px) {\n}';
+  expectCss(css, css);
+
+  css = '@media all AND (tranform-3d), (-webkit-transform-3d) {\n}';
+  expectCss(css, css);
+
+  // Test that AND operator is required between media type and expressions.
+  css = '@media screen (min-device-width:400px';
+  stylesheet = parseCss(css, errors: errors..clear(), opts: simpleOptions);
+  expect(errors, isNotEmpty);
+  expect(
+      errors.first.message, contains('expected { after media before ruleset'));
+  expect(errors.first.span.text, '(');
+}
+
+void testMozDocument() {
+  var errors = <Message>[];
+  // Test empty url-prefix, commonly used for browser detection.
+  var css = '''
+@-moz-document url-prefix() {
+  div {
+    color: #000;
+  }
+}''';
+  var expected = '''@-moz-document url-prefix() {
+div {
+  color: #000;
+}
+}''';
+  var styleSheet = parseCss(css, errors: errors);
+  expect(styleSheet, isNotNull);
+  expect(errors, isEmpty);
+  expect(prettyPrint(styleSheet), expected);
+
+  // Test url-prefix with unquoted parameter
+  css = '''
+@-moz-document url-prefix(http://www.w3.org/Style/) {
+  div {
+    color: #000;
+  }
+}''';
+  expected = '''@-moz-document url-prefix("http://www.w3.org/Style/") {
+div {
+  color: #000;
+}
+}''';
+  styleSheet = parseCss(css, errors: errors);
+  expect(styleSheet, isNotNull);
+  expect(errors, isEmpty);
+  expect(prettyPrint(styleSheet), expected);
+
+  // Test domain with unquoted parameter
+  css = '''
+@-moz-document domain(google.com) {
+  div {
+    color: #000;
+  }
+}''';
+  expected = '''@-moz-document domain("google.com") {
+div {
+  color: #000;
+}
+}''';
+  styleSheet = parseCss(css, errors: errors);
+  expect(styleSheet, isNotNull);
+  expect(errors, isEmpty);
+  expect(prettyPrint(styleSheet), expected);
+
+  // Test all document functions combined.
+  css = '@-moz-document ' +
+      'url(http://www.w3.org/), ' +
+      "url-prefix('http://www.w3.org/Style/'), " +
+      'domain("google.com"), ' +
+      'regexp("https:.*") { div { color: #000; } }';
+  expected = '@-moz-document ' +
+      'url("http://www.w3.org/"), ' +
+      'url-prefix("http://www.w3.org/Style/"), ' +
+      'domain("google.com"), ' +
+      'regexp("https:.*") {\ndiv {\n  color: #000;\n}\n}';
+  styleSheet = parseCss(css, errors: errors);
+  expect(styleSheet, isNotNull);
+  expect(errors, isEmpty);
+  expect(prettyPrint(styleSheet), expected);
+}
+
+void testSupports() {
+  // Test single declaration condition.
+  var css = '''
+@supports (-webkit-appearance: none) {
+  div {
+    -webkit-appearance: none;
+  }
+}''';
+  var expected = '''@supports (-webkit-appearance: none) {
+div {
+  -webkit-appearance: none;
+}
+}''';
+  expectCss(css, expected);
+
+  // Test negation.
+  css = '''
+@supports not ( display: flex ) {
+  body { width: 100%; }
+}''';
+  expected = '''@supports not (display: flex) {
+body {
+  width: 100%;
+}
+}''';
+  expectCss(css, expected);
+
+  // Test clause with multiple conditions.
+  css = '''
+@supports (box-shadow: 0 0 2px black inset) or
+    (-moz-box-shadow: 0 0 2px black inset) or
+    (-webkit-box-shadow: 0 0 2px black inset) or
+    (-o-box-shadow: 0 0 2px black inset) {
+  .box {
+    box-shadow: 0 0 2px black inset;
+  }
+}''';
+  expected = '@supports (box-shadow: 0 0 2px #000 inset) or ' +
+      '(-moz-box-shadow: 0 0 2px #000 inset) or ' +
+      '(-webkit-box-shadow: 0 0 2px #000 inset) or ' +
+      '(-o-box-shadow: 0 0 2px #000 inset) {\n' +
+      '.box {\n' +
+      '  box-shadow: 0 0 2px #000 inset;\n' +
+      '}\n' +
+      '}';
+  expectCss(css, expected);
+
+  // Test conjunction and disjunction together.
+  css = '''
+@supports ((transition-property: color) or (animation-name: foo)) and
+    (transform: rotate(10deg)) {
+  div {
+    transition-property: color;
+    transform: rotate(10deg);
+  }
+}''';
+
+  expected = '@supports ' +
+      '((transition-property: color) or (animation-name: foo)) and ' +
+      '(transform: rotate(10deg)) {\n' +
+      'div {\n' +
+      '  transition-property: color;\n' +
+      '  transform: rotate(10deg);\n' +
+      '}\n' +
+      '}';
+  expectCss(css, expected);
+
+  // Test that operators can't be mixed without parentheses.
+  css = '@supports (a: 1) and (b: 2) or (c: 3) {}';
+  var errors = <Message>[];
+  var styleSheet = parseCss(css, errors: errors, opts: simpleOptions);
+  expect(styleSheet, isNotNull);
+  expect(errors, isNotEmpty);
+  expect(errors.first.message,
+      "Operators can't be mixed without a layer of parentheses");
+  expect(errors.first.span.text, 'or');
+}
+
+void testViewport() {
+  // No declarations.
+  var css = '@viewport {\n}';
+  expectCss(css, css);
+
+  // All declarations.
+  css = '''
+@viewport {
+  min-width: auto;
+  max-width: 800px;
+  width: 400px;
+  min-height: 50%;
+  max-height: 200px;
+  height: 100px 200px;
+  zoom: auto;
+  min-zoom: 0.75;
+  max-zoom: 40%;
+  user-zoom: fixed;
+  orientation: landscape;
+}''';
+  expectCss(css, css);
+
+  // Vendor specific.
+  css = '''
+@-ms-viewport {
+  width: device-width;
+}''';
+  expectCss(css, css);
 }
 
 void testFontFace() {
-  var errors = [];
+  var errors = <Message>[];
 
   final String input = '''
 @font-face {
@@ -527,7 +751,7 @@ src: url(ideal-sans-serif.woff) format("woff"),
 }
 
 void testCssFile() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 @import 'simple.css'
 @import "test.css" print
@@ -557,6 +781,10 @@ div[href^='test'] {
 .test-background {
   background:  url(http://www.foo.com/bar.png);
 }
+
+.test-background-with-multiple-properties {
+  background: #000 url(http://www.foo.com/bar.png);
+}
 ''';
 
   final String generated = '@import "simple.css"; '
@@ -582,6 +810,9 @@ div[href^='test'] {
       '}\n'
       '.test-background {\n'
       '  background: url("http://www.foo.com/bar.png");\n'
+      '}\n'
+      '.test-background-with-multiple-properties {\n'
+      '  background: #000 url("http://www.foo.com/bar.png");\n'
       '}';
   var stylesheet = parseCss(input, errors: errors);
 
@@ -591,7 +822,7 @@ div[href^='test'] {
 }
 
 void testCompactEmitter() {
-  var errors = [];
+  var errors = <Message>[];
 
   // Check !import compactly emitted.
   final String input = r'''
@@ -599,7 +830,7 @@ div {
   color: green !important;
 }
 ''';
-  final String generated = "div { color: green!important; }";
+  final String generated = "div { color:green!important; }";
 
   var stylesheet = parseCss(input, errors: errors);
 
@@ -619,7 +850,7 @@ div {
 }
 
 void testNotSelectors() {
-  var errors = [];
+  var errors = <Message>[];
 
   final String input = r'''
 .details:not(.open-details) x-element,
@@ -709,7 +940,7 @@ html|*:not(:link):not(:visited) {
 }
 
 void testIE() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = ".test {\n"
       "  filter: progid:DXImageTransform.Microsoft.gradient"
       "(GradientType=0,StartColorStr='#9d8b83', EndColorStr='#847670');\n"
@@ -772,6 +1003,17 @@ div {
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(stylesheet), generated3);
+
+  final input4 = '''
+div {
+  filter: FlipH;
+}''';
+
+  stylesheet = parseCss(input4, errors: errors..clear(), opts: simpleOptions);
+
+  expect(stylesheet != null, true);
+  expect(errors.isEmpty, true, reason: errors.toString());
+  expect(prettyPrint(stylesheet), input4);
 }
 
 /**
@@ -785,7 +1027,7 @@ div {
  *        background: red\9;
  */
 void testIEDeclaration() {
-  var errors = [];
+  var errors = <Message>[];
 
   final input = '''
 .testIE-6 {
@@ -951,7 +1193,7 @@ input.search-query {
 }
 
 void testHangs() {
-  var errors = [];
+  var errors = <Message>[];
 
   // Bad hexvalue had caused a hang in processTerm.
   final input = r'''#a { color: #ebebeburl(0/IE8+9+); }''';
@@ -1008,36 +1250,48 @@ void testHangs() {
 void testExpressionSpans() {
   final input = r'''.foo { width: 50px; }''';
   var stylesheet = parseCss(input);
-  var decl = stylesheet.topLevels.single.declarationGroup.declarations.single;
+  var decl = (stylesheet.topLevels.single as RuleSet)
+      .declarationGroup
+      .declarations
+      .single;
   // This passes
   expect(decl.span.text, 'width: 50px');
   // This currently fails
-  expect(decl.expression.span.text, '50px');
+  expect((decl as Declaration).expression.span.text, '50px');
 }
 
 void simpleCalc() {
   final input = r'''.foo { height: calc(100% - 55px); }''';
   var stylesheet = parseCss(input);
-  var decl = stylesheet.topLevels.single.declarationGroup.declarations.single;
+  var decl = (stylesheet.topLevels.single as RuleSet)
+      .declarationGroup
+      .declarations
+      .single;
   expect(decl.span.text, 'height: calc(100% - 55px)');
 }
 
 void complexCalc() {
   final input = r'''.foo { left: calc((100%/3 - 2) * 1em - 2 * 1px); }''';
   var stylesheet = parseCss(input);
-  var decl = stylesheet.topLevels.single.declarationGroup.declarations.single;
+  var decl = (stylesheet.topLevels.single as RuleSet)
+      .declarationGroup
+      .declarations
+      .single;
   expect(decl.span.text, 'left: calc((100%/3 - 2) * 1em - 2 * 1px)');
 }
 
 void twoCalcs() {
   final input = r'''.foo { margin: calc(1rem - 2px) calc(1rem - 1px); }''';
   var stylesheet = parseCss(input);
-  var decl = stylesheet.topLevels.single.declarationGroup.declarations.single;
+  var decl = (stylesheet.topLevels.single as RuleSet)
+      .declarationGroup
+      .declarations
+      .single;
   expect(decl.span.text, 'margin: calc(1rem - 2px) calc(1rem - 1px)');
 }
 
 void selectorWithCalcs() {
-  var errors = [];
+  var errors = <Message>[];
   final String input = r'''
 .foo {
   width: calc(1em + 5 * 2em);
@@ -1061,6 +1315,20 @@ void selectorWithCalcs() {
   expect(prettyPrint(stylesheet), generated);
 }
 
+void vendorPrefixedCalc() {
+  var css = '''
+.foo {
+  width: -webkit-calc((100% - 15px*1) / 1);
+}''';
+  expectCss(css, css);
+
+  css = '''
+.foo {
+  width: -moz-calc((100% - 15px*1) / 1);
+}''';
+  expectCss(css, css);
+}
+
 main() {
   test('Simple Terms', testSimpleTerms);
   test('Declarations', testDeclarations);
@@ -1070,6 +1338,9 @@ main() {
   test('Unicode', testUnicode);
   test('Newer CSS', testNewerCss);
   test('Media Queries', testMediaQueries);
+  test('Document', testMozDocument);
+  test('Supports', testSupports);
+  test('Viewport', testViewport);
   test('Font-Face', testFontFace);
   test('CSS file', testCssFile);
   test('Compact Emitter', testCompactEmitter);
@@ -1079,12 +1350,12 @@ main() {
   test('Hanging bugs', testHangs);
   test('Expression spans', testExpressionSpans,
       skip: 'expression spans are broken'
-            ' (https://github.com/dart-lang/csslib/issues/15)');
+          ' (https://github.com/dart-lang/csslib/issues/15)');
   group('calc function', () {
     test('simple calc', simpleCalc);
     test('single complex', complexCalc);
     test('two calc terms for same declaration', twoCalcs);
     test('selector with many calc declarations', selectorWithCalcs);
+    test('vendor prefixed calc', vendorPrefixedCalc);
   });
 }
-

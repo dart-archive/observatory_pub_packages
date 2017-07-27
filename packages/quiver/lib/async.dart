@@ -16,33 +16,31 @@ library quiver.async;
 
 import 'dart:async';
 
+import 'package:quiver/iterables.dart' show IndexedValue;
 import 'package:quiver/time.dart';
 
+part 'src/async/collect.dart';
 part 'src/async/countdown_timer.dart';
+part 'src/async/concat.dart';
+part 'src/async/enumerate.dart';
 part 'src/async/future_group.dart';
 part 'src/async/future_stream.dart';
 part 'src/async/iteration.dart';
 part 'src/async/metronome.dart';
+part 'src/async/stream_buffer.dart';
 part 'src/async/stream_router.dart';
 
-/**
- * The signature of a one-shot [Timer] factory.
- */
+/// The signature of a one-shot [Timer] factory.
 typedef Timer CreateTimer(Duration duration, void callback());
 
-/**
- * Creates a new one-shot [Timer] using `new Timer(duration, callback)`.
- */
+/// Creates a new one-shot [Timer] using `new Timer(duration, callback)`.
 Timer createTimer(Duration duration, void callback()) =>
     new Timer(duration, callback);
-/**
- * The signature of a periodic timer factory.
- */
+
+/// The signature of a periodic timer factory.
 typedef Timer CreateTimerPeriodic(Duration duration, void callback(Timer));
 
-/**
- * Creates a new periodic [Timer] using
- * `new Timer.periodic(duration, callback)`.
- */
-Timer createTimerPeriodic(Duration duration, void callback(Timer)) =>
+/// Creates a new periodic [Timer] using
+/// `new Timer.periodic(duration, callback)`.
+Timer createTimerPeriodic(Duration duration, void callback(Timer t)) =>
     new Timer.periodic(duration, callback);

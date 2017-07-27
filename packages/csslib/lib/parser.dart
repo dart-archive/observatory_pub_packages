@@ -8,10 +8,11 @@ import 'dart:math' as math;
 
 import 'package:source_span/source_span.dart';
 
-import "visitor.dart";
+import 'visitor.dart';
 import 'src/messages.dart';
 import 'src/options.dart';
 
+export 'src/messages.dart' show Message;
 export 'src/options.dart';
 
 part 'src/analyzer.dart';
@@ -21,6 +22,12 @@ part 'src/token.dart';
 part 'src/tokenizer_base.dart';
 part 'src/tokenizer.dart';
 part 'src/tokenkind.dart';
+
+enum ClauseType {
+  none,
+  conjunction,
+  disjunction,
+}
 
 /** Used for parser lookup ahead (used for nested selectors Less support). */
 class ParserState extends TokenizerState {
@@ -47,8 +54,12 @@ bool get isChecked => messages.options.checked;
 
 // TODO(terry): Remove nested name parameter.
 /** Parse and analyze the CSS file. */
-StyleSheet compile(input, {List<Message> errors, PreprocessorOptions options,
-    bool nested: true, bool polyfill: false, List<StyleSheet> includes: null}) {
+StyleSheet compile(input,
+    {List<Message> errors,
+    PreprocessorOptions options,
+    bool nested: true,
+    bool polyfill: false,
+    List<StyleSheet> includes: null}) {
   if (includes == null) {
     includes = [];
   }
@@ -115,9 +126,10 @@ SelectorGroup parseSelectorGroup(input, {List<Message> errors}) {
 
   var file = new SourceFile(source);
   return (new _Parser(file, source)
-    // TODO(jmesserly): this fix should be applied to the parser. It's tricky
-    // because by the time the flag is set one token has already been fetched.
-    ..tokenizer.inSelector = true).processSelectorGroup();
+        // TODO(jmesserly): this fix should be applied to the parser. It's tricky
+        // because by the time the flag is set one token has already been fetched.
+        ..tokenizer.inSelector = true)
+      .processSelectorGroup();
 }
 
 String _inputAsString(input) {
@@ -158,18 +170,24 @@ class Parser {
   final _Parser _parser;
 
   // TODO(jmesserly): having file and text is redundant.
+  // TODO(rnystrom): baseUrl isn't used. Remove from API.
   Parser(SourceFile file, String text, {int start: 0, String baseUrl})
-      : _parser = new _Parser(file, text, start: start, baseUrl: baseUrl);
+      : _parser = new _Parser(file, text, start: start);
 
   StyleSheet parse() => _parser.parse();
 }
 
+// CSS2.1 pseudo-elements which were defined with a single ':'.
+final _legacyPseudoElements = new Set<String>.from(const [
+  'after',
+  'before',
+  'first-letter',
+  'first-line',
+]);
+
 /** A simple recursive descent parser for CSS. */
 class _Parser {
   final Tokenizer tokenizer;
-
-  /** Base url of CSS file. */
-  final String _baseUrl;
 
   /**
    * File containing the source being parsed, used to report errors with
@@ -180,9 +198,8 @@ class _Parser {
   Token _previousToken;
   Token _peekToken;
 
-  _Parser(SourceFile file, String text, {int start: 0, String baseUrl})
+  _Parser(SourceFile file, String text, {int start: 0})
       : this.file = file,
-        _baseUrl = baseUrl,
         tokenizer = new Tokenizer(file, text, true, start) {
     _peekToken = tokenizer.next();
   }
@@ -356,29 +373,21 @@ class _Parser {
    *    : IDENT
    */
   List<MediaQuery> processMediaQueryList() {
-    var mediaQueries = [];
+    var mediaQueries = <MediaQuery>[];
 
-    bool firstTime = true;
-    var mediaQuery;
     do {
-      mediaQuery = processMediaQuery(firstTime == true);
+      var mediaQuery = processMediaQuery();
       if (mediaQuery != null) {
         mediaQueries.add(mediaQuery);
-        firstTime = false;
-        continue;
+      } else {
+        break;
       }
-
-      // Any more more media types separated by comma.
-      if (!_maybeEat(TokenKind.COMMA)) break;
-
-      // Yep more media types start again.
-      firstTime = true;
-    } while ((!firstTime && mediaQuery != null) || firstTime);
+    } while (_maybeEat(TokenKind.COMMA));
 
     return mediaQueries;
   }
 
-  MediaQuery processMediaQuery([bool startQuery = true]) {
+  MediaQuery processMediaQuery() {
     // Grammar: [ONLY | NOT]? S* media_type S*
     //          [ AND S* MediaExpr ]* | MediaExpr [ AND S* MediaExpr ]*
 
@@ -390,13 +399,10 @@ class _Parser {
     var unaryOp = TokenKind.matchMediaOperator(op, 0, opLen);
     if (unaryOp != -1) {
       if (isChecked) {
-        if (startQuery && unaryOp != TokenKind.MEDIA_OP_NOT ||
+        if (unaryOp != TokenKind.MEDIA_OP_NOT ||
             unaryOp != TokenKind.MEDIA_OP_ONLY) {
           _warning("Only the unary operators NOT and ONLY allowed",
               _makeSpan(start));
-        }
-        if (!startQuery && unaryOp != TokenKind.MEDIA_OP_AND) {
-          _warning("Only the binary AND operator allowed", _makeSpan(start));
         }
       }
       _next();
@@ -404,27 +410,28 @@ class _Parser {
     }
 
     var type;
-    if (startQuery && unaryOp != TokenKind.MEDIA_OP_AND) {
-      // Get the media type.
-      if (_peekIdentifier()) type = identifier();
-    }
+    // Get the media type.
+    if (_peekIdentifier()) type = identifier();
 
-    var exprs = [];
+    var exprs = <MediaExpression>[];
 
-    if (unaryOp == -1 || unaryOp == TokenKind.MEDIA_OP_AND) {
-      var andOp = false;
-      while (true) {
-        var expr = processMediaExpression(andOp);
-        if (expr == null) break;
-
-        exprs.add(expr);
+    while (true) {
+      // Parse AND if query has a media_type or previous expression.
+      var andOp = exprs.isNotEmpty || type != null;
+      if (andOp) {
         op = _peekToken.text;
         opLen = op.length;
-        andOp = TokenKind.matchMediaOperator(op, 0, opLen) ==
-            TokenKind.MEDIA_OP_AND;
-        if (!andOp) break;
+        if (TokenKind.matchMediaOperator(op, 0, opLen) !=
+            TokenKind.MEDIA_OP_AND) {
+          break;
+        }
         _next();
       }
+
+      var expr = processMediaExpression(andOp);
+      if (expr == null) break;
+
+      exprs.add(expr);
     }
 
     if (unaryOp != -1 || type != null || exprs.length > 0) {
@@ -440,17 +447,16 @@ class _Parser {
     if (_maybeEat(TokenKind.LPAREN)) {
       if (_peekIdentifier()) {
         var feature = identifier(); // Media feature.
-        while (_maybeEat(TokenKind.COLON)) {
-          var startExpr = _peekToken.span;
-          var exprs = processExpr();
-          if (_maybeEat(TokenKind.RPAREN)) {
-            return new MediaExpression(
-                andOperator, feature, exprs, _makeSpan(startExpr));
-          } else if (isChecked) {
-            _warning("Missing parenthesis around media expression",
-                _makeSpan(start));
-            return null;
-          }
+        var exprs = _maybeEat(TokenKind.COLON)
+            ? processExpr()
+            : new Expressions(_makeSpan(_peekToken.span));
+        if (_maybeEat(TokenKind.RPAREN)) {
+          return new MediaExpression(
+              andOperator, feature, exprs, _makeSpan(start));
+        } else if (isChecked) {
+          _warning(
+              "Missing parenthesis around media expression", _makeSpan(start));
+          return null;
         }
       } else if (isChecked) {
         _warning("Missing media feature in media expression", _makeSpan(start));
@@ -474,7 +480,12 @@ class _Parser {
    *  mixin:              '@mixin name [(args,...)] '{' declarations/ruleset '}'
    *  include:            '@include name [(@arg,@arg1)]
    *                      '@include name [(@arg...)]
-   *  content             '@content'
+   *  content:            '@content'
+   *  -moz-document:      '@-moz-document' [ <url> | url-prefix(<string>) |
+   *                          domain(<string>) | regexp(<string) ]# '{'
+   *                        declarations
+   *                      '}'
+   *  supports:           '@supports' supports_condition group_rule_body
    */
   processDirective() {
     var start = _peekToken.span;
@@ -751,11 +762,17 @@ class _Parser {
 
       case TokenKind.DIRECTIVE_INCLUDE:
         return processInclude(_makeSpan(start));
-
       case TokenKind.DIRECTIVE_CONTENT:
         // TODO(terry): TBD
         _warning("@content not implemented.", _makeSpan(start));
         return null;
+      case TokenKind.DIRECTIVE_MOZ_DOCUMENT:
+        return processDocumentDirective();
+      case TokenKind.DIRECTIVE_SUPPORTS:
+        return processSupportsDirective();
+      case TokenKind.DIRECTIVE_VIEWPORT:
+      case TokenKind.DIRECTIVE_MS_VIEWPORT:
+        return processViewportDirective();
     }
     return null;
   }
@@ -775,7 +792,7 @@ class _Parser {
 
     var name = identifier();
 
-    List<VarDefinitionDirective> params = [];
+    var params = <TreeNode>[];
     // Any parameters?
     if (_maybeEat(TokenKind.LPAREN)) {
       var mustHaveParam = false;
@@ -813,7 +830,7 @@ class _Parser {
       if (declGroup.declarations.any((decl) {
         return decl is Declaration && decl is! IncludeMixinAtDeclaration;
       })) {
-        var newDecls = [];
+        var newDecls = <Declaration>[];
         productions.forEach((include) {
           // If declGroup has items that are declarations then we assume
           // this mixin is a declaration mixin not a top-level mixin.
@@ -943,7 +960,7 @@ class _Parser {
       name = identifier();
     }
 
-    var params = [];
+    var params = <List<Expression>>[];
 
     // Any parameters?  Parameters can be multiple terms per argument e.g.,
     // 3px solid yellow, green is two parameters:
@@ -951,7 +968,7 @@ class _Parser {
     //    2. green
     // the first has 3 terms and the second has 1 term.
     if (_maybeEat(TokenKind.LPAREN)) {
-      var terms = [];
+      var terms = <Expression>[];
       var expr;
       var keepGoing = true;
       while (keepGoing && (expr = processTerm()) != null) {
@@ -976,6 +993,134 @@ class _Parser {
     return new IncludeDirective(name.name, params, span);
   }
 
+  DocumentDirective processDocumentDirective() {
+    var start = _peekToken.span;
+    _next(); // '@-moz-document'
+    var functions = <LiteralTerm>[];
+    do {
+      var function;
+
+      // Consume function token: IDENT '('
+      var ident = identifier();
+      _eat(TokenKind.LPAREN);
+
+      // Consume function arguments.
+      if (ident.name == 'url-prefix' || ident.name == 'domain') {
+        // @-moz-document allows the 'url-prefix' and 'domain' functions to
+        // omit quotations around their argument, contrary to the standard
+        // in which they must be strings. To support this we consume a
+        // string with optional quotation marks, then reapply quotation
+        // marks so they're present in the emitted CSS.
+        var argumentStart = _peekToken.span;
+        var value = processQuotedString(true);
+        // Don't quote the argument if it's empty. '@-moz-document url-prefix()'
+        // is a common pattern used for browser detection.
+        var argument = value.isNotEmpty ? '"$value"' : '';
+        var argumentSpan = _makeSpan(argumentStart);
+
+        _eat(TokenKind.RPAREN);
+
+        var arguments = new Expressions(_makeSpan(argumentSpan))
+          ..add(new LiteralTerm(argument, argument, argumentSpan));
+        function = new FunctionTerm(
+            ident.name, ident.name, arguments, _makeSpan(ident.span));
+      } else {
+        function = processFunction(ident);
+      }
+
+      functions.add(function);
+    } while (_maybeEat(TokenKind.COMMA));
+
+    _eat(TokenKind.LBRACE);
+    var groupRuleBody = processGroupRuleBody();
+    _eat(TokenKind.RBRACE);
+    return new DocumentDirective(functions, groupRuleBody, _makeSpan(start));
+  }
+
+  SupportsDirective processSupportsDirective() {
+    var start = _peekToken.span;
+    _next(); // '@supports'
+    var condition = processSupportsCondition();
+    _eat(TokenKind.LBRACE);
+    var groupRuleBody = processGroupRuleBody();
+    _eat(TokenKind.RBRACE);
+    return new SupportsDirective(condition, groupRuleBody, _makeSpan(start));
+  }
+
+  SupportsCondition processSupportsCondition() {
+    if (_peekKind(TokenKind.IDENTIFIER)) {
+      return processSupportsNegation();
+    }
+
+    var start = _peekToken.span;
+    var conditions = <SupportsConditionInParens>[];
+    var clauseType = ClauseType.none;
+
+    while (true) {
+      conditions.add(processSupportsConditionInParens());
+
+      var type;
+      var text = _peekToken.text.toLowerCase();
+
+      if (text == 'and') {
+        type = ClauseType.conjunction;
+      } else if (text == 'or') {
+        type = ClauseType.disjunction;
+      } else {
+        break; // Done parsing clause.
+      }
+
+      if (clauseType == ClauseType.none) {
+        clauseType = type; // First operand and operator of clause.
+      } else if (clauseType != type) {
+        _error("Operators can't be mixed without a layer of parentheses",
+            _peekToken.span);
+        break;
+      }
+
+      _next(); // Consume operator.
+    }
+
+    if (clauseType == ClauseType.conjunction) {
+      return new SupportsConjunction(conditions, _makeSpan(start));
+    } else if (clauseType == ClauseType.disjunction) {
+      return new SupportsDisjunction(conditions, _makeSpan(start));
+    } else {
+      return conditions.first;
+    }
+  }
+
+  SupportsNegation processSupportsNegation() {
+    var start = _peekToken.span;
+    var text = _peekToken.text.toLowerCase();
+    if (text != 'not') return null;
+    _next(); // 'not'
+    var condition = processSupportsConditionInParens();
+    return new SupportsNegation(condition, _makeSpan(start));
+  }
+
+  SupportsConditionInParens processSupportsConditionInParens() {
+    var start = _peekToken.span;
+    _eat(TokenKind.LPAREN);
+    // Try to parse a condition.
+    var condition = processSupportsCondition();
+    if (condition != null) {
+      _eat(TokenKind.RPAREN);
+      return new SupportsConditionInParens.nested(condition, _makeSpan(start));
+    }
+    // Otherwise, parse a declaration.
+    var declaration = processDeclaration([]);
+    _eat(TokenKind.RPAREN);
+    return new SupportsConditionInParens(declaration, _makeSpan(start));
+  }
+
+  ViewportDirective processViewportDirective() {
+    var start = _peekToken.span;
+    var name = _next().text;
+    var declarations = processDeclarations();
+    return new ViewportDirective(name, declarations, _makeSpan(start));
+  }
+
   RuleSet processRuleSet([SelectorGroup selectorGroup]) {
     if (selectorGroup == null) {
       selectorGroup = processSelectorGroup();
@@ -985,6 +1130,24 @@ class _Parser {
           selectorGroup, processDeclarations(), selectorGroup.span);
     }
     return null;
+  }
+
+  List<TreeNode> processGroupRuleBody() {
+    var nodes = <TreeNode>[];
+    while (!(_peekKind(TokenKind.RBRACE) || _peekKind(TokenKind.END_OF_FILE))) {
+      var directive = processDirective();
+      if (directive != null) {
+        nodes.add(directive);
+        continue;
+      }
+      var ruleSet = processRuleSet();
+      if (ruleSet != null) {
+        nodes.add(ruleSet);
+        continue;
+      }
+      break;
+    }
+    return nodes;
   }
 
   /**
@@ -1041,8 +1204,8 @@ class _Parser {
 
     if (checkBrace) _eat(TokenKind.LBRACE);
 
-    List decls = [];
-    List dartStyles = []; // List of latest styles exposed to Dart.
+    var decls = <TreeNode>[];
+    var dartStyles = []; // List of latest styles exposed to Dart.
 
     do {
       var selectorGroup = _nestedSelector();
@@ -1093,7 +1256,7 @@ class _Parser {
   }
 
   List<DeclarationGroup> processMarginsDeclarations() {
-    List groups = [];
+    var groups = <DeclarationGroup>[];
 
     var start = _peekToken.span;
 
@@ -1203,7 +1366,7 @@ class _Parser {
     var start = _peekToken.span;
     while (true) {
       // First item is never descendant make sure it's COMBINATOR_NONE.
-      var selectorItem = simpleSelectorSequence(simpleSequences.length == 0);
+      var selectorItem = simpleSelectorSequence(simpleSequences.isEmpty);
       if (selectorItem != null) {
         simpleSequences.add(selectorItem);
       } else {
@@ -1211,9 +1374,23 @@ class _Parser {
       }
     }
 
-    if (simpleSequences.length > 0) {
-      return new Selector(simpleSequences, _makeSpan(start));
-    }
+    if (simpleSequences.isEmpty) return null;
+
+    return new Selector(simpleSequences, _makeSpan(start));
+  }
+
+  /// Same as [processSelector] but reports an error for each combinator.
+  ///
+  /// This is a quick fix for parsing <compound-selectors> until the parser
+  /// supports Selector Level 4 grammar:
+  /// https://drafts.csswg.org/selectors-4/#typedef-compound-selector
+  Selector processCompoundSelector() {
+    return processSelector()
+      ..simpleSelectorSequences.forEach((sequence) {
+        if (!sequence.isCombinatorNone) {
+          _error('compound selector can not contain combinator', sequence.span);
+        }
+      });
   }
 
   simpleSelectorSequence(bool forceCombinatorNone) {
@@ -1227,12 +1404,29 @@ class _Parser {
         combinatorType = TokenKind.COMBINATOR_PLUS;
         break;
       case TokenKind.GREATER:
+        // Parse > or >>>
         _eat(TokenKind.GREATER);
-        combinatorType = TokenKind.COMBINATOR_GREATER;
+        if (_maybeEat(TokenKind.GREATER)) {
+          _eat(TokenKind.GREATER);
+          combinatorType = TokenKind.COMBINATOR_SHADOW_PIERCING_DESCENDANT;
+        } else {
+          combinatorType = TokenKind.COMBINATOR_GREATER;
+        }
         break;
       case TokenKind.TILDE:
         _eat(TokenKind.TILDE);
         combinatorType = TokenKind.COMBINATOR_TILDE;
+        break;
+      case TokenKind.SLASH:
+        // Parse /deep/
+        _eat(TokenKind.SLASH);
+        var ate = _maybeEat(TokenKind.IDENTIFIER);
+        var tok = ate ? _previousToken : _peekToken;
+        if (!(ate && tok.text == 'deep')) {
+          _error('expected deep, but found ${tok.text}', tok.span);
+        }
+        _eat(TokenKind.SLASH);
+        combinatorType = TokenKind.COMBINATOR_DEEP;
         break;
       case TokenKind.AMPERSAND:
         _eat(TokenKind.AMPERSAND);
@@ -1422,11 +1616,11 @@ class _Parser {
     } else {
       return null;
     }
+    var name = pseudoName.name.toLowerCase();
 
     // Functional pseudo?
-
     if (_peekToken.kind == TokenKind.LPAREN) {
-      if (!pseudoElement && pseudoName.name.toLowerCase() == 'not') {
+      if (!pseudoElement && name == 'not') {
         _eat(TokenKind.LPAREN);
 
         // Negation :   ':NOT(' S* negation_arg S* ')'
@@ -1434,6 +1628,12 @@ class _Parser {
 
         _eat(TokenKind.RPAREN);
         return new NegationSelector(negArg, _makeSpan(start));
+      } else if (!pseudoElement && (name == 'host' || name == 'host-context')) {
+        _eat(TokenKind.LPAREN);
+        var selector = processCompoundSelector();
+        _eat(TokenKind.RPAREN);
+        var span = _makeSpan(start);
+        return new PseudoClassFunctionSelector(pseudoName, selector, span);
       } else {
         // Special parsing for expressions in pseudo functions.  Minus is used
         // as operator not identifier.
@@ -1463,14 +1663,11 @@ class _Parser {
       }
     }
 
-    // TODO(terry): Need to handle specific pseudo class/element name and
-    // backward compatible names that are : as well as :: as well as
-    // parameters.  Current, spec uses :: for pseudo-element and : for
-    // pseudo-class.  However, CSS2.1 allows for : to specify old
-    // pseudo-elements (:first-line, :first-letter, :before and :after) any
-    // new pseudo-elements defined would require a ::.
-    return pseudoElement
-        ? new PseudoElementSelector(pseudoName, _makeSpan(start))
+    // Treat CSS2.1 pseudo-elements defined with pseudo class syntax as pseudo-
+    // elements for backwards compatibility.
+    return pseudoElement || _legacyPseudoElements.contains(name)
+        ? new PseudoElementSelector(pseudoName, _makeSpan(start),
+            isLegacy: !pseudoElement)
         : new PseudoClassSelector(pseudoName, _makeSpan(start));
   }
 
@@ -1487,7 +1684,7 @@ class _Parser {
   processSelectorExpression() {
     var start = _peekToken.span;
 
-    var expressions = [];
+    var expressions = <Expression>[];
 
     Token termToken;
     var value;
@@ -2123,7 +2320,8 @@ class _Parser {
           if (_peekKind(TokenKind.INTEGER)) {
             String hexText1 = _peekToken.text;
             _next();
-            if (_peekIdentifier()) {
+            // Append identifier only if there's no delimiting whitespace.
+            if (_peekIdentifier() && _previousToken.end == _peekToken.start) {
               hexText = '$hexText1${identifier().name}';
             } else {
               hexText = hexText1;
@@ -2269,14 +2467,15 @@ class _Parser {
           }
 
           var param = expr.expressions[0];
-          var varUsage = new VarUsage(param.text, [], _makeSpan(start));
+          var varUsage =
+              new VarUsage((param as LiteralTerm).text, [], _makeSpan(start));
           expr.expressions[0] = varUsage;
           return expr.expressions;
         }
         break;
     }
 
-    return processDimension(t, value, _makeSpan(start));
+    return t != null ? processDimension(t, value, _makeSpan(start)) : null;
   }
 
   /** Process all dimension units. */
@@ -2422,8 +2621,15 @@ class _Parser {
    * then parse to the right paren ignoring everything in between.
    */
   processIEFilter(FileSpan startAfterProgidColon) {
-    var parens = 0;
+    // Support non-functional filters (i.e. filter: FlipH)
+    var kind = _peek();
+    if (kind == TokenKind.SEMICOLON || kind == TokenKind.RBRACE) {
+      var tok = tokenizer.makeIEFilter(
+          startAfterProgidColon.start.offset, _peekToken.start);
+      return new LiteralTerm(tok.text, tok.text, tok.span);
+    }
 
+    var parens = 0;
     while (_peek() != TokenKind.END_OF_FILE) {
       switch (_peek()) {
         case TokenKind.LPAREN:
@@ -2467,8 +2673,7 @@ class _Parser {
       var token = _peek();
       if (token == TokenKind.LPAREN)
         left++;
-      else if (token == TokenKind.RPAREN)
-        left--;
+      else if (token == TokenKind.RPAREN) left--;
 
       matchingParens = left == 0;
       if (!matchingParens) stringValue.write(_next().text);
@@ -2487,7 +2692,7 @@ class _Parser {
     var start = _peekToken.span;
 
     var name = func.name;
-    if (name == 'calc') {
+    if (name == 'calc' || name == '-webkit-calc' || name == '-moz-calc') {
       // TODO(terry): Implement expression parsing properly.
       String expression = processCalcExpression();
       var calcExpr = new LiteralTerm(expression, expression, _makeSpan(start));
@@ -2508,7 +2713,6 @@ class _Parser {
   //
   processFunction(Identifier func) {
     var start = _peekToken.span;
-
     var name = func.name;
 
     switch (name) {
@@ -2516,7 +2720,7 @@ class _Parser {
         // URI term sucks up everything inside of quotes(' or ") or between parens
         var urlParam = processQuotedString(true);
 
-        // TODO(terry): Better error messge and checking for mismatched quotes.
+        // TODO(terry): Better error message and checking for mismatched quotes.
         if (_peek() == TokenKind.END_OF_FILE) {
           _error("problem parsing URI", _peekToken.span);
         }
@@ -2543,11 +2747,12 @@ class _Parser {
           _error("too many parameters to var()", _peekToken.span);
         }
 
-        var paramName = expr.expressions[0].text;
+        var paramName = (expr.expressions[0] as LiteralTerm).text;
 
         // [0] - var name, [1] - OperatorComma, [2] - default value.
-        var defaultValues =
-            expr.expressions.length >= 3 ? expr.expressions.sublist(2) : [];
+        var defaultValues = expr.expressions.length >= 3
+            ? expr.expressions.sublist(2)
+            : <Expression>[];
         return new VarUsage(paramName, defaultValues, _makeSpan(start));
       default:
         var expr = processExpr();
@@ -2557,8 +2762,6 @@ class _Parser {
 
         return new FunctionTerm(name, name, expr, _makeSpan(start));
     }
-
-    return null;
   }
 
   Identifier identifier() {

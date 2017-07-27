@@ -5,7 +5,7 @@
 library intl_test;
 
 import 'package:intl/intl.dart';
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 main() {
@@ -77,5 +77,18 @@ main() {
     checkAsDateDefault('es-419', 'es_419');
     checkAsDateDefault('en-ZZ', 'en');
     checkAsDateDefault('es-999', 'es');
+  });
+
+  test("toBeginningOfSentenceCase", () {
+    expect(toBeginningOfSentenceCase(null), null);
+    expect(toBeginningOfSentenceCase(""), "");
+    expect(toBeginningOfSentenceCase("A"), "A");
+    expect(toBeginningOfSentenceCase("a"), "A");
+    expect(toBeginningOfSentenceCase("abc"), "Abc");
+    expect(toBeginningOfSentenceCase("[a]"), "[a]");
+    expect(toBeginningOfSentenceCase("ABc"), "ABc");
+    expect(toBeginningOfSentenceCase("ı"), "I");
+    expect(toBeginningOfSentenceCase("i"), "I");
+    expect(toBeginningOfSentenceCase("i", "tr"), "\u0130");
   });
 }

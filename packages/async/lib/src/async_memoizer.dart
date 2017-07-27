@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library async.async_memoizer;
-
 import 'dart:async';
 
 /// A class for running an asynchronous function exactly once and caching its
@@ -33,15 +31,15 @@ class AsyncMemoizer<T> {
   ///
   /// This can be accessed at any time, and will fire once [runOnce] is called.
   Future<T> get future => _completer.future;
-  final _completer = new Completer();
+  final _completer = new Completer<T>();
 
-  /// Whether [run] has been called yet.
+  /// Whether [runOnce] has been called yet.
   bool get hasRun => _completer.isCompleted;
 
   /// Runs the function, [computation], if it hasn't been run before.
   ///
-  /// If [run] has already been called, this returns the original result.
-  Future<T> runOnce(computation()) {
+  /// If [runOnce] has already been called, this returns the original result.
+  Future<T> runOnce(FutureOr<T> computation()) {
     if (!hasRun) _completer.complete(new Future.sync(computation));
     return future;
   }

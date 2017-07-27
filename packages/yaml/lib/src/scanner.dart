@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library yaml.scanner;
-
 import 'package:collection/collection.dart';
 import 'package:string_scanner/string_scanner.dart';
 import 'package:source_span/source_span.dart';
@@ -326,6 +324,9 @@ class Scanner {
       if (_tokens.isNotEmpty) {
         _staleSimpleKeys();
 
+        // If there are no more tokens to fetch, break.
+        if (_tokens.last.type == TokenType.STREAM_END) break;
+
         // If the current token could be a simple key, we need to scan more
         // tokens until we determine whether it is or not. Otherwise we might
         // not emit the `KEY` token before we emit the value of the key.
@@ -462,8 +463,6 @@ class Scanner {
         _fetchPlainScalar();
         return;
     }
-
-    throw 'Inaccessible';
   }
 
   /// Throws an error about a disallowed character.

@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library path.internal_style;
-
 import 'context.dart';
 import 'style.dart';
 
@@ -35,10 +33,11 @@ abstract class InternalStyle extends Style {
 
   /// Returns the number of characters of the root part.
   ///
-  /// Returns 0 if the path is relative.
+  /// Returns 0 if the path is relative and 1 if the path is root-relative.
   ///
-  /// If the path is root-relative, the root length is 1.
-  int rootLength(String path);
+  /// If [withDrive] is `true`, this should include the drive letter for `file:`
+  /// URLs. Non-URL styles may ignore the parameter.
+  int rootLength(String path, {bool withDrive: false});
 
   /// Gets the root prefix of [path] if path is absolute. If [path] is relative,
   /// returns `null`.
@@ -68,4 +67,18 @@ abstract class InternalStyle extends Style {
 
   /// Returns the URI that represents [path], which is assumed to be absolute.
   Uri absolutePathToUri(String path);
+
+  /// Returns whether [codeUnit1] and [codeUnit2] are considered equivalent for
+  /// this style.
+  bool codeUnitsEqual(int codeUnit1, int codeUnit2) => codeUnit1 == codeUnit2;
+
+  /// Returns whether [path1] and [path2] are equivalent.
+  ///
+  /// This only needs to handle character-by-character comparison; it can assume
+  /// the paths are normalized and contain no `..` components.
+  bool pathsEqual(String path1, String path2) => path1 == path2;
+
+  int canonicalizeCodeUnit(int codeUnit) => codeUnit;
+
+  String canonicalizePart(String part) => part;
 }

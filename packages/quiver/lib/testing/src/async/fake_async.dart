@@ -39,8 +39,6 @@ part of quiver.testing.async;
 abstract class FakeAsync {
   factory FakeAsync() = _FakeAsync;
 
-  FakeAsync._();
-
   /// Returns a fake [Clock] whose time can is elapsed by calls to [elapse] and
   /// [elapseBlocking].
   ///
@@ -89,8 +87,9 @@ abstract class FakeAsync {
   /// and [ZoneSpecification.scheduleMicrotask] to store callbacks for later
   /// execution within the zone via calls to [elapse].
   ///
-  /// [callback] is called with `this` as argument.
-  run(callback(FakeAsync self));
+  /// Calls [callback] with `this` as argument and returns the result returned
+  /// by [callback].
+  dynamic run(callback(FakeAsync self));
 
   /// Runs all remaining microtasks, including those scheduled as a result of
   /// running them, until there are no more microtasks scheduled.
@@ -104,7 +103,8 @@ abstract class FakeAsync {
   /// [timeout] lets you set the maximum amount of time the flushing will take.
   /// Throws a [StateError] if the [timeout] is exceeded. The default timeout
   /// is 1 hour. [timeout] is relative to the elapsed time.
-  void flushTimers({Duration timeout: const Duration(hours: 1),
+  void flushTimers(
+      {Duration timeout: const Duration(hours: 1),
       bool flushPeriodicTimers: true});
 
   /// The number of created periodic timers that have not been canceled.
@@ -117,15 +117,11 @@ abstract class FakeAsync {
   int get microtaskCount;
 }
 
-class _FakeAsync extends FakeAsync {
+class _FakeAsync implements FakeAsync {
   Duration _elapsed = Duration.ZERO;
   Duration _elapsingTo;
   Queue<Function> _microtasks = new Queue();
   Set<_FakeTimer> _timers = new Set<_FakeTimer>();
-
-  _FakeAsync() : super._() {
-    _elapsed;
-  }
 
   @override
   Clock getClock(DateTime initialTime) =>
@@ -162,7 +158,8 @@ class _FakeAsync extends FakeAsync {
   }
 
   @override
-  void flushTimers({Duration timeout: const Duration(hours: 1),
+  void flushTimers(
+      {Duration timeout: const Duration(hours: 1),
       bool flushPeriodicTimers: true}) {
     final absoluteTimeout = _elapsed + timeout;
     _drainTimersWhile((_FakeTimer timer) {
@@ -186,6 +183,7 @@ class _FakeAsync extends FakeAsync {
     }
     return _zone.runGuarded(() => callback(this));
   }
+
   Zone _zone;
 
   @override
@@ -200,13 +198,14 @@ class _FakeAsync extends FakeAsync {
   int get microtaskCount => _microtasks.length;
 
   ZoneSpecification get _zoneSpec => new ZoneSpecification(
-      createTimer: (_, __, ___, Duration duration, Function callback) {
-    return _createTimer(duration, callback, false);
-  }, createPeriodicTimer: (_, __, ___, Duration duration, Function callback) {
-    return _createTimer(duration, callback, true);
-  }, scheduleMicrotask: (_, __, ___, Function microtask) {
-    _microtasks.add(microtask);
-  });
+          createTimer: (_, __, ___, Duration duration, Function callback) {
+        return _createTimer(duration, callback, false);
+      }, createPeriodicTimer:
+              (_, __, ___, Duration duration, Function callback) {
+        return _createTimer(duration, callback, true);
+      }, scheduleMicrotask: (_, __, ___, Function microtask) {
+        _microtasks.add(microtask);
+      });
 
   _drainTimersWhile(bool predicate(_FakeTimer)) {
     _drainMicrotasks();
@@ -241,8 +240,8 @@ class _FakeAsync extends FakeAsync {
       timer._callback(timer);
       timer._nextCall += timer._duration;
     } else {
-      timer._callback();
       _timers.remove(timer);
+      timer._callback();
     }
   }
 

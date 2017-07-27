@@ -92,6 +92,23 @@ void sharedTests() {
     ]);
   });
 
+  // Regression test for b/30768513.
+  test("doesn't crash when the directory is moved immediately after a subdir "
+      "is added", () {
+    writeFile("dir/a.txt");
+    writeFile("dir/b.txt");
+
+    startWatcher(path: "dir");
+
+    createDir("dir/subdir");
+    renameDir("dir", "moved_dir");
+    createDir("dir");
+    inAnyOrder([
+      isRemoveEvent("dir/a.txt"),
+      isRemoveEvent("dir/b.txt")
+    ]);
+  });
+
   group("moves", () {
     test('notifies when a file is moved within the watched directory', () {
       writeFile("old.txt");
@@ -244,6 +261,37 @@ void sharedTests() {
 
       writeFile("new/file.txt", contents: "modified");
       expectModifyEvent("new/file.txt");
+    });
+
+    test('notifies when a file is replaced by a subdirectory', () {
+      writeFile("new");
+      writeFile("old/file.txt");
+      startWatcher();
+
+      deleteFile("new");
+      renameDir("old", "new");
+      inAnyOrder([
+        isRemoveEvent("new"),
+        isRemoveEvent("old/file.txt"),
+        isAddEvent("new/file.txt")
+      ]);
+    });
+
+    test('notifies when a subdirectory is replaced by a file', () {
+      writeFile("old");
+      writeFile("new/file.txt");
+      startWatcher();
+
+      renameDir("new", "newer");
+      renameFile("old", "new");
+      inAnyOrder([
+        isRemoveEvent("new/file.txt"),
+        isAddEvent("newer/file.txt"),
+        isRemoveEvent("old"),
+        isAddEvent("new")
+      ]);
+    }, onPlatform: {
+      "mac-os": new Skip("https://github.com/dart-lang/watcher/issues/21")
     });
 
     test('emits events for many nested files added at once', () {

@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'package:glob/glob.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
@@ -90,5 +91,21 @@ void main() {
       expect(() => match.group(1), throwsRangeError);
       expect(() => match.groups([1]), throwsRangeError);
     });
+  });
+
+  test("globs are case-sensitive by default for Posix and URL contexts", () {
+    expect("foo", contains(new Glob("foo", context: p.posix)));
+    expect("FOO", isNot(contains(new Glob("foo", context: p.posix))));
+    expect("foo", isNot(contains(new Glob("FOO", context: p.posix))));
+
+    expect("foo", contains(new Glob("foo", context: p.url)));
+    expect("FOO", isNot(contains(new Glob("foo", context: p.url))));
+    expect("foo", isNot(contains(new Glob("FOO", context: p.url))));
+  });
+
+  test("globs are case-insensitive by default for Windows contexts", () {
+    expect("foo", contains(new Glob("foo", context: p.windows)));
+    expect("FOO", contains(new Glob("foo", context: p.windows)));
+    expect("foo", contains(new Glob("FOO", context: p.windows)));
   });
 }

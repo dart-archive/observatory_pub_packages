@@ -15,7 +15,7 @@
 library quiver.strings;
 
 import 'package:quiver/strings.dart';
-import 'package:test/test.dart' hide isEmpty;
+import 'package:test/test.dart' hide isEmpty, isNotEmpty;
 
 main() {
   group('isBlank', () {
@@ -48,39 +48,43 @@ main() {
     });
   });
 
-  group('flip', () {
-    test('should flip characters in a string', () {
-      expect(flip('ab'), 'ba');
+  group('isNotEmpty', () {
+    test('should consider null to be empty', () {
+      expect(isNotEmpty(null), isFalse);
+    });
+    test('should consider the empty string to be empty', () {
+      expect(isNotEmpty(''), isFalse);
+    });
+    test('should consider whitespace string to be not empty', () {
+      expect(isNotEmpty(' '), isTrue);
+    });
+    test('should consider non-whitespace string to be not empty', () {
+      expect(isNotEmpty('hello'), isTrue);
+    });
+  });
+
+  group('isDigit', () {
+    test('should return true for standard digits', () {
+      for (var i = 0; i <= 9; i++) {
+        expect(isDigit('$i'.codeUnitAt(0)), isTrue);
+      }
+    });
+    test('should return false for non-digits', () {
+      expect(isDigit('a'.codeUnitAt(0)), isFalse);
+      expect(isDigit(' '.codeUnitAt(0)), isFalse);
+      expect(isDigit('%'.codeUnitAt(0)), isFalse);
+    });
+  });
+
+  group('reverse', () {
+    test('should reverse characters in a string', () {
+      expect(reverse('ab'), 'ba');
     });
     test('should return null as null', () {
-      expect(flip(null), null);
+      expect(reverse(null), null);
     });
     test('should return empty string as empty string', () {
-      expect(flip(''), '');
-    });
-  });
-
-  group('nullToEmpty', () {
-    test('should turn null to empty string', () {
-      expect(nullToEmpty(null), '');
-    });
-    test('should leave non-null string unchanged', () {
-      expect(nullToEmpty('hi!'), 'hi!');
-    });
-    test('should leave empty string unchanged', () {
-      expect(nullToEmpty(''), '');
-    });
-  });
-
-  group('emptyToNull', () {
-    test('should turn empty string to null', () {
-      expect(emptyToNull(''), null);
-    });
-    test('should leave non-null string unchanged', () {
-      expect(emptyToNull('hi!'), 'hi!');
-    });
-    test('should leave null as null', () {
-      expect(emptyToNull(null), null);
+      expect(reverse(''), '');
     });
   });
 
@@ -88,7 +92,8 @@ main() {
     test('should repeat a non-empty string', () {
       expect(repeat('ab', 3), 'ababab');
     });
-    test('should repeat flipped non-empty string '
+    test(
+        'should repeat flipped non-empty string '
         'on negative number of times', () {
       expect(repeat('ab', -3), 'bababa');
     });
@@ -158,94 +163,6 @@ main() {
     });
     test('should throw on empty', () {
       expect(() => loop('', 6, 8), throws);
-    });
-  });
-
-  group('padLeft', () {
-    test('should return the input if length greater than width', () {
-      expect(padLeft('abc', 2, '0'), 'abc');
-      expect(padLeft('abc', 3, '0'), 'abc');
-    });
-
-    test('should pad on the left if length less than width', () {
-      expect(padLeft('abc', 4, '0'), '0abc');
-      expect(padLeft('abc', 6, '0'), '000abc');
-    });
-
-    test('should use multi-character fills', () {
-      expect(padLeft('abc', 4, '012345'), '0abc');
-      expect(padLeft('abc', 6, '012345'), '012abc');
-      expect(padLeft('abc', 8, '012'), '01201abc');
-    });
-
-    test('should handle null and empty inputs', () {
-      expect(padLeft(null, 4, '012345'), '0123');
-      expect(padLeft('', 4, '012345'), '0123');
-      expect(padLeft(null, 4, '012'), '0120');
-      expect(padLeft('', 4, '012'), '0120');
-    });
-  });
-
-  group('padRight', () {
-    test('should return the input if length greater than width', () {
-      expect(padRight('abc', 2, '0'), 'abc');
-      expect(padRight('abc', 3, '0'), 'abc');
-    });
-
-    test('should pad on the right if length less than width', () {
-      expect(padRight('abc', 4, '0'), 'abc0');
-      expect(padRight('abc', 6, '0'), 'abc000');
-    });
-
-    test('should use multi-character fills', () {
-      expect(padRight('abc', 4, '012345'), 'abc5');
-      expect(padRight('abc', 6, '012345'), 'abc345');
-      expect(padRight('abc', 8, '012'), 'abc12012');
-    });
-
-    test('should handle null and empty inputs', () {
-      expect(padRight(null, 4, '012345'), '2345');
-      expect(padRight('', 4, '012345'), '2345');
-      expect(padRight(null, 4, '012'), '2012');
-      expect(padRight('', 4, '012'), '2012');
-    });
-  });
-
-  group('trimLeft', () {
-    test('should trim whitespace from the left', () {
-      expect(trimLeft(''), '');
-      expect(trimLeft(' '), '');
-      expect(trimLeft('  abc  '), 'abc  ');
-      expect(trimLeft('  abc def  '), 'abc def  ');
-      expect(trimLeft('\t\vabc  '), 'abc  ');
-      // these are some of the whitespace chars not defined for RexExps
-      expect(trimLeft('\u000Aabc  '), 'abc  ');
-      expect(trimLeft('\u000Dabc  '), 'abc  ');
-      expect(trimLeft('\u0085abc  '), 'abc  ');
-      expect(trimLeft('\u1680abc  '), 'abc  ');
-    });
-
-    test('should throw on null', () {
-      expect(() => trimLeft(null), throws);
-    });
-  });
-
-  group('trimRight', () {
-    test('should trim whitespace from the right', () {
-      expect(trimRight(''), '');
-      expect(trimRight(' '), '');
-      expect(trimRight('  abc  '), '  abc');
-      expect(trimRight('  abc def  '), '  abc def');
-      expect(trimRight('  abc\t\v'), '  abc');
-      // these are some of the whitespace chars not defined for RexExps
-      expect(trimRight('  abc\u000A'), '  abc');
-      expect(trimRight('  abc\u000D'), '  abc');
-      expect(trimRight('  abc\u0085'), '  abc');
-      expect(trimRight('  abc\u1680'), '  abc');
-    });
-
-    test('should throw on null', () {
-      expect(() => trimRight(null), throws);
     });
   });
 

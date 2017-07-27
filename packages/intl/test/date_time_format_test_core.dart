@@ -2,15 +2,13 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/**
- * Tests the DateFormat library in dart. This file contains core tests that
- * are run regardless of where the locale data is found, so it doesn't expect to
- * be run on its own, but rather to be imported and run from another test file.
- */
+/// Tests the DateFormat library in dart. This file contains core tests that are
+/// run regardless of where the locale data is found, so it doesn't expect to be
+/// run on its own, but rather to be imported and run from another test file.
 
 library date_time_format_tests;
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'date_time_format_test_data.dart';
 import 'package:intl/intl.dart';
 
@@ -119,12 +117,10 @@ var icuFormatNamesToTest = const [
   // ABBR_UTC_TZ
 ];
 
-/**
- * Exercise all of the formats we have explicitly defined on a particular
- * locale. [expectedResults] is a map from ICU format names to the
- * expected result of formatting [date] according to that format in
- * [localeName].
- */
+/// Exercise all of the formats we have explicitly defined on a particular
+/// locale. [expectedResults] is a map from ICU format names to the
+/// expected result of formatting [date] according to that format in
+/// [localeName].
 testLocale(String localeName, Map expectedResults, DateTime date) {
   var intl = new Intl(localeName);
   for (int i = 0; i < formatsToTest.length; i++) {
@@ -132,7 +128,8 @@ testLocale(String localeName, Map expectedResults, DateTime date) {
     var format = intl.date(skeleton);
     var icuName = icuFormatNamesToTest[i];
     var actualResult = format.format(date);
-    expect(expectedResults[icuName], equals(actualResult));
+    expect(expectedResults[icuName], equals(actualResult),
+        reason: "Mismatch in $localeName, testing skeleton '$skeleton'");
   }
 }
 
@@ -168,10 +165,11 @@ testRoundTripParsing(String localeName, DateTime date) {
   }
 }
 
-/** A shortcut for returning all the locales we have available.*/
+/// A shortcut for returning all the locales we have available.
 List<String> allLocales() => DateFormat.allLocalesWithSymbols();
 
-Function _subsetFunc;
+typedef List<String> SubsetFuncType();
+SubsetFuncType _subsetFunc;
 
 List<String> _subsetValue;
 
@@ -185,7 +183,7 @@ List<String> get subset {
 // TODO(alanknight): Run specific tests for the en_ISO locale which isn't
 // included in CLDR, and check that our patterns for it are correct (they
 // very likely aren't).
-void runDateTests(Function subsetFunc) {
+void runDateTests(SubsetFuncType subsetFunc) {
   assert(subsetFunc != null);
   _subsetFunc = subsetFunc;
 
@@ -363,18 +361,40 @@ void runDateTests(Function subsetFunc) {
     }
   });
 
-  /**
-   * Generate a map from day numbers in the given [year] (where Jan 1 == 1)
-   * to a Date object. If [year] is a leap year, then pass 1 for
-   * [leapDay], otherwise pass 0.
-   */
+  test('Quarter formatting', () {
+    var date = new DateTime(2012, 02, 27);
+    var formats = {
+      'Q': '1',
+      'QQ': '01',
+      'QQQ': 'Q1',
+      'QQQQ': '1st quarter',
+      'QQQQQ': '00001'
+    };
+    formats.forEach((pattern, result) {
+      expect(new DateFormat(pattern, 'en_US').format(date), result);
+    });
+
+    if (subset.contains('zh_CN')) {
+      // Especially test zh_CN formatting for `QQQ` and `yQQQ` because it
+      // contains a single `Q`.
+      expect(new DateFormat.QQQ('zh_CN').format(date), '1季度');
+      expect(new DateFormat.yQQQ('zh_CN').format(date), '2012年第1季度');
+    }
+  });
+
+  /// Generate a map from day numbers in the given [year] (where Jan 1 == 1)
+  /// to a Date object. If [year] is a leap year, then pass 1 for
+  /// [leapDay], otherwise pass 0.
   Map<int, DateTime> generateDates(int year, int leapDay) =>
-      new Iterable.generate(365 + leapDay, (n) => n + 1).map((day) {
-    var result = new DateTime(year, 1, day);
-    // TODO(alanknight): This is a workaround for dartbug.com/15560.
-    if (result.toUtc() == result) result = new DateTime(year, 1, day);
-    return result;
-  }).toList().asMap();
+      new Iterable.generate(365 + leapDay, (n) => n + 1)
+          .map/*<DateTime>*/((day) {
+            var result = new DateTime(year, 1, day);
+            // TODO(alanknight): This is a workaround for dartbug.com/15560.
+            if (result.toUtc() == result) result = new DateTime(year, 1, day);
+            return result;
+          })
+          .toList()
+          .asMap();
 
   void verifyOrdinals(Map dates) {
     var f = new DateFormat("D");

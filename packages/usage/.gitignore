@@ -1,8 +1,6 @@
+.packages
+.idea/
+.pub/
 build/
 doc/api/
-.packages
-packages
-.buildlog
 pubspec.lock
-.settings/
-.pub/

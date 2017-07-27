@@ -1,3 +1,31 @@
+## 0.6.2+6
+
+* Small bug fixes for https://github.com/dart-lang/web-components/issues/54.
+
+## 0.6.2+5
+
+* Update analyzer minimum version to `0.27.2`.
+
+## 0.6.2+4
+
+* Stop using deprecated analyzer apis.
+
+## 0.6.2+3
+
+* Update code_transformers, analyzer, and html version constraints.
+
+## 0.6.2+2
+
+* Update `transformer_test` dep to `0.2.x`.
+
+## 0.6.2+1
+
+* Add support for code_transformers `0.4.x`.
+
+## 0.6.2
+
+* Update analyzer to `>=0.27.0 <0.28.0`.
+
 ## 0.6.1+2
 
 * Update analyzer to `<0.27.0` and dart_style to `<0.3.0`.

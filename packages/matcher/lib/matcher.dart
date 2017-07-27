@@ -3,8 +3,6 @@
 // BSD-style license that can be found in the LICENSE file.
 
 /// Support for specifying test expectations, such as for unit tests.
-library matcher;
-
 export 'src/core_matchers.dart';
 export 'src/description.dart';
 export 'src/error_matchers.dart';
@@ -13,5 +11,6 @@ export 'src/iterable_matchers.dart';
 export 'src/map_matchers.dart';
 export 'src/numeric_matchers.dart';
 export 'src/operator_matchers.dart';
+export 'src/order_matchers.dart';
 export 'src/string_matchers.dart';
 export 'src/util.dart';

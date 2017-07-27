@@ -1,3 +1,23 @@
+## 2.1.12
+
+* Properly refuse mappings with duplicate keys.
+
+## 2.1.11
+
+* Fix an infinite loop when parsing some invalid documents.
+
+## 2.1.10
+
+* Support `string_scanner` 1.0.0.
+
+## 2.1.9
+
+* Fix all strong-mode warnings.
+
+## 2.1.8
+
+* Remove the dependency on `path`, since we don't actually import it.
+
 ## 2.1.7
 
 * Fix more strong mode warnings.

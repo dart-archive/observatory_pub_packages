@@ -2,8 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library string_scanner.string_scanner_test;
-
+import 'package:charcode/charcode.dart';
 import 'package:string_scanner/string_scanner.dart';
 import 'package:test/test.dart';
 
@@ -39,6 +38,18 @@ void main() {
 
     test("peekChar returns null and doesn't change the state", () {
       expect(scanner.peekChar(), isNull);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(0));
+    });
+
+    test("scanChar returns false and doesn't change the state", () {
+      expect(scanner.scanChar($f), isFalse);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(0));
+    });
+
+    test("expectChar fails and doesn't change the state", () {
+      expect(() => scanner.expectChar($f), throwsFormatException);
       expect(scanner.lastMatch, isNull);
       expect(scanner.position, equals(0));
     });
@@ -115,6 +126,30 @@ void main() {
 
     test('peekChar with an argument returns the nth character', () {
       expect(scanner.peekChar(4), equals(0x62));
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(0));
+    });
+
+    test("a matching scanChar returns true moves forward", () {
+      expect(scanner.scanChar($f), isTrue);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(1));
+    });
+
+    test("a non-matching scanChar returns false and does nothing", () {
+      expect(scanner.scanChar($x), isFalse);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(0));
+    });
+
+    test("a matching expectChar moves forward", () {
+      scanner.expectChar($f);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(1));
+    });
+
+    test("a non-matching expectChar fails", () {
+      expect(() => scanner.expectChar($x), throwsFormatException);
       expect(scanner.lastMatch, isNull);
       expect(scanner.position, equals(0));
     });
@@ -226,6 +261,32 @@ void main() {
     });
   });
 
+  group('after a scan', () {
+    var scanner;
+    setUp(() {
+      scanner = new StringScanner('foo bar');
+      expect(scanner.scan('foo'), isTrue);
+    });
+
+    test('readChar returns the first character and unsets the last match', () {
+      expect(scanner.readChar(), equals($space));
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(4));
+    });
+
+    test('a matching scanChar returns true and unsets the last match', () {
+      expect(scanner.scanChar($space), isTrue);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(4));
+    });
+
+    test('a matching expectChar returns true and unsets the last match', () {
+      scanner.expectChar($space);
+      expect(scanner.lastMatch, isNull);
+      expect(scanner.position, equals(4));
+    });
+  });
+
   group('at the end of a string', () {
     var scanner;
     setUp(() {
@@ -254,6 +315,18 @@ void main() {
 
     test("peekChar returns null and doesn't change the state", () {
       expect(scanner.peekChar(), isNull);
+      expect(scanner.lastMatch, isNotNull);
+      expect(scanner.position, equals(7));
+    });
+
+    test("scanChar returns false and doesn't change the state", () {
+      expect(scanner.scanChar($f), isFalse);
+      expect(scanner.lastMatch, isNotNull);
+      expect(scanner.position, equals(7));
+    });
+
+    test("expectChar fails and doesn't change the state", () {
+      expect(() => scanner.expectChar($f), throwsFormatException);
       expect(scanner.lastMatch, isNotNull);
       expect(scanner.position, equals(7));
     });
@@ -297,6 +370,13 @@ void main() {
       expect(scanner.lastMatch[0], equals('oo '));
       expect(scanner.position, equals(4));
       expect(scanner.rest, equals('bar'));
+    });
+
+    test('setting and resetting position clears lastMatch', () {
+      var oldPosition = scanner.position;
+      scanner.position = 1;
+      scanner.position = oldPosition;
+      expect(scanner.lastMatch, isNull);
     });
 
     test('setting position beyond the string throws an ArgumentError', () {

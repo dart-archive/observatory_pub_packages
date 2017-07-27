@@ -1,3 +1,30 @@
+## 1.4.2
+
+* Treat `package:` URLs as absolute.
+
+* Normalize `c:\foo\.` to `c:\foo`.
+
+## 1.4.1
+
+* Root-relative URLs like `/foo` are now resolved relative to the drive letter
+  for `file` URLs that begin with a Windows-style drive letter. This matches the
+  [WHATWG URL specification][].
+
+[WHATWG URL specification]: https://url.spec.whatwg.org/#file-slash-state
+
+* When a root-relative URLs like `/foo` is converted to a Windows path using
+  `fromUrl()`, it is now resolved relative to the drive letter. This matches
+  IE's behavior.
+
+## 1.4.0
+
+* Add `equals()`, `hash()` and `canonicalize()` top-level functions and
+  `Context` methods. These make it easier to treat paths as map keys.
+
+* Properly compare Windows paths case-insensitively.
+
+* Further improve the performance of `isWithin()`.
+
 ## 1.3.9
 
 * Further improve the performance of `isWithin()` when paths contain `/.`

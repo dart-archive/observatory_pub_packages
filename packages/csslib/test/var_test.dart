@@ -4,12 +4,13 @@
 
 library var_test;
 
+import 'package:csslib/src/messages.dart';
 import 'package:test/test.dart';
 
 import 'testing.dart';
 
 compileAndValidate(String input, String generated) {
-  var errors = [];
+  var errors = <Message>[];
   var stylesheet = compileCss(input, errors: errors, opts: options);
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
@@ -17,7 +18,7 @@ compileAndValidate(String input, String generated) {
 }
 
 compilePolyfillAndValidate(String input, String generated) {
-  var errors = [];
+  var errors = <Message>[];
   var stylesheet = polyFillCompileCss(input, errors: errors, opts: options);
   expect(stylesheet != null, true);
   expect(errors.isEmpty, true, reason: errors.toString());
@@ -25,7 +26,8 @@ compilePolyfillAndValidate(String input, String generated) {
 }
 
 void simpleVar() {
-  final input = ''':root {
+  final input = '''
+:root {
   var-color-background: red;
   var-color-foreground: blue;
 
@@ -39,7 +41,8 @@ void simpleVar() {
 }
 ''';
 
-  final generated = ''':root {
+  final generated = '''
+:root {
   var-color-background: #f00;
   var-color-foreground: #00f;
   var-c: #0f0;
@@ -51,7 +54,8 @@ void simpleVar() {
   background: var(color-background);
 }''';
 
-  final generatedPolyfill = ''':root {
+  final generatedPolyfill = '''
+:root {
 }
 .testIt {
   color: #00f;
@@ -63,7 +67,8 @@ void simpleVar() {
 }
 
 void expressionsVar() {
-  final input = ''':root {
+  final input = '''
+:root {
   var-color-background: red;
   var-color-foreground: blue;
 
@@ -128,7 +133,8 @@ void expressionsVar() {
 }
 ''';
 
-  final generated = ''':root {
+  final generated = '''
+:root {
   var-color-background: #f00;
   var-color-foreground: #00f;
   var-c: #0f0;
@@ -185,7 +191,8 @@ void expressionsVar() {
 
   compileAndValidate(input, generated);
 
-  var generatedPolyfill = r''':root {
+  var generatedPolyfill = r'''
+:root {
 }
 .testIt {
   color: #00f;
@@ -271,7 +278,8 @@ div {
 }
 ''';
 
-  final generated = ''':root {
+  final generated = '''
+:root {
   var-color-background: #f00;
   var-color-foreground: #00f;
   var-a: var(b, #0a0);
@@ -309,7 +317,8 @@ div {
 
   compileAndValidate(input, generated);
 
-  var generatedPolyfill = r''':root {
+  var generatedPolyfill = r'''
+:root {
 }
 .test {
   background-color: #ffa500;
@@ -340,8 +349,9 @@ div {
 }
 
 void undefinedVars() {
-  final errors = [];
-  final input = ''':root {
+  final errors = <Message>[];
+  final input = '''
+:root {
   var-color-background: red;
   var-color-foreground: blue;
 
@@ -374,7 +384,8 @@ void undefinedVars() {
 }
 ''';
 
-  final generatedPolyfill = ''':root {
+  final generatedPolyfill = '''
+:root {
 }
 .testIt {
   color: #00f;
@@ -412,7 +423,8 @@ void undefinedVars() {
         '                 ^^^^^^',
   ];
 
-  var generated = r''':root {
+  var generated = r'''
+:root {
   var-color-background: #f00;
   var-color-foreground: #00f;
   var-a: var(b);
@@ -450,7 +462,8 @@ void undefinedVars() {
   expect(errors.length, errorStrings.length, reason: errors.toString());
   testBitMap = 0;
 
-  outer: for (var error in errors) {
+  outer:
+  for (var error in errors) {
     var errorString = error.toString();
     for (int i = 0; i < errorStrings.length; i++) {
       if (errorString == errorStrings[i]) {
@@ -465,7 +478,8 @@ void undefinedVars() {
 }
 
 parserVar() {
-  final input = ''':root {
+  final input = '''
+:root {
   var-color-background: red;
   var-color-foreground: blue;
 
@@ -530,7 +544,8 @@ parserVar() {
 }
 ''';
 
-  final generated = ''':root {
+  final generated = '''
+:root {
   var-color-background: #f00;
   var-color-foreground: #00f;
   var-c: #0f0;
@@ -587,7 +602,8 @@ parserVar() {
 
   compileAndValidate(input, generated);
 
-  var generatedPolyfill = r''':root {
+  var generatedPolyfill = r'''
+:root {
 }
 .testIt {
   color: #00f;
@@ -622,7 +638,7 @@ parserVar() {
 }
 
 testVar() {
-  final errors = [];
+  final errors = <Message>[];
   final input = '''
 @color-background: red;
 @color-foreground: blue;
@@ -658,7 +674,8 @@ var-color-foreground: #00f;
   color: @color-foreground;
 }
 ''';
-  final generated2 = '''var-color-background: #f00;
+  final generated2 = '''
+var-color-background: #f00;
 var-color-foreground: #00f;
 
 .test {
@@ -676,7 +693,7 @@ var-color-foreground: #00f;
 }
 
 testLess() {
-  final errors = [];
+  final errors = <Message>[];
   final input = '''
 @color-background: red;
 @color-foreground: blue;
@@ -686,7 +703,8 @@ testLess() {
   color: var(color-foreground);
 }
 ''';
-  final generated = '''var-color-background: #f00;
+  final generated = '''
+var-color-background: #f00;
 var-color-foreground: #00f;
 
 .test {
@@ -711,7 +729,8 @@ var-color-foreground: #00f;
   color: @color-foreground;
 }
 ''';
-  final generated2 = '''var-color-background: #f00;
+  final generated2 = '''
+var-color-background: #f00;
 var-color-foreground: #00f;
 
 .test {
@@ -729,20 +748,24 @@ var-color-foreground: #00f;
 }
 
 void polyfill() {
-  compilePolyfillAndValidate(r'''
+  compilePolyfillAndValidate(
+      r'''
 @color-background: red;
 @color-foreground: blue;
 .test {
   background-color: @color-background;
   color: @color-foreground;
-}''', r'''.test {
+}''',
+      r'''
+.test {
   background-color: #f00;
   color: #00f;
 }''');
 }
 
 void testIndirects() {
-  compilePolyfillAndValidate('''
+  compilePolyfillAndValidate(
+      '''
 :root {
   var-redef: #0f0;
 
@@ -759,7 +782,9 @@ void testIndirects() {
 }
 .test-1 {
   color: @redef;
-}''', r''':root {
+}''',
+      r'''
+:root {
 }
 .test {
   background-color: #fff;
@@ -772,7 +797,7 @@ void testIndirects() {
 }
 
 void includes() {
-  var errors = [];
+  var errors = <Message>[];
   var file1Input = r'''
 :root {
   var-redef: #0f0;
@@ -816,7 +841,8 @@ void includes() {
 }
 ''';
 
-  var generated1 = r''':root {
+  var generated1 = r'''
+:root {
   var-redef: #0f0;
   var-a1: #fff;
   var-a2: var(a1);
@@ -837,7 +863,8 @@ void includes() {
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(stylesheet1), generated1);
 
-  var generated2 = r''':root {
+  var generated2 = r'''
+:root {
   var-redef: #0b0;
   var-b3: var(a3);
 }
@@ -853,7 +880,8 @@ void includes() {
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(stylesheet2), generated2);
 
-  var generatedPolyfill1 = r''':root {
+  var generatedPolyfill1 = r'''
+:root {
 }
 .test-1 {
   background-color: #fff;
@@ -869,7 +897,8 @@ void includes() {
   expect(errors.isEmpty, true, reason: errors.toString());
   expect(prettyPrint(styleSheet1Polyfill), generatedPolyfill1);
 
-  var generatedPolyfill2 = r''':root {
+  var generatedPolyfill2 = r'''
+:root {
 }
 .test-2 {
   color: #fff;
@@ -888,7 +917,8 @@ void includes() {
   // Make sure includes didn't change.
   expect(prettyPrint(stylesheet1), generated1);
 
-  var generatedPolyfill = r''':root {
+  var generatedPolyfill = r'''
+:root {
 }
 .test-main {
   color: #fff;

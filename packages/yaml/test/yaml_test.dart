@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library yaml.test;
-
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
@@ -31,26 +29,37 @@ main() {
     });
   });
 
-  group("refuses documents that declare version", () {
-    test("1.0", () {
-      expectYamlFails("""
+  group("refuses", () {
+    // Regression test for #19.
+    test("invalid contents", () {
+      expectYamlFails("{");
+    });
+
+    test("duplicate mapping keys", () {
+      expectYamlFails("{a: 1, a: 2}");
+    });
+
+    group("documents that declare version", () {
+      test("1.0", () {
+        expectYamlFails("""
          %YAML 1.0
          --- text
          """);
-    });
+      });
 
-    test("1.3", () {
-      expectYamlFails("""
-         %YAML 1.3
-         --- text
-         """);
-    });
+      test("1.3", () {
+        expectYamlFails("""
+           %YAML 1.3
+           --- text
+           """);
+      });
 
-    test("2.0", () {
-      expectYamlFails("""
-         %YAML 2.0
-         --- text
-         """);
+      test("2.0", () {
+        expectYamlFails("""
+           %YAML 2.0
+           --- text
+           """);
+      });
     });
   });
 
@@ -59,14 +68,14 @@ main() {
 - foo:
     bar
 - 123
-""");
+""") as YamlList;
 
     expect(yaml.span.start.line, equals(0));
     expect(yaml.span.start.column, equals(0));
     expect(yaml.span.end.line, equals(3));
     expect(yaml.span.end.column, equals(0));
 
-    var map = yaml.nodes.first;
+    var map = yaml.nodes.first as YamlMap;
     expect(map.span.start.line, equals(0));
     expect(map.span.start.column, equals(2));
     expect(map.span.end.line, equals(2));

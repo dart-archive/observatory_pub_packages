@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library command_runner_test;
-
 import 'package:args/command_runner.dart';
 import 'package:test/test.dart';
 
@@ -56,6 +54,43 @@ Available commands:
 Run "test help <command>" for more information about a command."""));
     });
 
+    test("truncates newlines in command descriptions by default", () {
+      runner.addCommand(new MultilineCommand());
+
+      expect(runner.usage, equals("""
+A test command runner.
+
+Usage: test <command> [arguments]
+
+Global options:
+-h, --help    Print this usage information.
+
+Available commands:
+  help        Display help information for test.
+  multiline   Multi
+
+Run "test help <command>" for more information about a command."""));
+    });
+
+    test("supports newlines in command summaries", () {
+      runner.addCommand(new MultilineSummaryCommand());
+
+      expect(runner.usage, equals("""
+A test command runner.
+
+Usage: test <command> [arguments]
+
+Global options:
+-h, --help    Print this usage information.
+
+Available commands:
+  help        Display help information for test.
+  multiline   Multi
+              line.
+
+Run "test help <command>" for more information about a command."""));
+    });
+
     test("contains custom options", () {
       runner.argParser.addFlag("foo", help: "Do something.");
 
@@ -104,7 +139,7 @@ Run "test help <command>" for more information about a command."""));
 
   test("usageException splits up the message and usage", () {
     expect(() => runner.usageException("message"),
-        throwsUsageError("message", _DEFAULT_USAGE));
+        throwsUsageException("message", _DEFAULT_USAGE));
   });
 
   group("run()", () {
@@ -124,6 +159,22 @@ Run "test help <command>" for more information about a command."""));
       expect(runner.run(["async"]).then((_) {
         expect(command.hasRun, isTrue);
       }), completes);
+    });
+
+    test("runs a command with a return value", () {
+      var runner = new CommandRunner<int>("test", "");
+      var command = new ValueCommand();
+      runner.addCommand(command);
+
+      expect(runner.run(["foo"]), completion(equals(12)));
+    });
+
+    test("runs a command with an asynchronous return value", () {
+      var runner = new CommandRunner<String>("test", "");
+      var command = new AsyncValueCommand();
+      runner.addCommand(command);
+
+      expect(runner.run(["foo"]), completion(equals("hi")));
     });
 
     test("runs a hidden comand", () {
@@ -162,11 +213,25 @@ $_DEFAULT_USAGE
 """));
       });
 
-      test("with a command prints the usage for that command", () {
+      test("with a preceding command prints the usage for that command", () {
         var command = new FooCommand();
         runner.addCommand(command);
 
         expect(() => runner.run(["foo", "--help"]), prints("""
+Set a value.
+
+Usage: test foo [arguments]
+-h, --help    Print this usage information.
+
+Run "test help" to see global options.
+"""));
+      });
+
+      test("with a following command prints the usage for that command", () {
+        var command = new FooCommand();
+        runner.addCommand(command);
+
+        expect(() => runner.run(["--help", "foo"]), prints("""
 Set a value.
 
 Usage: test foo [arguments]
@@ -211,6 +276,27 @@ Run "test help" to see global options.
 """));
       });
     });
+
+    group("with an invalid argument", () {
+      test("at the root throws the root usage", () {
+        expect(runner.run(["--asdf"]), throwsUsageException(
+            'Could not find an option named "asdf".',
+            '$_DEFAULT_USAGE'));
+      });
+
+      test("for a command throws the command usage", () {
+        var command = new FooCommand();
+        runner.addCommand(command);
+
+        expect(runner.run(["foo", "--asdf"]), throwsUsageException(
+            'Could not find an option named "asdf".',
+            """
+Usage: test foo [arguments]
+-h, --help    Print this usage information.
+
+Run "test help" to see global options."""));
+      });
+    });
   });
 
   group("with a footer", () {
@@ -227,7 +313,7 @@ Also, footer!"""));
     });
 
     test("includes the footer in usage errors", () {
-      expect(runner.run(["--bad"]), throwsUsageError(
+      expect(runner.run(["--bad"]), throwsUsageException(
           'Could not find an option named "bad".',
           "$_DEFAULT_USAGE\nAlso, footer!"));
     });
@@ -235,19 +321,19 @@ Also, footer!"""));
 
   group("throws a useful error when", () {
     test("arg parsing fails", () {
-      expect(runner.run(["--bad"]), throwsUsageError(
+      expect(runner.run(["--bad"]), throwsUsageException(
           'Could not find an option named "bad".', _DEFAULT_USAGE));
     });
 
     test("a top-level command doesn't exist", () {
-      expect(runner.run(["bad"]), throwsUsageError(
+      expect(runner.run(["bad"]), throwsUsageException(
           'Could not find a command named "bad".', _DEFAULT_USAGE));
     });
 
     test("a subcommand doesn't exist", () {
       runner.addCommand(new FooCommand()..addSubcommand(new AsyncCommand()));
 
-      expect(runner.run(["foo bad"]), throwsUsageError(
+      expect(runner.run(["foo bad"]), throwsUsageException(
           'Could not find a command named "foo bad".', """
 Usage: test <command> [arguments]
 
@@ -264,7 +350,7 @@ Run "test help <command>" for more information about a command."""));
     test("a subcommand wasn't passed", () {
       runner.addCommand(new FooCommand()..addSubcommand(new AsyncCommand()));
 
-      expect(runner.run(["foo"]), throwsUsageError(
+      expect(runner.run(["foo"]), throwsUsageException(
           'Missing subcommand for "test foo".', """
 Usage: test foo <subcommand> [arguments]
 -h, --help    Print this usage information.
@@ -278,7 +364,7 @@ Run "test help" to see global options."""));
     test("a command that doesn't take arguments was given them", () {
       runner.addCommand(new FooCommand());
 
-      expect(runner.run(["foo", "bar"]), throwsUsageError(
+      expect(runner.run(["foo", "bar"]), throwsUsageException(
           'Command "foo" does not take any arguments.', """
 Usage: test foo [arguments]
 -h, --help    Print this usage information.

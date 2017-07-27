@@ -14,39 +14,37 @@
 
 part of quiver.async;
 
-/**
- * A stream of [DateTime] events at [interval]s centered on [anchor].
- *
- * This stream accounts for drift but only guarantees that events are
- * delivered on or after the interval. If the system is busy for longer than
- * two [interval]s, only one will be delivered.
- *
- * [anchor] defaults to [clock.now], which means the stream represents a
- * self-correcting periodic timer. If anchor is the epoch, then the stream is
- * synchronized to wall-clock time. It can be anchored anywhere in time, but
- * this does not delay the first delivery.
- *
- * Examples:
- *
- *     new Metronome.epoch(aMinute).listen((d) => print(d));
- *
- * Could print the following stream of events, anchored by epoch,
- * till the stream is canceled:
- *     2014-05-04 14:06:00.001
- *     2014-05-04 14:07:00.000
- *     2014-05-04 14:08:00.003
- *     ...
- *
- * Example anchored in the future (now = 2014-05-05 20:06:00.123)
- *     new IsochronousStream.periodic(aMillisecond * 100,
- *         anchorMs: DateTime.parse("2014-05-05 21:07:00"))
- *         .listen((d) => print(d));
- *
- *     2014-05-04 20:06:00.223
- *     2014-05-04 20:06:00.324
- *     2014-05-04 20:06:00.423
- *     ...
- */
+/// A stream of [DateTime] events at [interval]s centered on [anchor].
+///
+/// This stream accounts for drift but only guarantees that events are
+/// delivered on or after the interval. If the system is busy for longer than
+/// two [interval]s, only one will be delivered.
+///
+/// [anchor] defaults to [clock.now], which means the stream represents a
+/// self-correcting periodic timer. If anchor is the epoch, then the stream is
+/// synchronized to wall-clock time. It can be anchored anywhere in time, but
+/// this does not delay the first delivery.
+///
+/// Examples:
+///
+///     new Metronome.epoch(aMinute).listen((d) => print(d));
+///
+/// Could print the following stream of events, anchored by epoch, till the
+/// stream is canceled:
+///     2014-05-04 14:06:00.001
+///     2014-05-04 14:07:00.000
+///     2014-05-04 14:08:00.003
+///     ...
+///
+/// Example anchored in the future (now = 2014-05-05 20:06:00.123)
+///     new IsochronousStream.periodic(aMillisecond * 100,
+///         anchorMs: DateTime.parse("2014-05-05 21:07:00"))
+///         .listen(print);
+///
+///     2014-05-04 20:06:00.223
+///     2014-05-04 20:06:00.324
+///     2014-05-04 20:06:00.423
+///     ...
 class Metronome extends Stream<DateTime> {
   static final DateTime _EPOCH = new DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -55,7 +53,7 @@ class Metronome extends Stream<DateTime> {
   final DateTime anchor;
 
   Timer _timer;
-  StreamController _controller;
+  StreamController<DateTime> _controller;
   final int _intervalMs;
   final int _anchorMs;
 
@@ -73,15 +71,16 @@ class Metronome extends Stream<DateTime> {
         this.anchor = anchor,
         this.interval = interval,
         this._intervalMs = interval.inMilliseconds,
-        this._anchorMs = (anchor == null
-            ? clock.now()
-            : anchor).millisecondsSinceEpoch {
+        this._anchorMs =
+            (anchor == null ? clock.now() : anchor).millisecondsSinceEpoch {
     _controller = new StreamController<DateTime>.broadcast(
-        sync: true, onCancel: () {
-      _timer.cancel();
-    }, onListen: () {
-      _startTimer(clock.now());
-    });
+        sync: true,
+        onCancel: () {
+          _timer.cancel();
+        },
+        onListen: () {
+          _startTimer(clock.now());
+        });
   }
 
   StreamSubscription<DateTime> listen(void onData(DateTime event),

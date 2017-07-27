@@ -6,11 +6,13 @@ library code_transformers.src.dart_sdk;
 
 import 'dart:io' show Directory;
 
+import 'package:analyzer/file_system/file_system.dart';
+import 'package:analyzer/src/context/context.dart';
+import 'package:analyzer/src/dart/sdk/sdk.dart';
 import 'package:analyzer/src/generated/engine.dart';
-import 'package:analyzer/src/generated/java_io.dart';
 import 'package:analyzer/src/generated/sdk.dart';
-import 'package:analyzer/src/generated/sdk_io.dart' show DirectoryBasedDartSdk;
 import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/src/summary/idl.dart';
 import 'package:cli_util/cli_util.dart' as cli_util;
 
 /// Attempts to provide the current Dart SDK directory.
@@ -31,9 +33,10 @@ abstract class UriAnnotatedSource extends Source {
 
 /// Dart SDK which wraps all Dart sources as [UriAnnotatedSource] to ensure they
 /// are tracked with Uris.
-class DirectoryBasedDartSdkProxy extends DirectoryBasedDartSdk {
-  DirectoryBasedDartSdkProxy(String sdkDirectory)
-      : super(new JavaFile(sdkDirectory));
+class FolderBasedDartSdkProxy extends FolderBasedDartSdk {
+  FolderBasedDartSdkProxy(
+      ResourceProvider resourceProvider, String sdkDirectory)
+      : super(resourceProvider, resourceProvider.getFolder(sdkDirectory));
 
   Source mapDartUri(String dartUri) =>
       DartSourceProxy.wrap(super.mapDartUri(dartUri), Uri.parse(dartUri));
@@ -62,7 +65,6 @@ class DartUriResolverProxy implements DartUriResolver {
 /// This is primarily to support [Resolver.getImportUri] for Dart SDK (dart:)
 /// based libraries.
 class DartSourceProxy implements UriAnnotatedSource {
-
   /// Absolute URI which this source can be imported from
   final Uri uri;
 
@@ -108,6 +110,8 @@ class DartSourceProxy implements UriAnnotatedSource {
 
   String get fullName => _proxy.fullName;
 
+  Source get librarySource => _proxy.librarySource;
+
   int get modificationStamp => _proxy.modificationStamp;
 
   String get shortName => _proxy.shortName;
@@ -125,11 +129,13 @@ class MockDartSdk implements DartSdk {
   final Map<String, SdkLibrary> _libs = {};
   final String sdkVersion = '0';
   List<String> get uris => _sources.keys.map((uri) => '$uri').toList();
-  final AnalysisContext context = new SdkAnalysisContext();
+  final InternalAnalysisContext context;
   DartUriResolver _resolver;
   DartUriResolver get resolver => _resolver;
 
-  MockDartSdk(Map<String, String> sources, {this.reportMissing}) {
+  MockDartSdk(Map<String, String> sources, AnalysisOptions options,
+      {this.reportMissing})
+      : this.context = new SdkAnalysisContext(options) {
     sources.forEach((uriString, contents) {
       var uri = Uri.parse(uriString);
       _sources[uri] = new _MockSdkSource(uri, contents);
@@ -166,6 +172,9 @@ class MockDartSdk implements DartSdk {
   Source fromFileUri(Uri uri) {
     throw new UnsupportedError('MockDartSdk.fromFileUri');
   }
+
+  @override
+  PackageBundle getLinkedBundle() => null;
 }
 
 class _MockSdkSource implements UriAnnotatedSource {
@@ -174,6 +183,8 @@ class _MockSdkSource implements UriAnnotatedSource {
   final String _contents;
 
   Source get source => this;
+
+  Source get librarySource => null;
 
   _MockSdkSource(this.uri, this._contents);
 
@@ -201,6 +212,8 @@ class _MockSdkSource implements UriAnnotatedSource {
 
   Uri resolveRelativeUri(Uri relativeUri) =>
       throw new UnsupportedError('not expecting relative urls in dart: mocks');
+
+  bool operator ==(Object other) => identical(this, other);
 }
 
 /// Sample mock SDK sources.
@@ -249,6 +262,8 @@ final Map<String, String> mockSdkSources = {
   'dart:async': '''
         class Future<T> {
           Future then(callback) {}
+        }
+        class FutureOr<T> {}
         class Stream<T> {}
   ''',
   'dart:html': '''

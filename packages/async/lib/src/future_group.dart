@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library async.future_group;
-
 import 'dart:async';
 
 /// A collection of futures waits until all added [Future]s complete.
@@ -35,7 +33,7 @@ class FutureGroup<T> implements Sink<Future<T>> {
   Future<List<T>> get future => _completer.future;
   final _completer = new Completer<List<T>>();
 
-  /// Whether this group is waiting on any futures.
+  /// Whether this group has no pending futures.
   bool get isIdle => _pending == 0;
 
   /// A broadcast stream that emits a `null` event whenever the last pending
@@ -49,6 +47,7 @@ class FutureGroup<T> implements Sink<Future<T>> {
     }
     return _onIdleController.stream;
   }
+
   StreamController _onIdleController;
 
   /// The values emitted by the futures that have been added to the group, in
@@ -69,19 +68,19 @@ class FutureGroup<T> implements Sink<Future<T>> {
 
     _pending++;
     task.then((value) {
-      if (_completer.isCompleted) return;
+      if (_completer.isCompleted) return null;
 
       _pending--;
       _values[index] = value;
 
-      if (_pending != 0) return;
+      if (_pending != 0) return null;
       if (_onIdleController != null) _onIdleController.add(null);
 
-      if (!_closed) return;
+      if (!_closed) return null;
       if (_onIdleController != null) _onIdleController.close();
       _completer.complete(_values);
     }).catchError((error, stackTrace) {
-      if (_completer.isCompleted) return;
+      if (_completer.isCompleted) return null;
       _completer.completeError(error, stackTrace);
     });
   }
@@ -95,4 +94,3 @@ class FutureGroup<T> implements Sink<Future<T>> {
     _completer.complete(_values);
   }
 }
-

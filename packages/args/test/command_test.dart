@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library command_test;
-
 import 'package:args/command_runner.dart';
 import 'package:test/test.dart';
 import 'utils.dart';
@@ -92,7 +90,8 @@ Run "test help" to see global options."""));
   });
 
   test("usageException splits up the message and usage", () {
-    expect(() => foo.usageException("message"), throwsUsageError("message", """
+    expect(() => foo.usageException("message"),
+        throwsUsageException("message", """
 Usage: test foo [arguments]
 -h, --help    Print this usage information.
 

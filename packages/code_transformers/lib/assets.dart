@@ -83,7 +83,7 @@ AssetId uriToAssetId(
       return _extractOtherPackageId(1, segments, logger, span);
     } else {
       var prefix = segments[index];
-      var fixedSegments = [];
+      var fixedSegments = <String>[];
       fixedSegments.addAll(sourceSegments.map((_) => '..'));
       fixedSegments.addAll(segments.sublist(index));
       var fixedUrl = urlBuilder.joinAll(fixedSegments);
@@ -99,7 +99,7 @@ AssetId uriToAssetId(
 }
 
 AssetId _extractOtherPackageId(
-    int index, List segments, TransformLogger logger, SourceSpan span) {
+    int index, List<String> segments, TransformLogger logger, SourceSpan span) {
   if (index >= segments.length) return null;
   var prefix = segments[index];
   if (prefix != 'packages' && prefix != 'assets') return null;
@@ -140,7 +140,8 @@ String assetIdToUri(AssetId assetId,
       return null;
     }
     return new Uri(
-            path: path.url.relative(assetId.path, from: path.url.dirname(from.path)))
+            path: path.url
+                .relative(assetId.path, from: path.url.dirname(from.path)))
         .toString();
   }
 

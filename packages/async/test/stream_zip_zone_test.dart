@@ -9,22 +9,22 @@ import "package:test/test.dart";
 // listen occurred.
 
 main() {
- StreamController controller;
- controller = new StreamController();
- testStream("singlesub-async", controller, controller.stream);
- controller = new StreamController.broadcast();
- testStream("broadcast-async", controller, controller.stream);
- controller = new StreamController();
- testStream("asbroadcast-async", controller,
-                                 controller.stream.asBroadcastStream());
+  StreamController controller;
+  controller = new StreamController();
+  testStream("singlesub-async", controller, controller.stream);
+  controller = new StreamController.broadcast();
+  testStream("broadcast-async", controller, controller.stream);
+  controller = new StreamController();
+  testStream(
+      "asbroadcast-async", controller, controller.stream.asBroadcastStream());
 
- controller = new StreamController(sync: true);
- testStream("singlesub-sync", controller, controller.stream);
- controller = new StreamController.broadcast(sync: true);
- testStream("broadcast-sync", controller, controller.stream);
- controller = new StreamController(sync: true);
- testStream("asbroadcast-sync", controller,
-                                controller.stream.asBroadcastStream());
+  controller = new StreamController(sync: true);
+  testStream("singlesub-sync", controller, controller.stream);
+  controller = new StreamController.broadcast(sync: true);
+  testStream("broadcast-sync", controller, controller.stream);
+  controller = new StreamController(sync: true);
+  testStream(
+      "asbroadcast-sync", controller, controller.stream.asBroadcastStream());
 }
 
 void testStream(String name, StreamController controller, Stream stream) {
@@ -33,15 +33,15 @@ void testStream(String name, StreamController controller, Stream stream) {
     runZoned(() {
       Zone newZone1 = Zone.current;
       StreamSubscription sub;
-      sub = stream.listen(expectAsync((v) {
+      sub = stream.listen(expectAsync1((v) {
         expect(v, 42);
         expect(Zone.current, newZone1);
         outer.run(() {
-          sub.onData(expectAsync((v) {
+          sub.onData(expectAsync1((v) {
             expect(v, 37);
             expect(Zone.current, newZone1);
             runZoned(() {
-              sub.onData(expectAsync((v) {
+              sub.onData(expectAsync1((v) {
                 expect(v, 87);
                 expect(Zone.current, newZone1);
               }));

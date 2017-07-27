@@ -17,13 +17,26 @@ Add Quiver to your project's pubspec.yaml file and run `pub get`.
 We recommend the following version constraint:
 
     dependencies:
-      quiver: '>=0.21.0<0.22.0'
+      quiver: '>=0.25.0<0.26.0'
 
 # Main Libraries
 
 ## [quiver.async][]
 
 Utilities for working with Futures, Streams and async computations.
+
+`collect` collects the completion events of an `Iterable` of `Future`s into a
+`Stream`.
+
+`enumerate` and `concat` represent `Stream` versions of the same-named
+[quiver.iterables][] methods.
+
+`doWhileAsync`, `reduceAsync` and `forEachAsync` perform async computations on
+the elements of on Iterables, waiting for the computation to complete before
+processing the next element.
+
+`StreamBuffer` allows for the orderly reading of elements from a stream, such
+as a socket.
 
 `FutureGroup` is collection of Futures that signals when all its child futures
 have completed. Allows adding new Futures as long as it hasn't completed yet.
@@ -38,10 +51,6 @@ predicates.
 
 `CountdownTimer` is a simple countdown timer that fires events in regular
 increments.
-
-`doWhileAsync`, `reduceAsync` and `forEachAsync` perform async computations on
-the elements of on Iterables, waiting for the computation to complete before
-processing the next element.
 
 `CreateTimer` and `CreateTimerPeriodic` are typedefs that are useful for
 passing Timer factories to classes and functions, increasing the testability of
@@ -163,19 +172,6 @@ pattern.dart container utilities for work with `Pattern`s and `RegExp`s.
 used as a literal match inside of a RegExp.
 
 [quiver.pattern]: http://www.dartdocs.org/documentation/quiver/latest#quiver/quiver-pattern
-
-## [quiver.streams][]
-
-`collect` collects the completion events of an `Iterable` of `Future`s into a
-`Stream`.
-
-`enumerate` and `concat` represent `Stream` versions of the same-named
-[quiver.iterables][] methods.
-
-`StreamBuffer` allows for the orderly reading of elements from a stream, such
-as a socket.
-
-[quiver.streams]: http://www.dartdocs.org/documentation/quiver/latest#quiver/quiver-streams
 
 ## [quiver.strings][]
 

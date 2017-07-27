@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * Utilities for testing the equality of Dart object
- */
+/// Utilities for testing the equality of Dart object
 library quiver.testing.equality;
 
 import 'package:matcher/matcher.dart';
-import 'package:quiver/iterables.dart';
 
 part 'src/equality/equality.dart';

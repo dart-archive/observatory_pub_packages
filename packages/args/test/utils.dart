@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library utils;
-
 import 'dart:async';
 
 import 'package:args/args.dart';
@@ -11,7 +9,7 @@ import 'package:args/command_runner.dart';
 import 'package:test/test.dart';
 
 class CommandRunnerWithFooter extends CommandRunner {
-  final usageFooter = "Also, footer!";
+  String get usageFooter => "Also, footer!";
 
   CommandRunnerWithFooter(String executableName, String description)
       : super(executableName, description);
@@ -27,6 +25,38 @@ class FooCommand extends Command {
   void run() {
     hasRun = true;
   }
+}
+
+class ValueCommand extends Command<int> {
+  final name = "foo";
+  final description = "Return a value.";
+  final takesArguments = false;
+
+  int run() => 12;
+}
+
+class AsyncValueCommand extends Command<String> {
+  final name = "foo";
+  final description = "Return a future.";
+  final takesArguments = false;
+
+  Future<String> run() async => "hi";
+}
+
+class MultilineCommand extends Command {
+  var hasRun = false;
+
+  final name = "multiline";
+  final description = "Multi\nline.";
+  final takesArguments = false;
+
+  void run() {
+    hasRun = true;
+  }
+}
+
+class MultilineSummaryCommand extends MultilineCommand {
+  String get summary => description;
 }
 
 class HiddenCommand extends Command {
@@ -73,7 +103,7 @@ void throwsFormat(ArgParser parser, List<String> args) {
   expect(() => parser.parse(args), throwsFormatException);
 }
 
-Matcher throwsUsageError(message, usage) {
+Matcher throwsUsageException(message, usage) {
   return throwsA(predicate((error) {
     expect(error, new isInstanceOf<UsageException>());
     expect(error.message, message);

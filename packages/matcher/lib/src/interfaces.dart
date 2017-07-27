@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library matcher.interfaces;
-
 // To decouple the reporting of errors, and allow for extensibility of
 // matchers, we make use of some interfaces.
 
@@ -54,7 +52,7 @@ abstract class Matcher {
   /// A few matchers make use of the [verbose] flag to provide detailed
   /// information that is not typically included but can be of help in
   /// diagnosing failures, such as stack traces.
-  Description describeMismatch(
-      item, Description mismatchDescription, Map matchState, bool verbose) =>
+  Description describeMismatch(item, Description mismatchDescription,
+          Map matchState, bool verbose) =>
       mismatchDescription;
 }

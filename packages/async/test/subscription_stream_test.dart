@@ -22,7 +22,7 @@ main() {
     var stream = createStream();
     var skips = 0;
     var completer = new Completer();
-    var subscription;
+    StreamSubscription<int> subscription;
     subscription = stream.listen((value) {
       ++skips;
       expect(value, skips);
@@ -73,13 +73,13 @@ main() {
     for (var sourceCancels in [false, true]) {
       group("${sourceCancels ? "yes" : "no"}:", () {
         var subscriptionStream;
-        var onCancel;  // Completes if source stream is canceled before done.
+        var onCancel; // Completes if source stream is canceled before done.
         setUp(() {
           var cancelCompleter = new Completer();
           var source = createErrorStream(cancelCompleter);
           onCancel = cancelCompleter.future;
-          var sourceSubscription = source.listen(null,
-                                                 cancelOnError: sourceCancels);
+          var sourceSubscription =
+              source.listen(null, cancelOnError: sourceCancels);
           subscriptionStream = new SubscriptionStream<int>(sourceSubscription);
         });
 
@@ -87,15 +87,15 @@ main() {
           var done = new Completer();
           var events = [];
           subscriptionStream.listen(events.add,
-                                    onError: events.add,
-                                    onDone: done.complete,
-                                    cancelOnError: false);
+              onError: events.add, onDone: done.complete, cancelOnError: false);
           var expected = [1, 2, "To err is divine!"];
           if (sourceCancels) {
             await onCancel;
             // And [done] won't complete at all.
             bool isDone = false;
-            done.future.then((_) { isDone = true; });
+            done.future.then((_) {
+              isDone = true;
+            });
             await new Future.delayed(const Duration(milliseconds: 5));
             expect(isDone, false);
           } else {
@@ -109,12 +109,12 @@ main() {
           var completer = new Completer();
           var events = [];
           subscriptionStream.listen(events.add,
-                                    onError: (value) {
-                                      events.add(value);
-                                      completer.complete();
-                                    },
-                                    onDone: () => throw "should not happen",
-                                    cancelOnError: true);
+              onError: (value) {
+                events.add(value);
+                completer.complete();
+              },
+              onDone: () => throw "should not happen",
+              cancelOnError: true);
           await completer.future;
           await flushMicrotasks();
           expect(events, [1, 2, "To err is divine!"]);
@@ -128,8 +128,7 @@ main() {
           var stream = createStream();
           var sourceSubscription =
               stream.listen(null, cancelOnError: cancelOnError);
-          var subscriptionStream =
-              new SubscriptionStream(sourceSubscription);
+          var subscriptionStream = new SubscriptionStream(sourceSubscription);
           var subscription =
               subscriptionStream.listen(null, cancelOnError: cancelOnError);
           expect(subscription.asFuture(42), completion(42));
@@ -137,10 +136,9 @@ main() {
 
         test("- error goes to asFuture", () async {
           var stream = createErrorStream();
-          var sourceSubscription = stream.listen(null,
-                                                 cancelOnError: cancelOnError);
-          var subscriptionStream =
-              new SubscriptionStream(sourceSubscription);
+          var sourceSubscription =
+              stream.listen(null, cancelOnError: cancelOnError);
+          var subscriptionStream = new SubscriptionStream(sourceSubscription);
 
           var subscription =
               subscriptionStream.listen(null, cancelOnError: cancelOnError);
@@ -168,7 +166,7 @@ Stream<int> createErrorStream([Completer onCancel]) async* {
     await flushMicrotasks();
     yield 2;
     await flushMicrotasks();
-    yield* new Future.error("To err is divine!").asStream();
+    yield* new Future<int>.error("To err is divine!").asStream();
     await flushMicrotasks();
     yield 4;
     await flushMicrotasks();

@@ -1,14 +1,12 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/**
- * Tests based on the closure number formatting tests.
- */
+/// Tests based on the closure number formatting tests.
 library number_closure_test;
 
 import 'dart:async';
 import "package:intl/intl.dart";
-import "package:unittest/unittest.dart";
+import "package:test/test.dart";
 
 main() {
   test("testVeryBigNumber", testVeryBigNumber);
@@ -27,10 +25,8 @@ main() {
   test("testLocaleSwitchAsync", testLocaleSwitchAsync);
 }
 
-/**
- * Test two large numbers for equality, assuming that there may be some
- * loss of precision in the less significant digits.
- */
+/// Test two large numbers for equality, assuming that there may be some
+/// loss of precision in the less significant digits.
 veryBigNumberCompare(str1, str2) {
   return str1.length == str2.length &&
       str1.substring(0, 8) == str2.substring(0, 8);
@@ -383,9 +379,11 @@ testLocaleSwitch() {
   Intl.withLocale("fr", verifyFrenchLocale);
 }
 
+typedef void TimerArgument();
 testLocaleSwitchAsync() {
   Intl.withLocale("fr", () {
-    new Timer(new Duration(milliseconds: 10), expectAsync(verifyFrenchLocale));
+    new Timer(new Duration(milliseconds: 10),
+        expectAsync(verifyFrenchLocale) as TimerArgument);
   });
   // Verify that things running outside the zone still get en_US.
   testStandardFormat();
