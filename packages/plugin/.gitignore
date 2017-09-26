@@ -4,5 +4,4 @@ packages
 build
 .project
 .settings
-.packages
 pubspec.lock

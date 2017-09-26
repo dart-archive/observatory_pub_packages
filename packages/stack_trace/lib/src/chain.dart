@@ -93,7 +93,8 @@ class Chain implements StackTrace {
         return callback();
       } catch (error, stackTrace) {
         // TODO(nweiz): Don't special-case this when issue 19566 is fixed.
-        return Zone.current.handleUncaughtError(error, stackTrace);
+        Zone.current.handleUncaughtError(error, stackTrace);
+        return null;
       }
     },
         zoneSpecification: spec.toSpec(),
@@ -104,7 +105,7 @@ class Chain implements StackTrace {
   /// [callback] in a [Zone] in which chain capturing is disabled.
   ///
   /// If [callback] returns a value, it will be returned by [disable] as well.
-  static/*=T*/ disable/*<T>*/(/*=T*/ callback(), {bool when: true}) {
+  static T disable<T>(T callback(), {bool when: true}) {
     var zoneValues =
         when ? {_specKey: null, StackZoneSpecification.disableKey: true} : null;
 

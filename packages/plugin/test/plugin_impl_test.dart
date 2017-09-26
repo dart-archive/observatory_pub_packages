@@ -6,9 +6,11 @@ library test.operation;
 
 import 'package:plugin/plugin.dart';
 import 'package:plugin/src/plugin_impl.dart';
-import 'package:test/test.dart';
+import 'package:unittest/unittest.dart';
 
 main() {
+  groupSep = ' | ';
+
   group('ExtensionManager', () {
     test('processPlugins', () {
       TestPlugin plugin1 = new TestPlugin('plugin1');

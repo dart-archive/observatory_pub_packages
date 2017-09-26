@@ -235,7 +235,7 @@ class DefaultInitializerPlugin implements InitializerPlugin {
         buffer.write(_evaluateExpression(expression, pluginData));
       } else {
         libraryPrefixes.putIfAbsent(
-          element.library, () => 'i${libraryPrefixes.length}');
+            element.library, () => 'i${libraryPrefixes.length}');
 
         buffer.write('${libraryPrefixes[element.library]}.');
         if (element is ClassElement) {
@@ -263,8 +263,7 @@ class DefaultInitializerPlugin implements InitializerPlugin {
     return buffer.toString();
   }
 
-  _evaluateExpression(
-      Expression expression, InitializerPluginData pluginData) {
+  _evaluateExpression(Expression expression, InitializerPluginData pluginData) {
     var logger = pluginData.logger;
     var result = pluginData.resolver.evaluateConstant(
         pluginData.initializer.targetElement.library, expression);
@@ -302,9 +301,9 @@ class DefaultInitializerPlugin implements InitializerPlugin {
         object.toIntValue() ??
         object.toStringValue();
     if (value == null) {
-      value = object.toListValue();
-      if (value != null) {
-        return value.map((DartObject element) => _getValue(element)).toList();
+      List list = object.toListValue();
+      if (list != null) {
+        return list.map((DartObject element) => _getValue(element)).toList();
       }
       Map<DartObject, DartObject> map = object.toMapValue();
       if (map != null) {

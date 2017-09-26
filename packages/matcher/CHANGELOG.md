@@ -1,3 +1,23 @@
+## 0.12.1+4
+
+* Fixed SDK constraint to allow edge builds.
+
+## 0.12.1+3
+
+* Make `predicate` and `pairwiseCompare` generic methods to allow typed
+ functions to be passed to them as arguments.
+
+* Make internal implementations take better advantage of type promotion to avoid
+  dynamic call overhead.
+
+## 0.12.1+2
+
+* Fixed small documentation issues.
+
+* Fixed small issue in `StringEqualsMatcher`.
+
+* Update to support future Dart language changes.
+
 ## 0.12.1+1
 
 * Produce a better error message when a `CustomMatcher`'s feature throws.
