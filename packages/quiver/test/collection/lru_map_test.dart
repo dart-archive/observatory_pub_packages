@@ -159,6 +159,16 @@ void main() {
       expect(lruMap.values.toList(), ['Charlie', 'Beta', 'Alpha']);
     });
 
+    test('Re-adding the head entry is a no-op', () {
+      // See: https://github.com/google/quiver-dart/issues/357
+      lruMap = new LruMap();
+      lruMap['A'] = 'Alpha';
+      lruMap['A'] = 'Alpha';
+
+      expect(lruMap.keys.toList(), ['A']);
+      expect(lruMap.values.toList(), ['Alpha']);
+    });
+
     group('`remove`', () {
       setUp(() {
         lruMap = new LruMap()
@@ -171,6 +181,16 @@ void main() {
 
       test('returns null if the provided key does not exist', () {
         expect(lruMap.remove('D'), isNull);
+      });
+
+      test('can remove the last item (head and tail)', () {
+        // See: https://github.com/google/quiver-dart/issues/385
+        lruMap = new LruMap(maximumSize: 1)
+          ..addAll({'A': 'Alpha'})
+          ..remove('A');
+        lruMap['B'] = 'Beta';
+        lruMap['C'] = 'Charlie';
+        expect(lruMap.keys.toList(), ['C']);
       });
 
       test('can remove the head', () {
@@ -187,6 +207,25 @@ void main() {
         lruMap.remove('B');
         expect(lruMap.keys.toList(), ['C', 'A']);
       });
+
+      test('linkage correctly preserved on remove', () {
+        lruMap.remove('B');
+        lruMap['A'];
+
+        final keys = <String>[];
+        lruMap.forEach((String k, String v) => keys.add(k));
+        expect(keys, ['A', 'C']);
+      });
+    });
+
+    test(
+        'Test that the linked list is correctly mutated when promoting an element in the middle',
+        () {
+      LruMap<String, int> lruMap = new LruMap(maximumSize: 3)
+        ..addAll({'C': 1, 'A': 1, 'B': 1});
+      lruMap['A'] = 1;
+      lruMap['C'];
+      expect(lruMap.length, lruMap.keys.length);
     });
 
     group('`putIfAbsent`', () {
@@ -210,6 +249,33 @@ void main() {
         expect(lruMap.putIfAbsent('D', () => 'Delta'), 'Delta');
         expect(lruMap.keys.toList(), ['D', 'C', 'B']);
       });
+    });
+  });
+
+  group("LruMap builds an informative string representation", () {
+    LruMap<String, dynamic> lruMap;
+
+    setUp(() {
+      lruMap = new LruMap();
+    });
+
+    test("for an empty map", () {
+      expect(lruMap.toString(), equals('{}'));
+    });
+
+    test("for a map with one value", () {
+      lruMap.addAll({'A': 'Alpha'});
+      expect(lruMap.toString(), equals('{A: Alpha}'));
+    });
+
+    test("for a map with multiple values", () {
+      lruMap.addAll({'A': 'Alpha', 'B': 'Beta', 'C': 'Charlie'});
+      expect(lruMap.toString(), equals('{C: Charlie, B: Beta, A: Alpha}'));
+    });
+
+    test("for a map with a loop", () {
+      lruMap.addAll({"A": "Alpha", "B": lruMap});
+      expect(lruMap.toString(), equals('{B: {...}, A: Alpha}'));
     });
   });
 }

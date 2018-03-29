@@ -1,7 +1,7 @@
 /// Additional feature tests that aren't based on test data.
 library parser_feature_test;
 
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
 import 'package:html/src/constants.dart';
@@ -234,7 +234,9 @@ On line 4, column 3 of ParseError: Unexpected DOCTYPE. Ignored.
       expect(keys[0].namespace, 'http://www.w3.org/1999/xlink');
       expect(keys[0].name, 'type');
 
-      expect(n.outerHtml, '<desc xlink:type="simple" '
+      expect(
+          n.outerHtml,
+          '<desc xlink:type="simple" '
           'xlink:href="http://example.com/logo.png" xlink:show="new"></desc>');
     });
   });
@@ -247,7 +249,8 @@ On line 4, column 3 of ParseError: Unexpected DOCTYPE. Ignored.
     expect(parser.errors[0].errorCode, 'expected-doctype-but-got-chars');
     expect(parser.errors[0].message,
         'Unexpected non-space characters. Expected DOCTYPE.');
-    expect(parser.errors[0].toString(),
+    expect(
+        parser.errors[0].toString(),
         'ParserError on line 1, column 4: Unexpected non-space characters. '
         'Expected DOCTYPE.\n'
         'foo\n'
@@ -331,6 +334,13 @@ On line 4, column 3 of ParseError: Unexpected DOCTYPE. Ignored.
 
     test('ignores whitespace', () {
       expect(getEncoding('  <meta charset="utf-16">'), 'utf-16');
+    });
+
+    test('parses content attr', () {
+      expect(
+          getEncoding(
+              '<meta http-equiv="content-type" content="text/html; charset=UTF-8">'),
+          null);
     });
   });
 }

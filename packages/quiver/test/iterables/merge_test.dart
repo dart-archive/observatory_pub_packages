@@ -54,15 +54,15 @@ main() {
 
     test("should merge empty iterables with non-empty ones", () {
       var a = ['a', 'b', 'c'];
-      expect(merge([a, []]), ['a', 'b', 'c']);
-      expect(merge([[], a]), ['a', 'b', 'c']);
+      expect(merge([a, <String>[]]), ['a', 'b', 'c']);
+      expect(merge([<String>[], a]), ['a', 'b', 'c']);
     });
 
     test("should throw on null elements", () {
       var a = ['a', null, 'c'];
       var b = ['a', 'b', 'c'];
-      expect(() => merge([a, b]).forEach((e) {}), throws);
-      expect(() => merge([b, a]).forEach((e) {}), throws);
+      expect(() => merge([a, b]).forEach((e) {}), throwsNoSuchMethodError);
+      expect(() => merge([b, a]).forEach((e) {}), throwsNoSuchMethodError);
     });
 
     test("should handle zig-zag case", () {

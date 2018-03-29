@@ -21,7 +21,7 @@ main() {
   group('Optional', () {
     test('absent should be not present and not gettable', () {
       expect(new Optional<int>.absent().isPresent, isFalse);
-      expect(() => new Optional<int>.absent().value, throws);
+      expect(() => new Optional<int>.absent().value, throwsStateError);
     });
 
     test('of should return value', () {
@@ -99,6 +99,10 @@ main() {
       expect(new Optional<int>.of(7), equals(new Optional<int>.of(7)));
       expect(new Optional<int>.fromNullable(null),
           equals(new Optional<int>.fromNullable(null)));
+      expect(
+          new Optional<int>.fromNullable(null) ==
+              new Optional<String>.fromNullable(null),
+          isFalse);
       expect(new Optional<int>.fromNullable(null),
           isNot(equals(new Optional<int>.of(7))));
       expect(new Optional<int>.of(7), isNot(equals(new Optional<int>.of(8))));

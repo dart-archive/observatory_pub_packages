@@ -49,24 +49,24 @@ class QuantumChartTheme extends ChartTheme {
   @override
   String getColorForKey(key, [int state = 0]) {
     var result = _scale.scale(key);
-    return result is Iterable ? colorForState(result, state) : result;
+    return result is Iterable ? colorForState(result, state) : result as String;
   }
 
-  colorForState(Iterable colors, int state) {
+  String colorForState(Iterable colors, int state) {
     // Inactive color when another key is active or selected.
     if (state & ChartState.COL_UNSELECTED != 0 ||
         state & ChartState.VAL_UNHIGHLIGHTED != 0) {
-      return colors.elementAt(0);
+      return colors.elementAt(0) as String;
     }
 
     // Active color when this key is being hovered upon
     if (state & ChartState.COL_PREVIEW != 0 ||
         state & ChartState.VAL_HOVERED != 0) {
-      return colors.elementAt(2);
+      return colors.elementAt(2) as String;
     }
 
     // All others are normal.
-    return colors.elementAt(1);
+    return colors.elementAt(1) as String;
   }
 
   @override
@@ -78,7 +78,7 @@ class QuantumChartTheme extends ChartTheme {
   @override
   String getOtherColor([int state = 0]) => OTHER_COLORS is Iterable
       ? colorForState(OTHER_COLORS, state)
-      : OTHER_COLORS;
+      : OTHER_COLORS as String;
 
   @override
   ChartAxisTheme getMeasureAxisTheme([Scale _]) => _MEASURE_AXIS_THEME;
@@ -137,9 +137,6 @@ class QuantumChartAxisTheme implements ChartAxisTheme {
   final int verticalAxisWidth;
 
   @override
-  final bool horizontalAxisAutoResize;
-
-  @override
   final int horizontalAxisHeight;
 
   @override
@@ -152,7 +149,6 @@ class QuantumChartAxisTheme implements ChartAxisTheme {
       this.axisTickPadding: 6,
       this.verticalAxisAutoResize: true,
       this.verticalAxisWidth: 75,
-      this.horizontalAxisAutoResize: false,
       this.horizontalAxisHeight: 50,
       this.ticksFont: '12px Roboto'});
 }

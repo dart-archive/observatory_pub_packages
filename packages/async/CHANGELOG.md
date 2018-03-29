@@ -1,9 +1,51 @@
+## 2.0.6
+
+* Add further support for Dart 2.0 library changes to `Stream`.
+
+## 2.0.5
+
+* Fix Dart 2.0 [runtime cast errors][sdk#27223] in `StreamQueue`.
+
+[sdk#27223]: https://github.com/dart-lang/sdk/issues/27223
+
+## 2.0.4
+
+* Add support for Dart 2.0 library changes to `Stream` and `StreamTransformer`.
+  Changed classes that implement `StreamTransformer` to extend
+  `StreamTransformerBase`, and changed signatures of `firstWhere`, `lastWhere`,
+  and `singleWhere` on classes extending `Stream`.  See
+  also [issue 31847][sdk#31847].
+
+  [sdk#31847]: https://github.com/dart-lang/sdk/issues/31847
+
+## 2.0.3
+
+* Fix a bug in `StreamQueue.startTransaction()` and related methods when
+  rejecting a transaction that isn't the oldest request in the queue.
+
+## 2.0.2
+
+* Add support for Dart 2.0 library changes to class `Timer`.
+
+## 2.0.1
+
+* Fix a fuzzy arrow type warning.
+
+## 2.0.0
+* Remove deprecated public `result.dart` and `stream_zip.dart` libraries and
+  deprecated classes `ReleaseStreamTransformer` and `CaptureStreamTransformer`.
+
+* Add `captureAll` and `flattenList` static methods to `Result`.
+
+* Change `ErrorResult` to not be generic and always be a `Result<Null>`.
+  That makes an error independent of the type of result it occurs instead of.
+
 ## 1.13.3
 
 * Make `TypeSafeStream` extend `Stream` instead of implementing it. This ensures
   that new methods on `Stream` are automatically picked up, they will go through
   the `listen` method which type-checks every event.
-  
+
 ## 1.13.2
 
 * Fix a type-warning.

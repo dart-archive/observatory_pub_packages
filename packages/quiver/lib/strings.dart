@@ -25,39 +25,18 @@ bool isEmpty(String s) => s == null || s.isEmpty;
 bool isNotEmpty(String s) => s != null && s.isNotEmpty;
 
 /// Returns a string with characters from the given [s] in reverse order.
-String reverse(String s) {
+///
+/// NOTE: without full support for unicode composed character sequences,
+/// sequences including zero-width joiners, etc. this function is unsafe to
+/// use. No replacement is provided.
+String _reverse(String s) {
   if (s == null || s == '') return s;
   StringBuffer sb = new StringBuffer();
-  var runes = s.runes;
-  for (int i = runes.length - 1; i >= 0; i--) {
-    sb.writeCharCode(runes.elementAt(i));
+  var runes = s.runes.iterator..reset(s.length);
+  while (runes.movePrevious()) {
+    sb.writeCharCode(runes.current);
   }
   return sb.toString();
-}
-
-/// Returns a string with characters from the given [s] in reverse order.
-///
-/// DEPRECATED: use [reverse] instead.
-@deprecated
-String flip(String s) => reverse(s);
-
-/// Concatenates [s] to itself a given number of [times]. Empty and null
-/// strings will always result in empty and null strings respectively no matter
-/// how many [times] they are [repeat]ed.
-///
-/// If [times] is negative, returns the reversed string repeated given number
-/// of [times].
-///
-/// DEPRECATED: use the `*` operator on [String].
-@deprecated
-String repeat(String s, int times) {
-  if (s == null || s == '') return s;
-  if (times < 0) {
-    return repeat(reverse(s), -times);
-  }
-  StringBuffer sink = new StringBuffer();
-  _repeat(sink, s, times);
-  return sink.toString();
 }
 
 /// Loops over [s] and returns traversed characters. Takes arbitrary [from] and
@@ -85,7 +64,8 @@ String loop(String s, int from, [int to]) {
     throw new ArgumentError('Input string cannot be null or empty');
   }
   if (to != null && to < from) {
-    return loop(reverse(s), -from, -to);
+    // TODO(cbracken): throw ArgumentError in this case.
+    return loop(_reverse(s), -from, -to);
   }
   int len = s.length;
   int leftFrag = from >= 0 ? from ~/ len : ((from - len) ~/ len);

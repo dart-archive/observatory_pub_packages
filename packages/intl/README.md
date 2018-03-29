@@ -97,11 +97,14 @@ description for translators, the arguments used in the message, and
 examples. The `name` and `args` parameters are required, and must
 match the name (or ClassName_methodName) and arguments list of the
 function respectively. However, there is a transformer provided that
-will automatically insert those parameters for you. In pubspec.yaml,
-add a section like
+will automatically insert those parameters for you. This transformer
+is in the [Intl_translation](Intl_translation) package.
+In pubspec.yaml, add a section like
 
+      dev_dependencies:
+        intl_translation: ^0.15.0
       transformers:
-      - intl:
+      - intl_translation:
       $include: some_file.dart
 
 and then you can omit the name and args.
@@ -187,7 +190,7 @@ the structure as simple as possible for the translators.
 When your program contains messages that need translation, these must
 be extracted from the program source, sent to human translators, and the
 results need to be incorporated. The code for this is in the
-[Intl_translation][Intl_translation] package.
+[Intl_translation](Intl_translation) package.
 
 To extract messages, run the `extract_to_arb.dart` program.
 
@@ -195,10 +198,9 @@ To extract messages, run the `extract_to_arb.dart` program.
           my_program.dart more_of_my_program.dart
 
 This will produce a file `intl_messages.arb` with the messages from
-all of these programs. an [ARB]
-(https://code.google.com/p/arb/wiki/ApplicationResourceBundleSpecification)
+all of these programs. an [ARB][ARB]
 format file which can be used for input to translation tools like
-[Google Translator Toolkit](https://translate.google.com/toolkit/)
+[Google Translator Toolkit][GoogleTranslateToolkit].
 The resulting translations can be used to generate a set of libraries
 using the `generate_from_arb.dart` program.
 
@@ -330,3 +332,5 @@ detected from the text.
 [BidiFormatter]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter-class.html
 [BidiFormatter.RTL]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter/BidiFormatter.RTL.html
 [BidiFormatter.LTR]: https://www.dartdocs.org/documentation/intl/latest/intl/BidiFormatter/BidiFormatter.LTR.html
+[ARB]: https://code.google.com/p/arb/wiki/ApplicationResourceBundleSpecification
+[GoogleTranslateToolkit]: https://translate.google.com/toolkit/

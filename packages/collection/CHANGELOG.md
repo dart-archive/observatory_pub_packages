@@ -1,3 +1,49 @@
+## 1.14.9
+
+* Fixed bugs where `QueueList`, `MapKeySet`, and `MapValueSet` did not adhere to
+  the contract laid out by `List.cast`, `Set.cast` and `Map.cast` respectively.
+  The returned instances of these methods now correctly forward to the existing
+  instance instead of always creating a new copy.
+
+## 1.14.8
+
+* Deprecated `Delegating{Name}.typed` static methods in favor of the new Dart 2
+  `cast` methods. For example, `DelegatingList.typed<String>(list)` can now be
+  written as `list.cast<String>()`. 
+
+## 1.14.7
+
+* Only the Dart 2 dev SDK (`>=2.0.0-dev.22.0`) is now supported.
+* Added support for all Dart 2 SDK methods that threw `UnimplementedError`.
+
+## 1.14.6
+
+* Make `DefaultEquality`'s `equals()` and `hash()` methods take any `Object`
+  rather than objects of type `E`. This makes `const DefaultEquality<Null>()`
+  usable as `Equality<E>` for any `E`, which means it can be used in a const
+  context which expects `Equality<E>`.
+
+  This makes the default arguments of various other const equality constructors
+  work in strong mode.
+
+## 1.14.5
+
+* Fix issue with `EmptyUnmodifiableSet`'s stubs that were introduced in 1.14.4.
+
+## 1.14.4
+
+* Add implementation stubs of upcoming Dart 2.0 core library methods, namely
+  new methods for classes that implement `Iterable`, `List`, `Map`, `Queue`, 
+  and `Set`.
+
+## 1.14.3
+
+* Fix `MapKeySet.lookup` to be a valid override in strong mode.
+
+## 1.14.2
+
+* Add type arguments to `SyntheticInvocation`.
+
 ## 1.14.1
 
 * Make `Equality` implementations accept `null` as argument to `hash`.

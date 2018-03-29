@@ -170,8 +170,10 @@ class _FakeAsync implements FakeAsync {
       if (flushPeriodicTimers) {
         return _timers.isNotEmpty;
       } else {
-        // translation: keep draining while non-periodic timers exist
-        return _timers.any((_FakeTimer timer) => !timer._isPeriodic);
+        // translation: drain every timer (periodic or not) that will occur up
+        // until the latest non-periodic timer
+        return _timers.any((_FakeTimer timer) =>
+            !timer._isPeriodic || timer._nextCall <= _elapsed);
       }
     });
   }
@@ -181,7 +183,11 @@ class _FakeAsync implements FakeAsync {
     if (_zone == null) {
       _zone = Zone.current.fork(specification: _zoneSpec);
     }
-    return _zone.runGuarded(() => callback(this));
+    var result;
+    _zone.runGuarded(() {
+      result = callback(this);
+    });
+    return result;
   }
 
   Zone _zone;
@@ -207,7 +213,7 @@ class _FakeAsync implements FakeAsync {
         _microtasks.add(microtask);
       });
 
-  _drainTimersWhile(bool predicate(_FakeTimer)) {
+  _drainTimersWhile(bool predicate(_FakeTimer timer)) {
     _drainMicrotasks();
     _FakeTimer next;
     while ((next = _getNextTimer()) != null && predicate(next)) {
@@ -229,8 +235,9 @@ class _FakeAsync implements FakeAsync {
   }
 
   _FakeTimer _getNextTimer() {
-    return min(_timers,
-        (timer1, timer2) => timer1._nextCall.compareTo(timer2._nextCall));
+    return _timers.isEmpty
+        ? null
+        : _timers.reduce((t1, t2) => t1._nextCall <= t2._nextCall ? t1 : t2);
   }
 
   _runTimer(_FakeTimer timer) {
@@ -278,4 +285,11 @@ class _FakeTimer implements Timer {
   bool get isActive => _time._hasTimer(this);
 
   cancel() => _time._cancelTimer(this);
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_getter
+  int get tick {
+    throw new UnimplementedError("tick");
+  }
 }

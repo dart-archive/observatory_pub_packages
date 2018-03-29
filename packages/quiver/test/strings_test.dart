@@ -76,37 +76,6 @@ main() {
     });
   });
 
-  group('reverse', () {
-    test('should reverse characters in a string', () {
-      expect(reverse('ab'), 'ba');
-    });
-    test('should return null as null', () {
-      expect(reverse(null), null);
-    });
-    test('should return empty string as empty string', () {
-      expect(reverse(''), '');
-    });
-  });
-
-  group('repeat', () {
-    test('should repeat a non-empty string', () {
-      expect(repeat('ab', 3), 'ababab');
-    });
-    test(
-        'should repeat flipped non-empty string '
-        'on negative number of times', () {
-      expect(repeat('ab', -3), 'bababa');
-    });
-    test('should return null on null', () {
-      expect(repeat(null, 6), null);
-      expect(repeat(null, -6), null);
-    });
-    test('should return empty string on empty string', () {
-      expect(repeat('', 6), '');
-      expect(repeat('', -6), '');
-    });
-  });
-
   group('loop', () {
     // Forward direction test cases
     test('should work like normal substring', () {
@@ -159,10 +128,10 @@ main() {
 
     // Corner cases
     test('should throw on null', () {
-      expect(() => loop(null, 6, 8), throws);
+      expect(() => loop(null, 6, 8), throwsArgumentError);
     });
     test('should throw on empty', () {
-      expect(() => loop('', 6, 8), throws);
+      expect(() => loop('', 6, 8), throwsArgumentError);
     });
   });
 

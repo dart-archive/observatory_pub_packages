@@ -1,9 +1,10 @@
 /// Support code for the tests in this directory.
 library support;
 
-import 'dart:io';
 import 'dart:collection';
-import 'package:path/path.dart' as path;
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
 import 'package:html/src/treebuilder.dart';
 import 'package:html/dom.dart';
 import 'package:html/dom_parsing.dart';
@@ -19,10 +20,12 @@ Map<String, TreeBuilderFactory> get treeTypes {
   return _treeTypes;
 }
 
-final testDataDir = Platform.script.resolve('data').toFilePath();
+final testDir = p.join(p.dirname(p.fromUri(Platform.packageConfig)), 'test');
+
+final testDataDir = p.join(testDir, 'data');
 
 Iterable<String> getDataFiles(String subdirectory) {
-  var dir = new Directory(path.join(testDataDir, subdirectory));
+  var dir = new Directory(p.join(testDataDir, subdirectory));
   return dir.listSync().where((f) => f is File).map((f) => f.path);
 }
 
@@ -42,7 +45,7 @@ class TestData extends IterableBase<Map> {
 
   List<Map> _getData() {
     var data = <String, String>{};
-    var key = null;
+    String key;
     var result = <Map>[];
     var lines = _text.split('\n');
     // Remove trailing newline to match Python
@@ -52,7 +55,7 @@ class TestData extends IterableBase<Map> {
     for (var line in lines) {
       var heading = sectionHeading(line);
       if (heading != null) {
-        if (data.length > 0 && heading == newTestHeading) {
+        if (data.isNotEmpty && heading == newTestHeading) {
           // Remove trailing newline
           data[key] = data[key].substring(0, data[key].length - 1);
           result.add(normaliseOutput(data));
@@ -65,7 +68,7 @@ class TestData extends IterableBase<Map> {
       }
     }
 
-    if (data.length > 0) {
+    if (data.isNotEmpty) {
       result.add(normaliseOutput(data));
     }
     return result;
@@ -147,7 +150,7 @@ class TestSerializer extends TreeVisitor {
   visitElement(Element node) {
     _newline();
     _str.write(node);
-    if (node.attributes.length > 0) {
+    if (node.attributes.isNotEmpty) {
       indent += 2;
       var keys = new List.from(node.attributes.keys);
       keys.sort((x, y) => x.compareTo(y));

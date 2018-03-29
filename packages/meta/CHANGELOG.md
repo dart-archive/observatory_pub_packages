@@ -1,3 +1,10 @@
+## 1.1.2
+
+* Rollback SDK constraint update for 2.0.0. No longer needed.
+
+## 1.1.1
+* Update SDK constraint to be 2.0.0 dev friendly.
+
 ## 1.1.0
 * Introduce `@alwaysThrows` to declare that a function always throws
     (SDK issue [17999](https://github.com/dart-lang/sdk/issues/17999)). This

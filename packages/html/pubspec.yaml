@@ -1,5 +1,5 @@
 name: html
-version: 0.13.2
+version: 0.13.3
 author: Dart Team <misc@dartlang.org>
 description: A library for working with HTML documents. Previously known as html5lib.
 homepage: https://github.com/dart-lang/html
@@ -11,4 +11,4 @@ dependencies:
   utf: '>=0.9.0 <0.10.0'
 dev_dependencies:
   path: '>=0.9.0 <2.0.0'
-  unittest: '>=0.10.0 <0.12.0'
+  test: '^0.12.0'

@@ -5,7 +5,6 @@
 import "dart:collection";
 import "dart:math" as math;
 
-import "typed_wrappers.dart";
 import "unmodifiable_wrappers.dart";
 
 typedef K _KeyForValue<K, V>(V value);
@@ -20,6 +19,8 @@ abstract class _DelegatingIterableBase<E> implements Iterable<E> {
   const _DelegatingIterableBase();
 
   bool any(bool test(E element)) => _base.any(test);
+
+  Iterable<T> cast<T>() => _base.cast<T>();
 
   bool contains(Object element) => _base.contains(element);
 
@@ -36,6 +37,8 @@ abstract class _DelegatingIterableBase<E> implements Iterable<E> {
 
   T fold<T>(T initialValue, T combine(T previousValue, E element)) =>
       _base.fold(initialValue, combine);
+
+  Iterable<E> followedBy(Iterable<E> other) => _base.followedBy(other);
 
   void forEach(void f(E element)) => _base.forEach(f);
 
@@ -58,9 +61,13 @@ abstract class _DelegatingIterableBase<E> implements Iterable<E> {
 
   E reduce(E combine(E value, E element)) => _base.reduce(combine);
 
+  Iterable<T> retype<T>() => _base.retype<T>();
+
   E get single => _base.single;
 
-  E singleWhere(bool test(E element)) => _base.singleWhere(test);
+  E singleWhere(bool test(E element), {E orElse()}) {
+    return _base.singleWhere(test, orElse: orElse);
+  }
 
   Iterable<E> skip(int n) => _base.skip(n);
 
@@ -75,6 +82,8 @@ abstract class _DelegatingIterableBase<E> implements Iterable<E> {
   Set<E> toSet() => _base.toSet();
 
   Iterable<E> where(bool test(E element)) => _base.where(test);
+
+  Iterable<T> whereType<T>() => _base.whereType<T>();
 
   String toString() => _base.toString();
 }
@@ -99,8 +108,8 @@ class DelegatingIterable<E> extends _DelegatingIterableBase<E> {
   /// This forwards all operations to [base], so any changes in [base] will be
   /// reflected in [this]. If [base] is already an `Iterable<E>`, it's returned
   /// unmodified.
-  static Iterable<E> typed<E>(Iterable base) =>
-      base is Iterable<E> ? base : new TypeSafeIterable<E>(base);
+  @Deprecated('Use iterable.cast<E> instead.')
+  static Iterable<E> typed<E>(Iterable base) => base.cast<E>();
 }
 
 /// A [List] that delegates all operations to a base list.
@@ -122,8 +131,8 @@ class DelegatingList<E> extends DelegatingIterable<E> implements List<E> {
   /// This forwards all operations to [base], so any changes in [base] will be
   /// reflected in [this]. If [base] is already a `List<E>`, it's returned
   /// unmodified.
-  static List<E> typed<E>(List base) =>
-      base is List<E> ? base : new TypeSafeList<E>(base);
+  @Deprecated('Use list.cast<E> instead.')
+  static List<E> typed<E>(List base) => base.cast<E>();
 
   List<E> get _listBase => _base;
 
@@ -132,6 +141,8 @@ class DelegatingList<E> extends DelegatingIterable<E> implements List<E> {
   void operator []=(int index, E value) {
     _listBase[index] = value;
   }
+
+  List<E> operator +(List<E> other) => _listBase + other;
 
   void add(E value) {
     _listBase.add(value);
@@ -143,6 +154,8 @@ class DelegatingList<E> extends DelegatingIterable<E> implements List<E> {
 
   Map<int, E> asMap() => _listBase.asMap();
 
+  List<T> cast<T>() => _listBase.cast<T>();
+
   void clear() {
     _listBase.clear();
   }
@@ -151,22 +164,38 @@ class DelegatingList<E> extends DelegatingIterable<E> implements List<E> {
     _listBase.fillRange(start, end, fillValue);
   }
 
+  set first(E value) {
+    if (this.isEmpty) throw new RangeError.index(0, this);
+    this[0] = value;
+  }
+
   Iterable<E> getRange(int start, int end) => _listBase.getRange(start, end);
 
   int indexOf(E element, [int start = 0]) => _listBase.indexOf(element, start);
+
+  int indexWhere(bool test(E element), [int start = 0]) =>
+      _listBase.indexWhere(test, start);
 
   void insert(int index, E element) {
     _listBase.insert(index, element);
   }
 
-  void insertAll(int index, Iterable<E> iterable) {
+  insertAll(int index, Iterable<E> iterable) {
     _listBase.insertAll(index, iterable);
+  }
+
+  set last(E value) {
+    if (this.isEmpty) throw new RangeError.index(0, this);
+    this[this.length - 1] = value;
   }
 
   int lastIndexOf(E element, [int start]) =>
       _listBase.lastIndexOf(element, start);
 
-  void set length(int newLength) {
+  int lastIndexWhere(bool test(E element), [int start]) =>
+      _listBase.lastIndexWhere(test, start);
+
+  set length(int newLength) {
     _listBase.length = newLength;
   }
 
@@ -191,6 +220,8 @@ class DelegatingList<E> extends DelegatingIterable<E> implements List<E> {
   void retainWhere(bool test(E element)) {
     _listBase.retainWhere(test);
   }
+
+  List<T> retype<T>() => _listBase.retype<T>();
 
   Iterable<E> get reversed => _listBase.reversed;
 
@@ -231,8 +262,8 @@ class DelegatingSet<E> extends DelegatingIterable<E> implements Set<E> {
   /// This forwards all operations to [base], so any changes in [base] will be
   /// reflected in [this]. If [base] is already a `Set<E>`, it's returned
   /// unmodified.
-  static Set<E> typed<E>(Set base) =>
-      base is Set<E> ? base : new TypeSafeSet<E>(base);
+  @Deprecated('Use set.cast<E> instead.')
+  static Set<E> typed<E>(Set base) => base.cast<E>();
 
   Set<E> get _setBase => _base;
 
@@ -241,6 +272,8 @@ class DelegatingSet<E> extends DelegatingIterable<E> implements Set<E> {
   void addAll(Iterable<E> elements) {
     _setBase.addAll(elements);
   }
+
+  Set<T> cast<T>() => _setBase.cast<T>();
 
   void clear() {
     _setBase.clear();
@@ -267,6 +300,8 @@ class DelegatingSet<E> extends DelegatingIterable<E> implements Set<E> {
   void retainAll(Iterable<Object> elements) {
     _setBase.retainAll(elements);
   }
+
+  Set<T> retype<T>() => _setBase.retype<T>();
 
   void retainWhere(bool test(E element)) {
     _setBase.retainWhere(test);
@@ -296,8 +331,8 @@ class DelegatingQueue<E> extends DelegatingIterable<E> implements Queue<E> {
   /// This forwards all operations to [base], so any changes in [base] will be
   /// reflected in [this]. If [base] is already a `Queue<E>`, it's returned
   /// unmodified.
-  static Queue<E> typed<E>(Queue base) =>
-      base is Queue<E> ? base : new TypeSafeQueue<E>(base);
+  @Deprecated('Use queue.cast<E> instead.')
+  static Queue<E> typed<E>(Queue base) => base.cast<E>();
 
   Queue<E> get _baseQueue => _base;
 
@@ -317,6 +352,8 @@ class DelegatingQueue<E> extends DelegatingIterable<E> implements Queue<E> {
     _baseQueue.addLast(value);
   }
 
+  Queue<T> cast<T>() => _baseQueue.cast<T>();
+
   void clear() {
     _baseQueue.clear();
   }
@@ -330,6 +367,8 @@ class DelegatingQueue<E> extends DelegatingIterable<E> implements Queue<E> {
   void retainWhere(bool test(E element)) {
     _baseQueue.retainWhere(test);
   }
+
+  Queue<T> retype<T>() => _baseQueue.retype<T>();
 
   E removeFirst() => _baseQueue.removeFirst();
 
@@ -357,8 +396,8 @@ class DelegatingMap<K, V> implements Map<K, V> {
   /// This forwards all operations to [base], so any changes in [base] will be
   /// reflected in [this]. If [base] is already a `Map<K, V>`, it's returned
   /// unmodified.
-  static Map<K, V> typed<K, V>(Map base) =>
-      base is Map<K, V> ? base : new TypeSafeMap<K, V>(base);
+  @Deprecated('Use map.cast<K, V> instead.')
+  static Map<K, V> typed<K, V>(Map base) => base.cast<K, V>();
 
   V operator [](Object key) => _base[key];
 
@@ -370,13 +409,21 @@ class DelegatingMap<K, V> implements Map<K, V> {
     _base.addAll(other);
   }
 
+  void addEntries(Iterable<MapEntry<K, V>> entries) {
+    _base.addEntries(entries);
+  }
+
   void clear() {
     _base.clear();
   }
 
+  Map<K2, V2> cast<K2, V2>() => _base.cast<K2, V2>();
+
   bool containsKey(Object key) => _base.containsKey(key);
 
   bool containsValue(Object value) => _base.containsValue(value);
+
+  Iterable<MapEntry<K, V>> get entries => _base.entries;
 
   void forEach(void f(K key, V value)) {
     _base.forEach(f);
@@ -390,13 +437,25 @@ class DelegatingMap<K, V> implements Map<K, V> {
 
   int get length => _base.length;
 
+  Map<K2, V2> map<K2, V2>(MapEntry<K2, V2> transform(K key, V value)) =>
+      _base.map(transform);
+
   V putIfAbsent(K key, V ifAbsent()) => _base.putIfAbsent(key, ifAbsent);
 
   V remove(Object key) => _base.remove(key);
 
+  void removeWhere(bool test(K key, V value)) => _base.removeWhere(test);
+
+  Map<K2, V2> retype<K2, V2>() => _base.retype<K2, V2>();
+
   Iterable<V> get values => _base.values;
 
   String toString() => _base.toString();
+
+  V update(K key, V update(V value), {V ifAbsent()}) =>
+      _base.update(key, update, ifAbsent: ifAbsent);
+
+  void updateAll(V update(K key, V value)) => _base.updateAll(update);
 }
 
 /// An unmodifiable [Set] view of the keys of a [Map].
@@ -415,6 +474,13 @@ class MapKeySet<E> extends _DelegatingIterableBase<E>
   MapKeySet(Map<E, dynamic> base) : _baseMap = base;
 
   Iterable<E> get _base => _baseMap.keys;
+
+  Set<T> cast<T>() {
+    if (this is MapKeySet<T>) {
+      return this as MapKeySet<T>;
+    }
+    return Set.castFrom<E, T>(this);
+  }
 
   bool contains(Object element) => _baseMap.containsKey(element);
 
@@ -451,6 +517,8 @@ class MapKeySet<E> extends _DelegatingIterableBase<E>
   /// [Map]s.
   E lookup(Object element) =>
       throw new UnsupportedError("MapKeySet doesn't support lookup().");
+
+  Set<T> retype<T>() => Set.castFrom<E, T>(this);
 
   /// Returns a new set which contains all the elements of [this] and [other].
   ///
@@ -497,6 +565,13 @@ class MapValueSet<K, V> extends _DelegatingIterableBase<V> implements Set<V> {
         _keyForValue = keyForValue;
 
   Iterable<V> get _base => _baseMap.values;
+
+  Set<T> cast<T>() {
+    if (this is Set<T>) {
+      return this as Set<T>;
+    }
+    return Set.castFrom<V, T>(this);
+  }
 
   bool contains(Object element) {
     if (element != null && element is! V) return false;
@@ -593,6 +668,8 @@ class MapValueSet<K, V> extends _DelegatingIterableBase<V> implements Set<V> {
 
   void retainWhere(bool test(V element)) =>
       removeWhere((element) => !test(element));
+
+  Set<T> retype<T>() => Set.castFrom<V, T>(this);
 
   /// Returns a new set which contains all the elements of [this] and [other].
   ///
