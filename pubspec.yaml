@@ -9,5 +9,4 @@ dependencies:
   charted: ^0.4.8
   unittest: < 0.12.0
   usage: ^1.2.0
-  web_components: ^0.12.5
   dart_to_js_script_rewriter: 1.0.3
