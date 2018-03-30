@@ -69,6 +69,12 @@ class CanonicalizedMap<C, K, V> implements Map<K, V> {
     other.forEach((key, value) => this[key] = value);
   }
 
+  void addEntries(Iterable<MapEntry<K, V>> entries) =>
+      _base.addEntries(entries.map(
+          (e) => new MapEntry(_canonicalize(e.key), new Pair(e.key, e.value))));
+
+  Map<K2, V2> cast<K2, V2>() => _base.cast<K2, V2>();
+
   void clear() {
     _base.clear();
   }
@@ -80,6 +86,9 @@ class CanonicalizedMap<C, K, V> implements Map<K, V> {
 
   bool containsValue(Object value) =>
       _base.values.any((pair) => pair.last == value);
+
+  Iterable<MapEntry<K, V>> get entries =>
+      _base.entries.map((e) => new MapEntry(e.value.first, e.value.last));
 
   void forEach(void f(K key, V value)) {
     _base.forEach((key, pair) => f(pair.first, pair.last));
@@ -93,6 +102,9 @@ class CanonicalizedMap<C, K, V> implements Map<K, V> {
 
   int get length => _base.length;
 
+  Map<K2, V2> map<K2, V2>(MapEntry<K2, V2> transform(K key, V value)) =>
+      _base.map((_, pair) => transform(pair.first, pair.last));
+
   V putIfAbsent(K key, V ifAbsent()) {
     return _base
         .putIfAbsent(_canonicalize(key), () => new Pair(key, ifAbsent()))
@@ -105,11 +117,55 @@ class CanonicalizedMap<C, K, V> implements Map<K, V> {
     return pair == null ? null : pair.last;
   }
 
+  void removeWhere(bool test(K key, V value)) =>
+      _base.removeWhere((_, pair) => test(pair.first, pair.last));
+
+  Map<K2, V2> retype<K2, V2>() => _base.retype<K2, V2>();
+
+  V update(K key, V update(V value), {V ifAbsent()}) => _base
+      .update(_canonicalize(key), (pair) => new Pair(key, update(pair.last)),
+          ifAbsent: ifAbsent == null ? null : () => new Pair(key, ifAbsent()))
+      .last;
+
+  void updateAll(V update(K key, V value)) => _base.updateAll(
+      (_, pair) => new Pair(pair.first, update(pair.first, pair.last)));
+
   Iterable<V> get values => _base.values.map((pair) => pair.last);
 
-  String toString() => Maps.mapToString(this);
+  String toString() {
+    // Detect toString() cycles.
+    if (_isToStringVisiting(this)) {
+      return '{...}';
+    }
+
+    var result = new StringBuffer();
+    try {
+      _toStringVisiting.add(this);
+      result.write('{');
+      bool first = true;
+      forEach((k, v) {
+        if (!first) {
+          result.write(', ');
+        }
+        first = false;
+        result.write('$k: $v');
+      });
+      result.write('}');
+    } finally {
+      assert(identical(_toStringVisiting.last, this));
+      _toStringVisiting.removeLast();
+    }
+
+    return result.toString();
+  }
 
   bool _isValidKey(Object key) =>
       (key == null || key is K) &&
       (_isValidKeyFn == null || _isValidKeyFn(key));
 }
+
+/// A collection used to identify cyclic maps during toString() calls.
+final List _toStringVisiting = [];
+
+/// Check if we are currently visiting `o` in a toString() call.
+bool _isToStringVisiting(o) => _toStringVisiting.any((e) => identical(o, e));

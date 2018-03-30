@@ -80,6 +80,22 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
   void addAll(Map<K, V> other) => other.forEach((k, v) => this[k] = v);
 
   @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  void addEntries(Iterable<Object> entries) {
+    // Change Iterable<Object> to Iterable<MapEntry<K, V>> when
+    // the MapEntry class has been added.
+    throw new UnimplementedError("addEntries");
+  }
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  LinkedLruHashMap<K2, V2> cast<K2, V2>() {
+    throw new UnimplementedError("cast");
+  }
+
+  @override
   void clear() {
     _entries.clear();
     _head = _tail = null;
@@ -90,6 +106,15 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
 
   @override
   bool containsValue(Object value) => values.contains(value);
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_getter
+  Iterable<Null> get entries {
+    // Change Iterable<Null> to Iterable<MapEntry<K, V>> when
+    // the MapEntry class has been added.
+    throw new UnimplementedError("entries");
+  }
 
   /// Applies [action] to each key-value pair of the map in order of MRU to
   /// LRU.
@@ -130,6 +155,15 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
   /// The returned iterable does *not* have efficient `length` or `contains`.
   @override
   Iterable<V> get values => _iterable().map((e) => e.value);
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  Map<K2, V2> map<K2, V2>(Object transform(K key, V value)) {
+    // Change Object to MapEntry<K2, V2> when
+    // the MapEntry class has been added.
+    throw new UnimplementedError("map");
+  }
 
   @override
   int get maximumSize => _maximumSize;
@@ -197,13 +231,17 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
   V remove(Object key) {
     final entry = _entries.remove(key);
     if (entry != null) {
-      if (entry == _head) {
+      if (entry == _head && entry == _tail) {
+        _head = _tail = null;
+      } else if (entry == _head) {
         _head = _head.next;
+        _head?.previous = null;
       } else if (entry == _tail) {
-        _tail.previous.next = null;
         _tail = _tail.previous;
+        _tail?.next = null;
       } else {
         entry.previous.next = entry.next;
+        entry.next.previous = entry.previous;
       }
       return entry.value;
     }
@@ -211,10 +249,70 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
   }
 
   @override
-  String toString() => Maps.mapToString(this);
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  void removeWhere(bool test(K key, V value)) {
+    throw new UnimplementedError("removeWhere");
+  }
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  LinkedLruHashMap<K2, V2> retype<K2, V2>() {
+    throw new UnimplementedError("retype");
+  }
+
+  @override
+  // TODO: Use the `MapBase.mapToString()` static method when the minimum SDK
+  // version of this package has been bumped to 2.0.0 or greater.
+  String toString() {
+    // Detect toString() cycles.
+    if (_isToStringVisiting(this)) {
+      return '{...}';
+    }
+
+    var result = new StringBuffer();
+    try {
+      _toStringVisiting.add(this);
+      result.write('{');
+      bool first = true;
+      forEach((k, v) {
+        if (!first) {
+          result.write(', ');
+        }
+        first = false;
+        result.write('$k: $v');
+      });
+      result.write('}');
+    } finally {
+      assert(identical(_toStringVisiting.last, this));
+      _toStringVisiting.removeLast();
+    }
+
+    return result.toString();
+  }
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  V update(K key, V update(V value), {V ifAbsent()}) {
+    throw new UnimplementedError("update");
+  }
+
+  @override
+  // TODO: Dart 2.0 requires this method to be implemented.
+  // ignore: override_on_non_overriding_method
+  void updateAll(V update(K key, V value)) {
+    throw new UnimplementedError("updateAll");
+  }
 
   /// Moves [entry] to the MRU position, shifting the linked list if necessary.
   void _promoteEntry(_LinkedEntry<K, V> entry) {
+    // If this entry is already in the MRU position we are done.
+    if (entry == _head) {
+      return;
+    }
+
     if (entry.previous != null) {
       // If already existed in the map, link previous to next.
       entry.previous.next = entry.next;
@@ -223,6 +321,10 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
       if (_tail == entry) {
         _tail = entry.previous;
       }
+    }
+    // If this entry is not the end of the list then link the next entry to the previous entry.
+    if (entry.next != null) {
+      entry.next.previous = entry.previous;
     }
 
     // Replace head with this element.
@@ -265,3 +367,9 @@ class LinkedLruHashMap<K, V> implements LruMap<K, V> {
     _tail.next = null;
   }
 }
+
+/// A collection used to identify cyclic maps during toString() calls.
+final List _toStringVisiting = [];
+
+/// Check if we are currently visiting `o` in a toString() call.
+bool _isToStringVisiting(o) => _toStringVisiting.any((e) => identical(o, e));

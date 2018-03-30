@@ -3,17 +3,22 @@
 ///
 /// Note, unlike the original we don't operate in-browser on a DOM loaded into
 /// an iframe, but instead operate over a parsed DOM.
+
+@TestOn('vm')
 library html.test.selectors.level1_baseline_test;
 
 import 'dart:io';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
-import 'package:unittest/unittest.dart';
-import 'level1_lib.dart' hide test;
+import 'package:path/path.dart' as p;
+import 'package:test/test.dart';
+
+import '../support.dart';
+import 'level1_lib.dart';
 import 'selectors.dart';
 
 Document getTestContentDocument() {
-  var testPath = Platform.script.resolve('level1-content.html').toFilePath();
+  var testPath = p.join(testDir, 'selectors', 'level1-content.html');
   return parse(new File(testPath).readAsStringSync());
 }
 

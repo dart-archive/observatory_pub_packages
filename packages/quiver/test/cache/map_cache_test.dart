@@ -20,10 +20,10 @@ import 'package:quiver/cache.dart';
 
 main() {
   group('MapCache', () {
-    MapCache cache;
+    MapCache<String, String> cache;
 
     setUp(() {
-      cache = new MapCache();
+      cache = new MapCache<String, String>();
     });
 
     test("should return null for a non-existent key", () {
@@ -63,6 +63,23 @@ main() {
           .then((value) {
         expect(value, 'foofoo');
       });
+    });
+
+    test("should not make multiple requests for the same key", () async {
+      int count = 0;
+
+      Future<String> loader(String key) {
+        count += 1;
+        return new Future.delayed(
+            const Duration(milliseconds: 1), () => "test");
+      }
+
+      await Future.wait([
+        cache.get("test", ifAbsent: loader),
+        cache.get("test", ifAbsent: loader),
+      ]);
+
+      expect(count, equals(1));
     });
   });
 }

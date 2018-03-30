@@ -17,7 +17,7 @@ Add Quiver to your project's pubspec.yaml file and run `pub get`.
 We recommend the following version constraint:
 
     dependencies:
-      quiver: '>=0.25.0<0.26.0'
+      quiver: '>=0.29.0 <0.30.0'
 
 # Main Libraries
 
@@ -51,10 +51,6 @@ predicates.
 
 `CountdownTimer` is a simple countdown timer that fires events in regular
 increments.
-
-`CreateTimer` and `CreateTimerPeriodic` are typedefs that are useful for
-passing Timer factories to classes and functions, increasing the testability of
-code that depends on Timer.
 
 `Metronome` is a self-correcting alternative to `Timer.periodic`. It provides
 a simple, tracking periodic stream of `DateTime` events with optional anchor
@@ -179,27 +175,21 @@ used as a literal match inside of a RegExp.
 
 `isEmpty` checks if a string is `null` or empty.
 
+`isNotEmpty` checks if a string is not `null` and not empty.
+
 `equalsIgnoreCase` checks if two strings are equal, ignoring case.
 
 `compareIgnoreCase` compares two strings, ignoring case.
 
-`flip` flips the order of characters in a string.
-
-`nullToEmpty` turns `null` to empty string, and returns non-empty strings
-unchanged.
-
-`emptyToNull` turns empty string to `null`, and returns non-empty strings
-unchanged.
-
-`repeat` concatenates a string to itself a given number of times.
+`reverse` reverses the order of characters in a string.
 
 `loop` allows you to loop through characters in a string starting and ending at
 arbitrary indices. Out of bounds indices allow you to wrap around the string,
 supporting a number of use-cases, including:
 
   * Rotating: `loop('lohel', -3, 2) => 'hello'`
-  * Repeating, like `repeat`, but with better character-level control, e.g.:
-`loop('la ', 0, 8) => 'la la la'  // no tailing space`
+  * Repeating, like `String`'s `operator*`, but with better character-level
+    control, e.g.: `loop('la ', 0, 8) => 'la la la'  // no trailing space`
   * Tailing: `loop('/path/to/some/file.txt', -3) => 'txt'`
   * Reversing: `loop('top', 3, 0) => 'pot'`
 

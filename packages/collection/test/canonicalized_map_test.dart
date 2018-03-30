@@ -7,10 +7,11 @@ import "package:test/test.dart";
 
 void main() {
   group("with an empty canonicalized map", () {
-    var map;
+    CanonicalizedMap<int, String, String> map;
+
     setUp(() {
-      map = new CanonicalizedMap<int, String, String>(int.parse,
-          isValidKey: (s) => new RegExp(r"^\d+$").hasMatch(s));
+      map = new CanonicalizedMap(int.parse,
+          isValidKey: (s) => new RegExp(r"^\d+$").hasMatch(s as String));
     });
 
     test("canonicalizes keys on set and get", () {
@@ -61,8 +62,8 @@ void main() {
 
     test("canonicalizes keys for putIfAbsent", () {
       map["1"] = "value";
-      expect(
-          map.putIfAbsent("01", () => throw "shouldn't run"), equals("value"));
+      expect(map.putIfAbsent("01", () => throw new Exception("shouldn't run")),
+          equals("value"));
       expect(map.putIfAbsent("2", () => "new value"), equals("new value"));
     });
 
@@ -129,6 +130,62 @@ void main() {
           {"1": "value 1", "01": "value 01", "2": "value 2", "03": "value 03"});
 
       expect(map.values, equals(["value 01", "value 2", "value 03"]));
+    });
+
+    test("entries returns all key-value pairs in the map", () {
+      map.addAll({
+        "1": "value 1",
+        "01": "value 01",
+        "2": "value 2",
+      });
+
+      var entries = map.entries.toList();
+      expect(entries[0].key, "01");
+      expect(entries[0].value, "value 01");
+      expect(entries[1].key, "2");
+      expect(entries[1].value, "value 2");
+    });
+
+    test("addEntries adds key-value pairs to the map", () {
+      map.addEntries([
+        new MapEntry("1", "value 1"),
+        new MapEntry("01", "value 01"),
+        new MapEntry("2", "value 2"),
+      ]);
+      expect(map, {"01": "value 01", "2": "value 2"});
+    });
+
+    test("retype returns a new map instance", () {
+      expect(map.retype<Pattern, Pattern>(), isNot(same(map)));
+    });
+  });
+
+  group("CanonicalizedMap builds an informative string representation", () {
+    var map;
+    setUp(() {
+      map = new CanonicalizedMap<int, String, dynamic>(int.parse,
+          isValidKey: (s) => new RegExp(r"^\d+$").hasMatch(s as String));
+    });
+
+    test("for an empty map", () {
+      expect(map.toString(), equals('{}'));
+    });
+
+    test("for a map with one value", () {
+      map.addAll({"1": "value 1"});
+      expect(map.toString(), equals('{1: value 1}'));
+    });
+
+    test("for a map with multiple values", () {
+      map.addAll(
+          {"1": "value 1", "01": "value 01", "2": "value 2", "03": "value 03"});
+      expect(
+          map.toString(), equals('{01: value 01, 2: value 2, 03: value 03}'));
+    });
+
+    test("for a map with a loop", () {
+      map.addAll({"1": "value 1", "2": map});
+      expect(map.toString(), equals('{1: value 1, 2: {...}}'));
     });
   });
 

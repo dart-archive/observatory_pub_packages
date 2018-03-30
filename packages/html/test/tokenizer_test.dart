@@ -1,3 +1,4 @@
+@TestOn('vm')
 library tokenizer_test;
 
 // Note: mirrors used to match the getattr usage in the original test
@@ -5,7 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:mirrors';
 import 'package:path/path.dart' as pathos;
-import 'package:unittest/unittest.dart';
+import 'package:test/test.dart';
 import 'package:html/src/char_encodings.dart';
 import 'package:html/src/token.dart';
 import 'package:html/src/tokenizer.dart';
@@ -14,10 +15,10 @@ import 'support.dart';
 
 class TokenizerTestParser {
   String _state;
-  var _lastStartTag;
+  String _lastStartTag;
   List outputTokens;
 
-  TokenizerTestParser(String initialState, [lastStartTag])
+  TokenizerTestParser(String initialState, [String lastStartTag])
       : _state = initialState,
         _lastStartTag = lastStartTag;
 
@@ -105,7 +106,7 @@ List concatenateCharacterTokens(List tokens) {
   var outputTokens = [];
   for (var token in tokens) {
     if (token.indexOf("ParseError") == -1 && token[0] == "Character") {
-      if (outputTokens.length > 0 &&
+      if (outputTokens.isNotEmpty &&
           outputTokens.last.indexOf("ParseError") == -1 &&
           outputTokens.last[0] == "Character") {
         outputTokens.last[1] = '${outputTokens.last[1]}${token[1]}';

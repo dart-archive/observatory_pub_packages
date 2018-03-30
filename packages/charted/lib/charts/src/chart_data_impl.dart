@@ -16,9 +16,15 @@ class DefaultChartDataImpl extends Observable implements ChartData {
   SubscriptionsDisposer _disposer = new SubscriptionsDisposer();
 
   DefaultChartDataImpl(
-      Iterable<ChartColumnSpec> columns, List<List> rows) {
-    this.columns = columns;
-    this.rows = rows;
+      Iterable<ChartColumnSpec> columns, Iterable<Iterable> rows) {
+    this.columns = new List<ChartColumnSpec>.from(columns);
+    if (rows is List && rows.every((row) => row is List)) {
+      this.rows = rows as List<List>;
+    } else {
+      List<Iterable> rowsList = new List.from(rows);
+      this.rows = new List<List>.generate(
+          rowsList.length, (i) => new List.from(rowsList[i]));
+    }
   }
 
   set columns(Iterable<ChartColumnSpec> value) {
@@ -87,7 +93,6 @@ class DefaultChartDataImpl extends Observable implements ChartData {
     notifyChange(new ChartValueChangeRecord(index, changes));
   }
 
-  @override
   String toString() {
     var cellDataLength = new List.filled(rows.elementAt(0).length, 0);
     for (var i = 0; i < columns.length; i++) {

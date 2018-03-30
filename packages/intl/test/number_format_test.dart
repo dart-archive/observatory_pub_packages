@@ -45,8 +45,11 @@ var testNumbersWeCannotReadBack = {
 
 /// Test numbers that won't work in Javascript because they're too big.
 var testNumbersOnlyForTheVM = {
-  "10,000,000,000,000,000,000,000,000,000,000":
-      10000000000000000000000000000000,
+  "9,000,000,000,000,000,000":
+      9000000000000000000,
+  "9,223,372,036,854,775,807":
+      9223372036854775807
+
 };
 
 get allTestNumbers => new Map.from(testNumbersWeCanReadBack)
@@ -82,7 +85,7 @@ main() {
     var testLength = (testFormats.length * 3) + 1;
     var list = mainList.take(testLength).iterator;
     list.moveNext();
-    mainList = mainList.skip(testLength);
+    mainList = mainList.skip(testLength).toList();
     if (locale == list.current) {
       testAgainstIcu(locale, testFormats, list);
     }
@@ -102,6 +105,24 @@ main() {
           expect(readBack, allTestNumbers[x]);
         }
       }
+    }
+  });
+
+  test('Padding left', () {
+    var expected = [
+      '1',
+      '1',
+      '01',
+      '001',
+      '0,001',
+      '00,001',
+      '000,001',
+      '0,000,001'
+    ];
+    for (var i = 0; i < 7; i++) {
+      var f = new NumberFormat.decimalPattern();
+      f.minimumIntegerDigits = i;
+      expect(f.format(1), expected[i]);
     }
   });
 
@@ -146,14 +167,24 @@ main() {
     var swissConvention = new NumberFormat.currencyPattern('de_CH', r'$');
     formatted = swissConvention.format(amount);
     var nbsp = new String.fromCharCode(0xa0);
-    expect(formatted, r"$" + nbsp + "1'000'000.32");
+    var backquote = new String.fromCharCode(0x2019);
+    expect(formatted,
+        r"$" + nbsp + "1" + backquote + "000" + backquote + "000.32");
     readBack = swissConvention.parse(formatted);
+    expect(readBack, amount);
+
+    var italianSwiss = new NumberFormat.currencyPattern('it_CH', r'$');
+    formatted = italianSwiss.format(amount);
+    expect(formatted,
+        r"$" + nbsp + "1" + backquote + "000" + backquote + "000.32");
+    readBack = italianSwiss.parse(formatted);
     expect(readBack, amount);
 
     /// Verify we can leave off the currency and it gets filled in.
     var plainSwiss = new NumberFormat.currency(locale: 'de_CH');
     formatted = plainSwiss.format(amount);
-    expect(formatted, r"CHF" + nbsp + "1'000'000.32");
+    expect(formatted,
+        r"CHF" + nbsp + "1" + backquote + "000" + backquote + "000.32");
     readBack = plainSwiss.parse(formatted);
     expect(readBack, amount);
 
@@ -226,6 +257,21 @@ main() {
   });
 
   testSimpleCurrencySymbols();
+
+  test('Padding digits with non-ascii zero', () {
+    var format = new NumberFormat('000', 'ar');
+    var padded = format.format(0);
+    expect(padded, '٠٠٠');
+  });
+
+  // Exercise a custom pattern. There's not actually much logic here, so just
+  // validate that the custom pattern is in fact being used.
+  test('Custom currency pattern', () {
+    var format = new NumberFormat.currency(
+        name: 'XYZZY', customPattern: '[\u00a4][#,##.#]');
+    var text = format.format(12345.67);
+    expect(text, '[XYZZY][1,23,45.67]');
+  });
 }
 
 String stripExtras(String input) {
@@ -282,10 +328,10 @@ testSimpleCurrencySymbols() {
 
 testCurrencySymbolsFor(expected, formats, name) {
   var amount = 1000000.32;
-  new Map.fromIterables(expected, formats)
+  new Map<Object, NumberFormat>.fromIterables(expected, formats)
       .forEach((expected, NumberFormat format) {
     test("Test $name ${format.currencyName}", () {
-      // We have to allow for currencies with different fraction digits, e.g. CRC.
+      // Allow for currencies with different fraction digits, e.g. CRC.
       var maxDigits = format.maximumFractionDigits;
       var rounded = maxDigits == 0 ? amount.round() : amount;
       var fractionDigits = (amount - rounded) < 0.00001 ? '.32' : '';

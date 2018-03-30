@@ -1,3 +1,26 @@
+## 0.15.4
+ * A couple of minor Dart 2 fixes.
+
+## 0.15.3
+ * Add a customPattern parameter to the currency constructor. This can be used
+   to provide a custom pattern if you have one, e.g. for accounting formats.
+ * Update data to CLDR 32.0.1
+ * Update for Dart 2.0 fixed-size integers.
+ * Add missing support for specifying decimalDigits in compactSimpleCurrency.
+ * Fix doc comments for DateFormat (Pull request #156)
+ * Added a skip argument to not output the message in the extract step.
+
+## 0.15.2
+ * Group the padding digits to the left of the number, if present. e.g. 00,001.
+ * Tweak lookup code to support translated messages as JSON rather than code.
+ * Update data to CLDR 31.0.1
+ * Adds locales en_MY, fr_CH, it_CH, and ps.
+ * Use locale digits for printing DateTime. This can also be disabled for a
+   particular locale use useNativeDigitsByDefaultFor or for a particular
+   DateFormat instance use useNativeDigits.
+ * Provide a library for custom-initialized DateTime and number formatting. This
+   allows easier custom locales and synchronous initialization.
+
 ## 0.15.1
  * Use the platform.locale API to get the OS platform.
  * Convert to use package:test
