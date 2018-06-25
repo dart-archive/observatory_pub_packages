@@ -90,28 +90,9 @@ def rewrite_pubspec_yaml(packages_src, yaml_src, yaml_dst):
     f.write('\n'.join(yaml))
 
 def main():
-  parser = argparse.ArgumentParser(
-      description='Updating snapshot of Observatory dependencies')
-  parser.add_argument(
-      '--dart-sdk-src',
-      action='store',
-      metavar='dart_sdk_src',
-      help='Path to dart/sdk',
-      default='~/workspace/dart/sdk')
-  args = parser.parse_args()
-  args.dart_sdk_src = os.path.abspath(os.path.expanduser(args.dart_sdk_src))
-  observatory_dir = os.path.join(args.dart_sdk_src, 'runtime', 'observatory')
-
   if not check_for_pubspec_yaml(SCRIPT_DIR):
     print('Error could not find pubspec.yaml next to roll.py')
     return 1
-
-  if not check_for_pubspec_yaml(observatory_dir):
-    print('Error could not find Observatory source.')
-    return 1
-
-  yaml_src = os.path.abspath(os.path.join(SCRIPT_DIR, 'pubspec.yaml'))
-  yaml_dst = os.path.abspath(os.path.join(observatory_dir, 'pubspec.yaml'))
 
   packages_dst = os.path.abspath(os.path.join(SCRIPT_DIR, 'packages'))
 
@@ -122,7 +103,6 @@ def main():
     packages_src = os.path.join(temp_dir, '.packages')
     run_pub_get(temp_dir)
     update_packages(packages_src, packages_dst)
-    rewrite_pubspec_yaml(packages_src, yaml_src, yaml_dst)
   finally:
     shutil.rmtree(temp_dir)
 

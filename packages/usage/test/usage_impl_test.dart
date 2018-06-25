@@ -28,19 +28,34 @@ void defineTests() {
   });
 
   group('AnalyticsImpl', () {
+    test('trackingId', () {
+      AnalyticsImplMock mock = createMock();
+      expect(mock.trackingId, isNotNull);
+    });
+
+    test('applicationName', () {
+      AnalyticsImplMock mock = createMock();
+      expect(mock.applicationName, isNotNull);
+    });
+
+    test('applicationVersion', () {
+      AnalyticsImplMock mock = createMock();
+      expect(mock.applicationVersion, isNotNull);
+    });
+
     test('respects disabled', () {
       AnalyticsImplMock mock = createMock();
-      mock.optIn = false;
+      mock.enabled = false;
       mock.sendException('FooBar exception');
-      expect(mock.optIn, false);
+      expect(mock.enabled, false);
       expect(mock.mockPostHandler.sentValues, isEmpty);
     });
 
-    test('hasSetOptIn', () {
-      AnalyticsImplMock mock = createMock(setOptIn: false);
-      expect(mock.hasSetOptIn, false);
-      mock.optIn = false;
-      expect(mock.hasSetOptIn, true);
+    test('firstRun', () {
+      AnalyticsImplMock mock = createMock();
+      expect(mock.firstRun, true);
+      mock = createMock(props: {'firstRun': false});
+      expect(mock.firstRun, false);
     });
 
     test('setSessionValue', () {
@@ -61,6 +76,28 @@ void defineTests() {
       mock.sendScreenView('bar');
       mock.sendScreenView('baz');
       return mock.waitForLastPing(timeout: new Duration(milliseconds: 100));
+    });
+
+    group('clientId', () {
+      test('is available immediately', () {
+        AnalyticsImplMock mock = createMock();
+        expect(mock.clientId, isNotEmpty);
+      });
+
+      test('is memoized', () {
+        AnalyticsImplMock mock = createMock();
+        final value1 = mock.clientId;
+        final value2 = mock.clientId;
+        expect(value1, isNotEmpty);
+        expect(value1, value2);
+      });
+
+      test('is stored in properties', () {
+        AnalyticsImplMock mock = createMock();
+        expect(mock.properties['clientId'], isNull);
+        final value = mock.clientId;
+        expect(mock.properties['clientId'], value);
+      });
     });
   });
 

@@ -1,0 +1,24 @@
+language: dart
+
+dart:
+  - dev
+  - stable
+
+dart_task:
+  - test: --platform vm
+  - test: --platform firefox -j 1
+  - dartanalyzer
+  - dartfmt
+
+branches:
+  only: [master]
+
+matrix:
+  # Only run dartfmt checks with stable.
+  exclude:
+    - dart: dev
+      dart_task: dartfmt
+
+cache:
+  directories:
+    - $HOME/.pub-cache
