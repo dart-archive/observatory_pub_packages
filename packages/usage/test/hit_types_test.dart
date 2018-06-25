@@ -21,6 +21,13 @@ void defineTests() {
       expect(mock.mockProperties['clientId'], isNotNull);
       expect(mock.mockPostHandler.sentValues, isNot(isEmpty));
     });
+    test('with parameters', () {
+      AnalyticsImplMock mock = createMock();
+      mock.sendScreenView('withParams', parameters: {'cd1': 'foo'});
+      expect(mock.mockProperties['clientId'], isNotNull);
+      expect(mock.mockPostHandler.sentValues, isNot(isEmpty));
+      has(mock.last, 'cd1');
+    });
   });
 
   group('event', () {
@@ -31,6 +38,16 @@ void defineTests() {
       was(mock.last, 'event');
       has(mock.last, 'ec');
       has(mock.last, 'ea');
+    });
+
+    test('with parameters', () {
+      AnalyticsImplMock mock = createMock();
+      mock.sendEvent('withParams', 'save', parameters: {'cd1': 'foo'});
+      expect(mock.mockPostHandler.sentValues, isNot(isEmpty));
+      was(mock.last, 'event');
+      has(mock.last, 'ec');
+      has(mock.last, 'ea');
+      has(mock.last, 'cd1');
     });
 
     test('optional args', () {
@@ -78,26 +95,25 @@ void defineTests() {
       has(mock.last, 'utl');
     });
 
-    test('timer', () {
+    test('timer', () async {
       AnalyticsImplMock mock = createMock();
       AnalyticsTimer timer =
           mock.startTimer('compile', category: 'Build', label: 'Compile');
 
-      return new Future.delayed(new Duration(milliseconds: 20), () {
-        return timer.finish().then((_) {
-          expect(mock.mockPostHandler.sentValues, isNot(isEmpty));
-          was(mock.last, 'timing');
-          has(mock.last, 'utv');
-          has(mock.last, 'utt');
-          has(mock.last, 'utc');
-          has(mock.last, 'utl');
-          int time = timer.currentElapsedMillis;
-          expect(time, greaterThan(10));
-          return new Future.delayed(new Duration(milliseconds: 10), () {
-            expect(timer.currentElapsedMillis, time);
-          });
-        });
-      });
+      await new Future.delayed(new Duration(milliseconds: 20));
+
+      await timer.finish();
+      expect(mock.mockPostHandler.sentValues, isNot(isEmpty));
+      was(mock.last, 'timing');
+      has(mock.last, 'utv');
+      has(mock.last, 'utt');
+      has(mock.last, 'utc');
+      has(mock.last, 'utl');
+      int time = timer.currentElapsedMillis;
+      expect(time, greaterThan(10));
+
+      await new Future.delayed(new Duration(milliseconds: 10));
+      expect(timer.currentElapsedMillis, time);
     });
   });
 
@@ -123,13 +139,6 @@ void defineTests() {
       AnalyticsImplMock mock = createMock();
       mock.sendException('foo bar (file:///Users/foobar/tmp/error.dart:3:13)');
       expect(mock.last['exd'], 'foo bar (');
-    });
-
-    test('long description trimmed', () {
-      String str = '0123456789abcdefghijklmnopqrstuvwxyz';
-      AnalyticsImplMock mock = createMock();
-      mock.sendException(str + str + str + str + str);
-      expect(mock.last['exd'].length, 100);
     });
   });
 }

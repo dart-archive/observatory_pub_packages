@@ -54,6 +54,9 @@ const _AlwaysThrows alwaysThrows = const _AlwaysThrows();
 /// Indicates that this parameter may have a tighter type than the parameter on
 /// its superclass. The actual argument will be checked at runtime to ensure it
 /// is a subtype of the overridden parameter type.
+///
+/// DEPRECATED: Use the `covariant` modifier instead.
+@deprecated
 const _Checked checked = const _Checked();
 
 /// Used to annotate a library, or any declaration that is part of the public
@@ -101,6 +104,22 @@ const _Factory factory = const _Factory();
 /// * a class that has this annotation or extends, implements or mixes in a
 ///   class that has this annotation is not immutable.
 const Immutable immutable = const Immutable();
+
+/// Used to annotate a test framework function that runs a single test.
+///
+/// Tools, such as IDEs, can show invocations of such function in a file
+/// structure view to help the user navigating in large test files.
+///
+/// The first parameter of the function must be the description of the test.
+const _IsTest isTest = const _IsTest();
+
+/// Used to annotate a test framework function that runs a group of tests.
+///
+/// Tools, such as IDEs, can show invocations of such function in a file
+/// structure view to help the user navigating in large test files.
+///
+/// The first parameter of the function must be the description of the group.
+const _IsTestGroup isTestGroup = const _IsTestGroup();
 
 /// Used to annotate a const constructor `c`. Indicates that any invocation of
 /// the constructor must use the keyword `const` unless one or more of the
@@ -239,6 +258,14 @@ class _Experimental {
 
 class _Factory {
   const _Factory();
+}
+
+class _IsTest {
+  const _IsTest();
+}
+
+class _IsTestGroup {
+  const _IsTestGroup();
 }
 
 class _Literal {
