@@ -5,6 +5,8 @@
 import "package:collection/collection.dart";
 import "package:test/test.dart";
 
+import "utils.dart";
+
 void main() {
   group("new QueueList()", () {
     test("creates an empty QueueList", () {
@@ -250,6 +252,47 @@ void main() {
           throwsConcurrentModificationError);
     });
   });
+
+  test("cast does not throw on mutation when the type is valid", () {
+    var patternQueue = new QueueList<Pattern>()..addAll(['a', 'b']);
+    var stringQueue = patternQueue.cast<String>();
+    stringQueue.addAll(['c', 'd']);
+    expect(
+      stringQueue,
+      const isInstanceOf<QueueList<String>>(),
+      reason: 'Expected QueueList<String>, got ${stringQueue.runtimeType}',
+      skip: isDart2 ? false : 'Cast does nothing in Dart1',
+    );
+
+    expect(
+      stringQueue,
+      ['a', 'b', 'c', 'd'],
+      skip: isDart2 ? false : 'Cast does nothing in Dart1',
+    );
+
+    expect(patternQueue, stringQueue, reason: 'Should forward to original');
+  });
+
+  test("cast throws on mutation when the type is not valid", () {
+    QueueList<Object> stringQueue = new QueueList<String>();
+    var numQueue = stringQueue.cast<num>();
+    expect(
+      numQueue,
+      const isInstanceOf<QueueList<num>>(),
+      reason: 'Expected QueueList<num>, got ${numQueue.runtimeType}',
+      skip: isDart2 ? false : 'Cast does nothing in Dart1',
+    );
+    expect(
+      () => numQueue.add(1),
+      throwsCastError,
+      skip: isDart2 ? false : 'In Dart1 a TypeError is not thrown',
+    );
+  });
+
+  test("cast returns a new QueueList", () {
+    var queue = new QueueList<String>();
+    expect(queue.cast<Pattern>(), isNot(same(queue)));
+  });
 }
 
 /// Returns a queue whose internal ring buffer is full enough that adding a new
@@ -262,7 +305,7 @@ QueueList atCapacity() {
 
 /// Returns a queue whose internal tail has a lower index than its head.
 QueueList withInternalGap() {
-  var queue = new QueueList.from([null, null, null, null, 1, 2, 3, 4]);
+  var queue = new QueueList.from(<dynamic>[null, null, null, null, 1, 2, 3, 4]);
   for (var i = 0; i < 4; i++) {
     queue.removeFirst();
   }

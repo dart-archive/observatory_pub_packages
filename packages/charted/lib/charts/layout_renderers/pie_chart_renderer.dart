@@ -98,12 +98,14 @@ class PieChartRenderer extends LayoutRendererBase {
       indices = indices.reversed.toList();
     }
 
-    num accessor(int d, int i) {
+    num accessor(dynamic _d, int i) {
+      var d = _d as int;
       var row = d == SMALL_INT_MAX ? otherRow : area.data.rows.elementAt(d);
       return row == null || row.elementAt(measure) == null
           ? 0
           : row.elementAt(measure) as num;
     }
+
     var data = (new PieLayout()..accessor = accessor).layout(indices);
     var arc = new SvgArc(
         innerRadiusCallback: (d, i, e) => innerRadiusRatio * radius,
@@ -149,9 +151,9 @@ class PieChartRenderer extends LayoutRendererBase {
     _legend.clear();
     var items = new List<ChartLegendItem>.generate(data.length, (i) {
       SvgArcData d = data.elementAt(i);
-      Iterable row =
-          d.data == SMALL_INT_MAX ? otherRow : area.data.rows.elementAt(
-              d.data as int);
+      Iterable row = d.data == SMALL_INT_MAX
+          ? otherRow
+          : area.data.rows.elementAt(d.data as int);
 
       return new ChartLegendItem(
           index: d.data as int,

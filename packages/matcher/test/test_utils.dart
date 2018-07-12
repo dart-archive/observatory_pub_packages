@@ -4,6 +4,11 @@
 
 import 'package:test/test.dart';
 
+final bool isDart2 = () {
+  Type checkType<T>() => T;
+  return checkType<String>() == String;
+}();
+
 void shouldFail(value, Matcher matcher, expected) {
   var failed = false;
   try {
@@ -11,12 +16,12 @@ void shouldFail(value, Matcher matcher, expected) {
   } on TestFailure catch (err) {
     failed = true;
 
-    var _errorString = err.message;
+    var errorString = err.message;
 
     if (expected is String) {
-      expect(_errorString, equalsIgnoringWhitespace(expected));
+      expect(errorString, equalsIgnoringWhitespace(expected));
     } else {
-      expect(_errorString.replaceAll('\n', ''), expected);
+      expect(errorString.replaceAll('\n', ''), expected);
     }
   }
 
@@ -27,18 +32,13 @@ void shouldPass(value, Matcher matcher) {
   expect(value, matcher);
 }
 
-doesNotThrow() {}
-doesThrow() {
-  throw 'X';
+void doesNotThrow() {}
+void doesThrow() {
+  throw new StateError('X');
 }
 
 class Widget {
   int price;
-}
-
-class HasPrice extends CustomMatcher {
-  HasPrice(matcher) : super("Widget with a price that is", "price", matcher);
-  featureValueOf(actual) => actual.price;
 }
 
 class SimpleIterable extends Iterable<int> {

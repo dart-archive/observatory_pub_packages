@@ -1,3 +1,13 @@
+## 1.6.1
+
+* Drop the `retype` implementation for compatibility with the latest SDK.
+
+## 1.6.0
+
+* Add a `PathMap` class that uses path equality for its keys.
+
+* Add a `PathSet` class that uses path equality for its contents.
+
 ## 1.5.1
 
 * Fix a number of bugs that occurred when the current working directory was `/`

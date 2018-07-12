@@ -9,7 +9,7 @@ import 'package:test/test.dart';
 
 import 'observable_test_utils.dart';
 
-main() => observableTests();
+void main() => observableTests();
 
 void observableTests() {
   // Track the subscriptions so we can clean them up in tearDown.
@@ -206,7 +206,7 @@ expectPropertyChanges(records, int number) {
 
 createModel(int number) => new ObservableSubclass(number);
 
-class ObservableSubclass<T> extends Observable {
+class ObservableSubclass<T> extends PropertyChangeNotifier {
   ObservableSubclass([T initialValue]) : _value = initialValue;
 
   T get value => _value;
@@ -218,5 +218,6 @@ class ObservableSubclass<T> extends Observable {
 
   T _value;
 
+  @override
   String toString() => '#<$runtimeType value: $value>';
 }

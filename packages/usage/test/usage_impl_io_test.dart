@@ -11,7 +11,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:usage/src/usage_impl_io.dart';
 
-main() => defineTests();
+void main() => defineTests();
 
 void defineTests() {
   group('IOPostHandler', () {
@@ -93,7 +93,7 @@ class MockHttpClientResponse implements HttpClientResponse {
   MockHttpClientResponse(this.client);
 
   @override
-  Future/*<E>*/ drain/*<E>*/([/*=E*/ futureValue]) {
+  Future<E> drain<E>([E futureValue]) {
     client.sendCount++;
     return new Future.value();
   }

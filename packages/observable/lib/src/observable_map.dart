@@ -6,9 +6,9 @@ library observable.src.observable_map;
 
 import 'dart:collection';
 
-import 'change_record.dart' show ChangeRecord;
-import 'observable.dart' show Observable;
-import 'property_change_record.dart' show PropertyChangeRecord;
+import 'observable.dart';
+import 'records.dart';
+import 'to_observable.dart';
 
 // TODO(jmesserly): this needs to be faster. We currently require multiple
 // lookups per key to get the old value.
@@ -16,50 +16,28 @@ import 'property_change_record.dart' show PropertyChangeRecord;
 // LinkedHashMap, SplayTreeMap or HashMap. However it can use them for the
 // backing store.
 
-// TODO(jmesserly): should we summarize map changes like we do for list changes?
-class MapChangeRecord<K, V> extends ChangeRecord {
-  // TODO(jmesserly): we could store this more compactly if it matters, with
-  // subtypes for inserted and removed.
-
-  /// The map key that changed.
-  final K key;
-
-  /// The previous value associated with this key.
-  final V oldValue;
-
-  /// The new value associated with this key.
-  final V newValue;
-
-  /// True if this key was inserted.
-  final bool isInsert;
-
-  /// True if this key was removed.
-  final bool isRemove;
-
-  MapChangeRecord(this.key, this.oldValue, this.newValue)
-      : isInsert = false,
-        isRemove = false;
-
-  MapChangeRecord.insert(this.key, this.newValue)
-      : isInsert = true,
-        isRemove = false,
-        oldValue = null;
-
-  MapChangeRecord.remove(this.key, this.oldValue)
-      : isInsert = false,
-        isRemove = true,
-        newValue = null;
-
-  String toString() {
-    var kind = isInsert ? 'insert' : isRemove ? 'remove' : 'set';
-    return '#<MapChangeRecord $kind $key from: $oldValue to: $newValue>';
-  }
-}
-
 /// Represents an observable map of model values. If any items are added,
 /// removed, or replaced, then observers that are listening to [changes]
 /// will be notified.
 class ObservableMap<K, V> extends Observable implements Map<K, V> {
+  /// Adapts [source] to be a `ObservableMap<K2, V2>`.
+  ///
+  /// Any time the map would produce a key or value that is not a [K2] or [V2]
+  /// the access will throw.
+  ///
+  /// Any time [K2] key or [V2] value is attempted added into the adapted map,
+  /// the store will throw unless the key is also an instance of [K] and the
+  /// value is also an instance of [V].
+  ///
+  /// If all accessed entries of [source] have [K2] keys and [V2] values and if
+  /// all entries added to the returned map have [K] keys and [V] values, then
+  /// the returned map can be used as a `Map<K2, V2>`.
+  static ObservableMap<K2, V2> castFrom<K, V, K2, V2>(
+    ObservableMap<K, V> source,
+  ) {
+    return new ObservableMap<K2, V2>.spy(source._map.cast<K2, V2>());
+  }
+
   final Map<K, V> _map;
 
   /// Creates an observable map.
@@ -95,22 +73,34 @@ class ObservableMap<K, V> extends Observable implements Map<K, V> {
     return result;
   }
 
+  /// Creates a new observable map wrapping [other].
+  ObservableMap.spy(Map<K, V> other) : _map = other;
+
+  @override
   Iterable<K> get keys => _map.keys;
 
+  @override
   Iterable<V> get values => _map.values;
 
+  @override
   int get length => _map.length;
 
+  @override
   bool get isEmpty => length == 0;
 
+  @override
   bool get isNotEmpty => !isEmpty;
 
+  @override
   bool containsValue(Object value) => _map.containsValue(value);
 
+  @override
   bool containsKey(Object key) => _map.containsKey(key);
 
+  @override
   V operator [](Object key) => _map[key];
 
+  @override
   void operator []=(K key, V value) {
     if (!hasObservers) {
       _map[key] = value;
@@ -132,12 +122,14 @@ class ObservableMap<K, V> extends Observable implements Map<K, V> {
     }
   }
 
+  @override
   void addAll(Map<K, V> other) {
     other.forEach((K key, V value) {
       this[key] = value;
     });
   }
 
+  @override
   V putIfAbsent(K key, V ifAbsent()) {
     int len = _map.length;
     V result = _map.putIfAbsent(key, ifAbsent);
@@ -149,6 +141,7 @@ class ObservableMap<K, V> extends Observable implements Map<K, V> {
     return result;
   }
 
+  @override
   V remove(Object key) {
     int len = _map.length;
     V result = _map.remove(key);
@@ -160,6 +153,7 @@ class ObservableMap<K, V> extends Observable implements Map<K, V> {
     return result;
   }
 
+  @override
   void clear() {
     int len = _map.length;
     if (hasObservers && len > 0) {
@@ -172,9 +166,47 @@ class ObservableMap<K, V> extends Observable implements Map<K, V> {
     _map.clear();
   }
 
+  @override
   void forEach(void f(K key, V value)) => _map.forEach(f);
 
-  String toString() => Maps.mapToString(this);
+  @override
+  String toString() => MapBase.mapToString(this);
+
+  @override
+  ObservableMap<K2, V2> cast<K2, V2>() {
+    return ObservableMap.castFrom<K, V, K2, V2>(this);
+  }
+
+  @deprecated
+  @override
+  // ignore: override_on_non_overriding_method
+  ObservableMap<K2, V2> retype<K2, V2>() {
+    return ObservableMap.castFrom<K, V, K2, V2>(this);
+  }
+
+  @override
+  Iterable<MapEntry<K, V>> get entries => _map.entries;
+
+  @override
+  void addEntries(Iterable<MapEntry<K, V>> entries) {
+    _map.addEntries(entries);
+  }
+
+  @override
+  Map<K2, V2> map<K2, V2>(MapEntry<K2, V2> transform(K key, V value)) {
+    return _map.map(transform);
+  }
+
+  @override
+  V update(K key, V update(V value), {V ifAbsent()}) {
+    return _map.update(key, update, ifAbsent: ifAbsent);
+  }
+
+  @override
+  void updateAll(V update(K key, V value)) => _map.updateAll(update);
+
+  @override
+  void removeWhere(bool test(K key, V value)) => _map.removeWhere(test);
 
   // Note: we don't really have a reasonable old/new value to use here.
   // But this should fix "keys" and "values" in templates with minimal overhead.

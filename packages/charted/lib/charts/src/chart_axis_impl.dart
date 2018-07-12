@@ -11,7 +11,7 @@ part of charted.charts;
 class DefaultChartAxisImpl {
   static const int _AXIS_TITLE_HEIGHT = 20;
 
-  CartesianArea _area;
+  final CartesianArea _area;
   ChartAxisConfig config;
   ChartAxisTheme _theme;
   SvgAxisTicks _axisTicksPlacement;
@@ -37,9 +37,7 @@ class DefaultChartAxisImpl {
     _isDimension = isDimension;
 
     // If we don't have a scale yet, create one.
-    if (scale == null) {
-      _scale = _columnSpec.createDefaultScale();
-    }
+    _scale ??= _columnSpec.createDefaultScale();
 
     // We have the scale, get theme.
     _theme = isDimension
@@ -56,24 +54,26 @@ class DefaultChartAxisImpl {
     _title = config?.title;
   }
 
-  void initAxisScale(Iterable range) {
+  void initAxisScale(Iterable<num> range) {
     assert(scale != null);
     if (scale is OrdinalScale) {
+      Iterable<num> numericRange = range;
       var usingBands = _area.dimensionsUsingBands.contains(_column),
           innerPadding = usingBands ? _theme.axisBandInnerPadding : 1.0,
-          outerPadding =
-          usingBands ? _theme.axisBandOuterPadding : _theme.axisOuterPadding;
+          outerPadding = usingBands
+              ? _theme.axisBandOuterPadding
+              : _theme.axisOuterPadding;
 
       // This is because when left axis is primary the first data row should
       // appear on top of the y-axis instead of on bottom.
       if (_area.config.isLeftAxisPrimary) {
-        range = range.toList().reversed;
+        numericRange = numericRange.toList().reversed;
       }
       if (usingBands) {
         (scale as OrdinalScale)
-            .rangeRoundBands(range, innerPadding, outerPadding);
+            .rangeRoundBands(numericRange, innerPadding, outerPadding);
       } else {
-        (scale as OrdinalScale).rangePoints(range, outerPadding);
+        (scale as OrdinalScale).rangePoints(numericRange, outerPadding);
       }
     } else {
       if (_title != null) {
@@ -88,7 +88,8 @@ class DefaultChartAxisImpl {
   }
 
   void prepareToDraw(String orientation) {
-    if (orientation == null) orientation = ORIENTATION_BOTTOM;
+    assert(_theme != null);
+    orientation ??= ORIENTATION_BOTTOM;
     _orientation = orientation;
     _isVertical =
         _orientation == ORIENTATION_LEFT || _orientation == ORIENTATION_RIGHT;
@@ -104,15 +105,14 @@ class DefaultChartAxisImpl {
 
     // Handle auto re-sizing of horizontal axis.
     var ticks = (config != null && !isNullOrEmpty(config.tickValues))
-        ? config.tickValues
-        : scale.ticks,
-
-    formatter = _columnSpec.formatter == null
-        ? scale.createTickFormatter()
-        : _columnSpec.formatter,
-    textMetrics = new TextMetrics(fontStyle: _theme.ticksFont),
-    formattedTicks = ticks.map((x) => formatter(x)).toList(),
-    shortenedTicks = formattedTicks;
+            ? config.tickValues
+            : scale.ticks,
+        formatter = _columnSpec.formatter == null
+            ? scale.createTickFormatter()
+            : _columnSpec.formatter,
+        textMetrics = new TextMetrics(fontStyle: _theme.ticksFont),
+        formattedTicks = ticks.map((x) => formatter(x)).toList(),
+        shortenedTicks = formattedTicks;
     if (_isVertical) {
       var width = textMetrics.getLongestTextWidth(formattedTicks).ceil();
       if (width > _theme.verticalAxisWidth) {
@@ -199,7 +199,6 @@ class DefaultChartAxisImpl {
   set scale(Scale value) {
     _scale = value;
   }
-
 }
 
 class PrecomputedAxisTicks implements SvgAxisTicks {
@@ -235,8 +234,8 @@ class RotateHorizontalAxisTicks implements SvgAxisTicks {
     formattedTicks = ticks.map((x) => axis.tickFormat(x)).toList();
     shortenedTicks = formattedTicks;
 
-    var range = axis.scale.rangeExtent,
-        textMetrics = new TextMetrics(fontStyle: ticksFont);
+    Extent<num> range = axis.scale.rangeExtent;
+    var textMetrics = new TextMetrics(fontStyle: ticksFont);
     num allowedWidth = (range.max - range.min) ~/ ticks.length,
         maxLabelWidth = textMetrics.getLongestTextWidth(formattedTicks);
 

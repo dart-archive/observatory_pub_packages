@@ -58,8 +58,8 @@ class LineMarker implements ChartBehavior {
 
     assert(index == 0 || index == 1 && _area.useTwoDimensionAxes);
 
-    var dimensionAtBottom =
-        index == 1 && _isLeftAxisPrimary || index == 0 && !_isLeftAxisPrimary,
+    var dimensionAtBottom = index == 1 && _isLeftAxisPrimary ||
+            index == 0 && !_isLeftAxisPrimary,
         scale = _area.dimensionScales.elementAt(index),
         scaled = scale.scale(positions[column]) as num,
         theme = _area.theme.getDimensionAxisTheme(),
@@ -95,7 +95,8 @@ class LineMarker implements ChartBehavior {
     if (!_area.isReady) return;
     _markers = _parent.selectAll('.line-marker').data(positions.keys);
 
-    _markers.enter.append('path').each((int d, i, e) {
+    _markers.enter.append('path').each((_d, i, e) {
+      int d = _d;
       e.classes.add('line-marker');
       e.attributes['d'] = _getMarkerPath(d, animate);
     });
@@ -103,7 +104,7 @@ class LineMarker implements ChartBehavior {
     if (animate) {
       _markers
           .transition()
-          .attrWithCallback('d', (int d, i, e) => _getMarkerPath(d, false));
+          .attrWithCallback('d', (d, i, e) => _getMarkerPath(d as int, false));
     }
 
     _markers.exit.remove();

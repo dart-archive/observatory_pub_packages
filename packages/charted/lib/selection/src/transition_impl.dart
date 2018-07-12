@@ -16,10 +16,10 @@ class _TransitionImpl implements Transition {
   SelectionCallback _duration =
       (d, i, c) => Transition.defaultDurationMilliseconds;
   Selection _selection;
-  Map _attrs = {};
-  Map _styles = {};
-  Map _attrTweens = {};
-  Map _styleTweens = {};
+  Map<String, dynamic> _attrs = {};
+  Map<String, dynamic> _styles = {};
+  Map<String, dynamic> _attrTweens = {};
+  Map<String, dynamic> _styleTweens = {};
   Map<AnimationTimer, Element> _timerMap = {};
   Map<Element, List<Interpolator>> _attrMap = {};
   Map<Element, int> _durationMap = {};
@@ -87,9 +87,8 @@ class _TransitionImpl implements Transition {
           tweenList.add(_getAttrInterpolator(c, key, value(d, i, c)));
         });
         _attrTweens.forEach((String key, value) {
-          tweenList.add(
-              (t) => c.setAttribute(key,
-                  value(d, i, c.getAttribute(key))(t) as String));
+          tweenList.add((t) => c.setAttribute(
+              key, value(d, i, c.getAttribute(key))(t) as String));
         });
         _styles.forEach((String key, value) {
           tweenList.add(_getStyleInterpolator(

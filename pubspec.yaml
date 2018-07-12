@@ -1,10 +1,10 @@
 name: observatory
 dependencies:
-  charted: any
-  logging: any
   stack_trace: any
   unittest: any
   usage: any
-
-  # charted neglects to declare this dependency
-  collection: any
+  # This will be charted 0.6.1 when pushed to pub.
+  charted:
+    git:
+      url: git://github.com/google/charted
+      ref: b847ace40c4193ce3df30c00032d16d00d1a59b7

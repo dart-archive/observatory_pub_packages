@@ -125,6 +125,7 @@ String _typeName(x) {
   // So we play safe here.
   try {
     if (x == null) return "null";
+    if (x is Type) return "Type";
     var type = x.runtimeType.toString();
     // TODO(nweiz): if the object's type is private, find a public superclass to
     // display once there's a portable API to do that.
