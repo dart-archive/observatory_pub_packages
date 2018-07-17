@@ -9,7 +9,7 @@
 part of charted.core.utils;
 
 /// Returns a sum of all values in the given list of values
-num sum(List values) => values == null || values.isEmpty
+num sum(List<num> values) => values == null || values.isEmpty
     ? 0
     : values.fold(0.0, (num old, num next) => old + next);
 
@@ -37,12 +37,12 @@ class Pair<T1, T2> {
 }
 
 /// Represents a pair of mininum and maximum values in a List.
-class Extent<T> extends Pair<T, T> {
-  final T min;
-  final T max;
+class Extent<T extends Comparable> extends Pair<T, T> {
+  T get min => first;
+  T get max => last;
 
   factory Extent.items(Iterable<T> items,
-      [Comparator compare = Comparable.compare]) {
+      [Comparator<T> compare = Comparable.compare]) {
     if (items.length == 0) return new Extent(null, null);
     var max = items.first, min = items.first;
     for (var value in items) {
@@ -53,9 +53,7 @@ class Extent<T> extends Pair<T, T> {
   }
 
   const Extent(T min, T max)
-      : min = min,
-        max = max,
-        super(min, max);
+      : super(min, max);
 }
 
 /// Iterable representing a range of values containing the start, stop

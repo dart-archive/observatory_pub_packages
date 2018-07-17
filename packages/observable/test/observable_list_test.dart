@@ -65,6 +65,15 @@ _runTests() {
       });
     });
 
+    test('removeWhere changes length', () {
+      list.add(2);
+      list.removeWhere((e) => e == 2);
+      expect(list, [1, 3]);
+      return new Future(() {
+        expectChanges(changes, [_lengthChange(3, 4), _lengthChange(4, 2)]);
+      });
+    });
+
     test('length= changes length', () {
       list.length = 5;
       expect(list, [1, 2, 3, null, null]);
@@ -266,6 +275,19 @@ _runTests() {
       });
     });
 
+    test('removeWhere', () {
+      list.removeWhere((e) => e == 3);
+      expect(list, orderedEquals([1, 2, 1, 4]));
+
+      return new Future(() {
+        expectChanges(propRecords, [_lengthChange(6, 4)]);
+        expectChanges(listRecords, [
+          _change(2, removed: [3]),
+          _change(3, removed: [3])
+        ]);
+      });
+    });
+
     test('sort', () {
       list.sort((x, y) => x - y);
       expect(list, orderedEquals([1, 1, 2, 3, 3, 4]));
@@ -311,7 +333,7 @@ _runTests() {
   });
 }
 
-ObservableList list;
+ObservableList<int> list;
 
 PropertyChangeRecord _lengthChange(int oldValue, int newValue) =>
     new PropertyChangeRecord(list, #length, oldValue, newValue);

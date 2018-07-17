@@ -17,7 +17,7 @@ part of charted.core.scales;
 /// As log(0) is negative infinity, a log scale must have either an
 /// exclusively-positive or exclusively-negative domain; the domain must not
 /// include or cross zero.
-class LogScale implements Scale {
+class LogScale implements Scale<num, num> {
   static const defaultBase = 10;
   static const defaultDomain = const [1, 10];
   static final negativeNumbersRoundFunctionsPair =
@@ -43,7 +43,7 @@ class LogScale implements Scale {
 
   num _log(num x) =>
       (_positive ? math.log(x < 0 ? 0 : x) : -math.log(x > 0 ? 0 : -x)) /
-          math.log(base);
+      math.log(base);
 
   num _pow(num x) => _positive ? math.pow(base, x) : -math.pow(base, -x);
 
@@ -57,28 +57,28 @@ class LogScale implements Scale {
   int get base => _base;
 
   @override
-  num scale(x) => _linear.scale(_log(x as num)) as num;
+  num scale(num x) => _linear.scale(_log(x));
 
   @override
-  num invert(x) => _pow(_linear.invert(x as num) as num);
+  num invert(num x) => _pow(_linear.invert(x));
 
   @override
-  set domain(Iterable values) {
-    _positive = (values.first as num) >= 0;
-    _domain = values as List<num>;
+  set domain(covariant List<num> values) {
+    _positive = values.first >= 0;
+    _domain = values;
     _reset();
   }
 
   @override
-  Iterable get domain => _domain;
+  Iterable<num> get domain => _domain;
 
   @override
-  set range(Iterable newRange) {
+  set range(Iterable<num> newRange) {
     _linear.range = newRange;
   }
 
   @override
-  Iterable get range => _linear.range;
+  Iterable<num> get range => _linear.range;
 
   @override
   set rounded(bool value) {
@@ -121,7 +121,7 @@ class LogScale implements Scale {
   @override
   Extent get rangeExtent => _linear.rangeExtent;
 
-  _reset() {
+  void _reset() {
     if (_nice) {
       var niced = _domain.map((num e) => _log(e)).toList();
       var roundFunctions = _positive
@@ -135,11 +135,11 @@ class LogScale implements Scale {
     }
   }
 
-  Iterable get ticks {
-    var extent = ScaleUtils.extent(_domain),
-        ticks = <num>[];
-    num u = extent.min,
-        v = extent.max;
+  @override
+  Iterable<num> get ticks {
+    var extent = ScaleUtils.extent(_domain);
+    var ticks = <num>[];
+    num u = extent.min, v = extent.max;
     int i = (_log(u)).floor(),
         j = (_log(v)).ceil(),
         n = (_base % 1 > 0) ? 2 : _base;
@@ -159,13 +159,14 @@ class LogScale implements Scale {
     return ticks;
   }
 
+  @override
   FormatFunction createTickFormatter([String formatStr]) {
-    NumberFormat formatter = new NumberFormat(new EnUsLocale());
     FormatFunction logFormatFunction =
-        formatter.format(formatStr != null ? formatStr : ".0E");
+        Scale.numberFormatter.format(formatStr != null ? formatStr : ".0E");
     var k = math.max(.1, ticksCount / this.ticks.length),
         e = _positive ? 1e-12 : -1e-12;
-    return (num d) {
+    return (dynamic _d) {
+      var d = _d as num;
       if (_positive) {
         return d / _pow((_log(d) + e).ceil()) <= k ? logFormatFunction(d) : '';
       } else {

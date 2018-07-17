@@ -20,7 +20,7 @@ listChangeTests() {
   var model;
 
   tearDown(() {
-    sub.cancel();
+    sub?.cancel();
     model = null;
   });
 
@@ -37,7 +37,11 @@ listChangeTests() {
     model.add(2);
 
     expect(summary, null);
-    return new Future(() => expectChanges(summary, [_delta(1, [], 2)]));
+    return new Future(() {
+      expectChanges(summary, [_delta(1, [], 2)]);
+      expect(summary[0].added, [1, 2]);
+      expect(summary[0].removed, []);
+    });
   });
 
   test('List Splice Truncate And Expand With Length', () {
@@ -47,29 +51,28 @@ listChangeTests() {
     sub = model.listChanges.listen((r) => summary = r);
 
     model.length = 2;
-
     return new Future(() {
       expectChanges(summary, [
         _delta(2, ['c', 'd', 'e'], 0)
       ]);
+      expect(summary[0].added, []);
+      expect(summary[0].removed, ['c', 'd', 'e']);
       summary = null;
       model.length = 5;
     }).then(newMicrotask).then((_) {
       expectChanges(summary, [_delta(2, [], 3)]);
+      expect(summary[0].added, [null, null, null]);
+      expect(summary[0].removed, []);
     });
   });
 
   group('List deltas can be applied', () {
     applyAndCheckDeltas(model, copy, changes) => changes.then((summary) {
           // apply deltas to the copy
-          for (var delta in summary) {
-            copy.removeRange(delta.index, delta.index + delta.removed.length);
-            for (int i = delta.addedCount - 1; i >= 0; i--) {
-              copy.insert(delta.index, model[delta.index + i]);
-            }
+          for (ListChangeRecord delta in summary) {
+            delta.apply(copy);
           }
 
-          // Note: compare strings for easier debugging.
           expect('$copy', '$model', reason: 'summary $summary');
         });
 
@@ -87,7 +90,7 @@ listChangeTests() {
     });
 
     test('Delete Empty', () {
-      var model = toObservable([1]);
+      var model = toObservable(<dynamic>[1]);
       var copy = model.toList();
       var changes = model.listChanges.first;
 

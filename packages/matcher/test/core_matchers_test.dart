@@ -7,11 +7,6 @@ import 'package:test/test.dart' show test, group;
 
 import 'test_utils.dart';
 
-class BadCustomMatcher extends CustomMatcher {
-  BadCustomMatcher() : super("feature", "description", {1: "a"});
-  featureValueOf(actual) => throw new Exception("bang");
-}
-
 void main() {
   test('isTrue', () {
     shouldPass(true, isTrue);
@@ -35,25 +30,27 @@ void main() {
   });
 
   test('isNaN', () {
-    shouldPass(double.NAN, isNaN);
+    shouldPass(double.nan, isNaN);
     shouldFail(3.1, isNaN, "Expected: NaN Actual: <3.1>");
+    shouldFail('not a num', isNaN, endsWith('not an <Instance of \'num\'>'));
   });
 
   test('isNotNaN', () {
     shouldPass(3.1, isNotNaN);
-    shouldFail(double.NAN, isNotNaN, "Expected: not NaN Actual: <NaN>");
+    shouldFail(double.nan, isNotNaN, "Expected: not NaN Actual: <NaN>");
+    shouldFail('not a num', isNotNaN, endsWith('not an <Instance of \'num\'>'));
   });
 
   test('same', () {
-    var a = new Map();
-    var b = new Map();
+    var a = {};
+    var b = {};
     shouldPass(a, same(a));
     shouldFail(b, same(a), "Expected: same instance as {} Actual: {}");
   });
 
   test('equals', () {
-    var a = new Map();
-    var b = new Map();
+    var a = {};
+    var b = {};
     shouldPass(a, equals(a));
     shouldPass(a, equals(b));
   });
@@ -81,7 +78,7 @@ void main() {
   });
 
   test('anything', () {
-    var a = new Map();
+    var a = {};
     shouldPass(0, anything);
     shouldPass(null, anything);
     shouldPass(a, anything);
@@ -95,12 +92,14 @@ void main() {
         returnsNormally,
         matches(r"Expected: return normally"
             r"  Actual: <Closure.*>"
-            r"   Which: threw 'X'"));
+            r"   Which: threw StateError:<Bad state: X>"));
+    shouldFail('not a function', returnsNormally,
+        contains('not an <Instance of \'Function\'>'));
   });
 
   test('hasLength', () {
-    var a = new Map();
-    var b = new List();
+    var a = {};
+    var b = [];
     shouldPass(a, hasLength(0));
     shouldPass(b, hasLength(0));
     shouldPass('a', hasLength(1));
@@ -214,42 +213,19 @@ void main() {
     shouldFail(actual3, equals(expected3), reason3);
   });
 
-  test('isInstanceOf', () {
-    shouldFail(0, new isInstanceOf<String>(),
-        "Expected: an instance of String Actual: <0>");
-    shouldPass('cow', new isInstanceOf<String>());
-  });
-
   group('Predicate Matchers', () {
     test('isInstanceOf', () {
       shouldFail(0, predicate((x) => x is String, "an instance of String"),
           "Expected: an instance of String Actual: <0>");
       shouldPass('cow', predicate((x) => x is String, "an instance of String"));
+
+      if (isDart2) {
+        // With Dart2 semantics, predicate picks up a type argument of `bool`
+        // and we get nice type checking.
+        // Without Dart2 semantics a gnarly type error is thrown.
+        shouldFail(0, predicate((bool x) => x, "bool value is true"),
+            endsWith("not an <Instance of \'bool\'>"));
+      }
     });
-  });
-
-  test("Feature Matcher", () {
-    var w = new Widget();
-    w.price = 10;
-    shouldPass(w, new HasPrice(10));
-    shouldPass(w, new HasPrice(greaterThan(0)));
-    shouldFail(
-        w,
-        new HasPrice(greaterThan(10)),
-        "Expected: Widget with a price that is a value greater than <10> "
-        "Actual: <Instance of 'Widget'> "
-        "Which: has price with value <10> which is not "
-        "a value greater than <10>");
-  });
-
-  test("Custom Matcher Exception", () {
-    shouldFail(
-        "a",
-        new BadCustomMatcher(),
-        allOf([
-          contains("Expected: feature {1: 'a'} "),
-          contains("Actual: 'a' "),
-          contains("Which: threw 'Exception: bang' "),
-        ]));
   });
 }
